@@ -1,7 +1,7 @@
-# SLT360 — piloto administrativo
+# SLT360 — Sala Técnica
 
 Sistema da Sala Técnica preparado para GitHub Pages e Supabase, sem Netlify.
-Esta versão exige login real e um perfil administrativo habilitado no banco.
+Esta versão exige login individual e permissões de módulo habilitadas no banco.
 Não contém bases operacionais, senhas de demonstração nem chaves secretas.
 
 ## Executar e verificar
@@ -14,6 +14,7 @@ O login só funciona depois da instalação do banco e da criação dos acessos.
 - `supabase/migrations/202608310001_pilot.sql`: estrutura e políticas do piloto.
 - `supabase/migrations/202608310003_modules.sql`: banco relacional por módulo, vínculos, RLS e auditoria.
 - `docs/ADR-001-BANCO-MODULAR.md`: decisão de arquitetura, segurança e consequências.
+- `docs/USUARIOS-E-EQUIPE.md`: cadastro, vínculo de analistas e permissões.
 - `docs/IMPLANTACAO.md`: instalação, validação, limites e recuperação.
 - `.github/workflows/pages.yml`: testes e publicação manual no GitHub Pages.
 
@@ -23,7 +24,7 @@ chaves `secret`/`service_role` ou o arquivo privado de carga inicial ao GitHub.
 
 ## Comportamento
 
-Somente administradores explicitamente habilitados podem ler e salvar dados.
+Administradores, gestores e analistas leem e salvam conforme suas permissões por módulo.
 Uma conta criada no Supabase Auth, sozinha, não recebe acesso ao sistema.
 Gravações usam revisão esperada por registro: alterações independentes podem ocorrer
 em paralelo; duas alterações no mesmo registro exigem recarregamento. Um lote relacionado
