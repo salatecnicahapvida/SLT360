@@ -69,5 +69,30 @@ test('migração: isolamento, gravação atômica, auditoria, revogação e anex
     assert.equal((await db.query('select * from slt360_state')).rows.length,0);
     assert.equal((await db.query('select * from storage.objects')).rows.length,0);
     await assert.rejects(save(2),{code:'42501'});
+
+    // Testa também a segunda migração contra um perfil que já existe.
+    await db.exec('reset role');
+    await db.exec("alter table auth.users add column encrypted_password text, add column raw_user_meta_data jsonb default '{}'::jsonb");
+    await db.query("update auth.users set encrypted_password='hash-inicial-teste' where id=$1",[admin]);
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/202608310002_first_access.sql',import.meta.url),'utf8'));
+    await db.query('update slt360_profiles set ativo=true where id=$1',[admin]);
+    await role('authenticated',admin);
+    assert.equal((await db.query('select must_change_password from slt360_profiles')).rows[0].must_change_password,true);
+    assert.equal((await db.query('select * from slt360_state')).rows.length,0);
+    assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+    await assert.rejects(save(2),{code:'42501'});
+    await assert.rejects(db.query('update slt360_profiles set must_change_password=false'),{code:'42501'});
+    await assert.rejects(db.query("update auth.users set encrypted_password='tentativa-cliente'"),{code:'42501'});
+    await db.exec('reset role');
+    await db.query(`update auth.users set raw_user_meta_data='{"must_change_password":false}', encrypted_password='hash-inicial-teste' where id=$1`,[admin]);
+    assert.equal((await db.query('select must_change_password from slt360_profiles')).rows[0].must_change_password,true);
+    await db.query("update auth.users set encrypted_password='hash-senha-nova-teste' where id=$1",[admin]);
+    await role('authenticated',admin);
+    const changed = (await db.query('select must_change_password,password_changed_at from slt360_profiles')).rows[0];
+    assert.equal(changed.must_change_password,false);
+    assert.ok(changed.password_changed_at);
+    assert.equal((await db.query('select * from slt360_state')).rows.length,1);
+    assert.equal((await db.query('select * from storage.objects')).rows.length,1);
+    assert.equal(Number((await save(2)).rows[0].revision),3);
   } finally { await db.close(); }
 });
