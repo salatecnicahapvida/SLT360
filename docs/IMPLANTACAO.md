@@ -3,15 +3,15 @@
 Estado em 31/08/2026: banco remoto instalado e carga inicial importada com autorização
 do responsável. Conferência confirmou 214 obras, 30 demandas de orçamento e 1.105
 registros de manutenção/clínica; checksum do documento idêntico ao arquivo de origem.
-As quatro tabelas têm RLS habilitada e acesso anônimo negado. Nenhuma conta do
-aplicativo foi provisionada nesta etapa. A publicação do site exige ativar Pages
-e executar o fluxo de implantação.
+As quatro tabelas têm RLS habilitada e acesso anônimo negado. O site está publicado
+no GitHub Pages. A conta administrativa foi provisionada por solicitação do
+responsável, com troca obrigatória da senha provisória no primeiro acesso.
 
 ## Destinos
 
 - Código: https://github.com/salatecnicahapvida/SLT360 (repositório público).
 - Supabase: projeto `mgpkgxcenxnqvvujlclh`, região `us-east-2` (Ohio, EUA).
-- Hospedagem proposta: GitHub Pages. Não utiliza Netlify.
+- Hospedagem: GitHub Pages. Não utiliza Netlify.
 
 Confirmar a adequação da região e a autorização para transferir a base operacional
 antes de importar dados. Os scripts privados de carga ficam fora do repositório.
@@ -20,16 +20,19 @@ antes de importar dados. Os scripts privados de carga ficam fora do repositório
 
 1. Confirmar que não existem tabelas SLT360 no projeto de destino. Se houver,
    interromper e planejar a migração; não apagar ou sobrescrever.
-2. No SQL Editor do projeto correto, executar a migração do repositório.
-   Ela cria quatro tabelas, duas funções, políticas restritas e um bucket privado.
-   O script é transacional e destinado apenas à primeira instalação.
+2. No SQL Editor do projeto correto, executar as migrações em ordem de nome.
+   A primeira cria tabelas, funções, políticas restritas e um bucket privado.
+   A segunda acrescenta a proteção de primeiro acesso. Cada script é transacional
+   e deve ser aplicado uma única vez; não executar novamente a carga inicial.
 3. Executar a carga inicial privada autorizada. O script usa INSERT simples com
    id único; uma segunda importação falha sem substituir a base existente.
 4. Em Authentication, desativar novos cadastros públicos. Criar a conta administrativa
-   do responsável e confirmar o endereço. O próprio responsável define sua senha;
-   não colocar credenciais no código, SQL de migração ou histórico de mensagens.
+   do responsável e confirmar o endereço. Usar uma senha provisória forte e
+   entregá-la em canal privado; nunca incluir credenciais no código ou migrações.
+   O responsável define sua senha pessoal na primeira entrada no aplicativo.
 5. Copiar o UUID dessa conta para um INSERT em `slt360_profiles`, com nome e
-   `perfil='Admin'`. Esta liberação concede acesso à base inteira. Não liberar
+   `perfil='Admin'`. Manter `must_change_password=true`, o valor padrão. O perfil
+   concede acesso à base inteira somente após a troca da senha no Auth. Não liberar
    analistas até implementar e testar políticas por módulo no banco.
 6. Enviar somente os arquivos deste repositório. Em Settings → Pages, escolher
    GitHub Actions. A ativação exige permissões administrativas do repositório.
@@ -51,6 +54,10 @@ antes de importar dados. Os scripts privados de carga ficam fora do repositório
   falha sem sobrescrever o estado nem duplicar a auditoria.
 - Bucket privado e políticas de acesso/identidade verificadas no modelo local.
 - Fila de salvamento preserva cópias, ordena revisões e bloqueia após falha.
+- Primeiro acesso impede leitura, gravação e anexos até a alteração efetiva da
+  senha no Auth. Alterar metadados ou tentar editar o perfil não remove a exigência.
+  O formulário confere confirmação e senha de 12 a 72 caracteres (até 72 bytes),
+  incluindo maiúsculas, minúsculas e números; o Auth também aplica suas regras.
 - Interface com serviço local de teste: login, dados de entrada, criação de sprint,
   confirmação, recarregamento mantendo a alteração e saída.
 - Build copia apenas código e recursos visuais; varredura impede indicadores
