@@ -16,7 +16,17 @@
 <p>Piloto administrativo · acesso autorizado</p>
 <form id="cloudLogin"><label>E-mail<input name="email" type="email" autocomplete="username" required></label>
 <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-<button type="submit">Entrar</button></form><p id="cloudMessage" role="status"></p>
+<button type="submit">Entrar</button></form>
+<section id="firstAccess" hidden aria-labelledby="firstAccessTitle">
+<h2 id="firstAccessTitle">Crie sua senha pessoal</h2>
+<p>Este é seu primeiro acesso. Troque a senha provisória para liberar o sistema.</p>
+<form id="firstAccessForm">
+<label>Nova senha<input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required aria-describedby="passwordHint"></label>
+<small id="passwordHint">Use pelo menos 12 caracteres, com letras maiúsculas, minúsculas e números. Não reutilize a senha provisória.</small>
+<label>Confirmar nova senha<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+<button type="submit">Salvar nova senha e entrar</button>
+</form></section>
+<p id="cloudMessage" role="status"></p>
 <button id="cloudSignOut" type="button" hidden>Sair desta conta</button>
 </div></section><div id="legacyShell" hidden><div id="cloudStatus" role="status">Conectado ao banco · piloto administrativo</div>
     <header class="app-header">
