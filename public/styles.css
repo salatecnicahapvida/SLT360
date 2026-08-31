@@ -117,7 +117,7 @@ button {
   height: clamp(56px, 4.9vw, 76px);
   border: 8px solid rgba(255, 255, 255, 0.74);
   border-radius: 22px;
-  background: rgba(0, 80, 168, 0.9);
+  background: #054c9e;
   object-fit: contain;
   object-position: center;
   padding: 4px 8px;
