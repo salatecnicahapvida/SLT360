@@ -1,9 +1,9 @@
-# Implantação do piloto
+# Implantação do SLT360
 
 Estado em 31/08/2026: banco remoto instalado e carga inicial importada com autorização
 do responsável. Conferência confirmou 214 obras, 30 demandas de orçamento e 1.105
 registros de manutenção/clínica; checksum do documento idêntico ao arquivo de origem.
-As quatro tabelas têm RLS habilitada e acesso anônimo negado. O site está publicado
+As tabelas do piloto têm RLS habilitada e acesso anônimo negado. O site está publicado
 no GitHub Pages. A conta administrativa foi provisionada por solicitação do
 responsável, com troca obrigatória da senha provisória no primeiro acesso.
 
@@ -32,9 +32,10 @@ antes de importar dados. Os scripts privados de carga ficam fora do repositório
    O responsável define sua senha pessoal na primeira entrada no aplicativo.
 5. Copiar o UUID dessa conta para um INSERT em `slt360_profiles`, com nome e
    `perfil='Admin'`. Manter `must_change_password=true`, o valor padrão. O perfil
-   concede acesso à base inteira somente após a troca da senha no Auth. Não liberar
-   analistas pela interface atual: a política por módulo está pronta no banco,
-   mas a habilitação de perfis não administrativos na interface é uma etapa separada.
+   concede acesso à base inteira somente após a troca da senha no Auth. Não criar
+   contas apenas no Auth. Depois de aplicar a migração 005 e publicar a função
+   `slt-users`, use Configuração → Usuários e Equipe para cadastrar e habilitar
+   administradores, gestores e analistas. Consulte `USUARIOS-E-EQUIPE.md`.
 6. Enviar somente os arquivos deste repositório. Em Settings → Pages, escolher
    GitHub Actions. A ativação exige permissões administrativas do repositório.
 7. Executar manualmente o fluxo `Publicar piloto SLT360`. O endereço esperado é
@@ -113,3 +114,10 @@ Referências: [publicação por Actions](https://docs.github.com/en/pages/gettin
 Para rollback sem novas gravações: primeiro interromper acessos; verificar que `slt_core_change_log` está vazia; desativar `slt_private.release_state`, devolver ao papel `authenticated` a leitura de `slt360_state` e a execução de `slt360_save`, e republicar a versão anterior segura. Não apagar as tabelas novas. Se houver gravações posteriores à migração, exportá-las e reconciliá-las antes de qualquer retorno ao snapshot; restaurá-lo diretamente perderia trabalho.
 
 A fonte de consumo financeiro possui 46.935 lançamentos contabilizados nos agregados, mas disponibilizou somente os 500 maiores lançamentos detalhados. A migração preserva essa distinção e não inventa os detalhes ausentes. O cadastro mestre de equipamentos também não estava na carga; a tabela de ativos começa vazia e recebe equipamentos vinculados às novas OS clínicas.
+
+## Gestão de acessos por módulo
+
+A migração 005 cria cadastro de analistas, vínculos de responsáveis e auditoria de
+acessos. É aditiva aos módulos já ativos: não repetir a importação nem reativar o
+backup legado. Publicar a função slt-users antes da nova interface; depois verificar
+primeiro acesso, bloqueios de consulta e desativação conforme USUARIOS-E-EQUIPE.md.
