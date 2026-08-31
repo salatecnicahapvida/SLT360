@@ -101,7 +101,7 @@ Referências: [publicação por Actions](https://docs.github.com/en/pages/gettin
 
 ## Migração para módulos independentes
 
-1. Instalar `202608310003_modules.sql`. A API nova fica desativada e a versão anterior continua funcionando.
+1. Instalar `202608310003_modules.sql` e `202608310004_import_lock_budget.sql`. A API nova fica desativada e a versão anterior continua funcionando. A segunda migração evita esgotar o orçamento de bloqueios do plano gratuito durante a carga inicial, mantendo os bloqueios nas edições normais.
 2. Exportar privadamente `slt360_state.payload` e registrar `md5(payload::text)` e `revision` no banco. Não copiar dados ou o arquivo de preparação para o GitHub.
 3. Executar `node scripts/prepare-module-import.mjs <origem-privada.json> <diretorio-privado-fora-do-repositorio>`.
 4. Executar `node scripts/verify-module-import.mjs <diretorio-privado>`. O ensaio precisa preservar registros, vínculos, valores e tipos de todos os conjuntos.
