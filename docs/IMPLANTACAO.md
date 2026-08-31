@@ -33,7 +33,8 @@ antes de importar dados. Os scripts privados de carga ficam fora do repositório
 5. Copiar o UUID dessa conta para um INSERT em `slt360_profiles`, com nome e
    `perfil='Admin'`. Manter `must_change_password=true`, o valor padrão. O perfil
    concede acesso à base inteira somente após a troca da senha no Auth. Não liberar
-   analistas até implementar e testar políticas por módulo no banco.
+   analistas pela interface atual: a política por módulo está pronta no banco,
+   mas a habilitação de perfis não administrativos na interface é uma etapa separada.
 6. Enviar somente os arquivos deste repositório. Em Settings → Pages, escolher
    GitHub Actions. A ativação exige permissões administrativas do repositório.
 7. Executar manualmente o fluxo `Publicar piloto SLT360`. O endereço esperado é
@@ -72,14 +73,16 @@ e os gráficos devem ser verificados também no ambiente publicado.
   aos dados operacionais e financeiros. Os perfis antigos não foram migrados.
 - A base inicial corresponde aos arquivos extraídos, não a alterações feitas
   posteriormente no armazenamento local de outros navegadores.
-- Salvamento envia o estado completo (limite de 25 MB). Aumentar usuários, volume
-  ou frequência exige normalizar o banco e atualizar o modelo de concorrência.
+- Salvamento modular envia somente registros alterados, com revisão individual.
+  A leitura inicial ainda monta o painel integrado completo; paginação e carregamento
+  de cada tela sob demanda são melhorias futuras para volumes maiores.
 - Ao ocorrer conflito ou falha, preservar anotações antes de recarregar. A versão
   não mantém cópia local nem mescla alterações. Não continuar gravando às cegas.
-- Histórico legado exibido na tela é parte do documento editável. A auditoria
-  confiável de gravações fica em `slt360_audit` e não pode ser alterada pelo aplicativo.
-- Definir backup operacional externo antes do uso contínuo. A auditoria não guarda
-  versões completas nem recupera dados. Exportar banco e anexos com ferramentas
+- Histórico legado exibido na tela foi preservado em tabela própria. A auditoria
+  confiável das novas gravações fica em `slt_core_change_log`, com antes/depois,
+  autor e revisão por registro, e não pode ser alterada pelo aplicativo.
+- Definir backup operacional externo antes do uso contínuo. A auditoria não substitui
+  um backup nem recupera os arquivos anexos. Exportar banco e anexos com ferramentas
   administrativas para armazenamento privado; testar restauração em projeto separado.
 - Upload concluído seguido de falha de metadados pode deixar arquivo órfão privado.
   Limpeza, exclusão e antivírus de anexos são tarefas administrativas futuras.
@@ -95,3 +98,18 @@ novamente a carga sobre dados novos. Investigar e preservar backup antes de rest
 Referências: [publicação por Actions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages),
 [políticas RLS](https://supabase.com/docs/guides/database/postgres/row-level-security),
 [controle de arquivos](https://supabase.com/docs/guides/storage/security/access-control).
+
+## Migração para módulos independentes
+
+1. Instalar `202608310003_modules.sql`. A API nova fica desativada e a versão anterior continua funcionando.
+2. Exportar privadamente `slt360_state.payload` e registrar `md5(payload::text)` e `revision` no banco. Não copiar dados ou o arquivo de preparação para o GitHub.
+3. Executar `node scripts/prepare-module-import.mjs <origem-privada.json> <diretorio-privado-fora-do-repositorio>`.
+4. Executar `node scripts/verify-module-import.mjs <diretorio-privado>`. O ensaio precisa preservar registros, vínculos, valores e tipos de todos os conjuntos.
+5. Carregar os lotes privados na tabela `slt_private.import_stage`. A tabela não é exposta ao aplicativo, nem ao acesso anônimo.
+6. Publicar a interface modular e imediatamente executar `slt_private.activate_modules(checksum_esperado, quantidade_esperada)` como administrador do banco. A função bloqueia a linha antiga, confere se a origem mudou, insere os registros em transação, valida as chaves estrangeiras e as contagens, registra o manifesto e revoga a API antiga.
+7. Se a origem tiver mudado durante a preparação, não forçar o checksum: refazer exportação, preparação e ensaio. A ativação falha sem substituir os dados.
+8. Conferir contagens, totais, políticas, leitura autenticada e bloqueio anônimo. Confirmar as funções de leitura/gravação e atualizar o navegador. Manter o snapshot original e a cópia privada até concluir o período de observação.
+
+Para rollback sem novas gravações: primeiro interromper acessos; verificar que `slt_core_change_log` está vazia; desativar `slt_private.release_state`, devolver ao papel `authenticated` a leitura de `slt360_state` e a execução de `slt360_save`, e republicar a versão anterior segura. Não apagar as tabelas novas. Se houver gravações posteriores à migração, exportá-las e reconciliá-las antes de qualquer retorno ao snapshot; restaurá-lo diretamente perderia trabalho.
+
+A fonte de consumo financeiro possui 46.935 lançamentos contabilizados nos agregados, mas disponibilizou somente os 500 maiores lançamentos detalhados. A migração preserva essa distinção e não inventa os detalhes ausentes. O cadastro mestre de equipamentos também não estava na carga; a tabela de ativos começa vazia e recebe equipamentos vinculados às novas OS clínicas.
