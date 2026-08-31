@@ -12,6 +12,8 @@ O login só funciona depois da instalação do banco e da criação dos acessos.
 
 - `src/config.js`: URL e chave **publishable** do projeto Supabase; não são segredo.
 - `supabase/migrations/202608310001_pilot.sql`: estrutura e políticas do piloto.
+- `supabase/migrations/202608310003_modules.sql`: banco relacional por módulo, vínculos, RLS e auditoria.
+- `docs/ADR-001-BANCO-MODULAR.md`: decisão de arquitetura, segurança e consequências.
 - `docs/IMPLANTACAO.md`: instalação, validação, limites e recuperação.
 - `.github/workflows/pages.yml`: testes e publicação manual no GitHub Pages.
 
@@ -23,14 +25,15 @@ chaves `secret`/`service_role` ou o arquivo privado de carga inicial ao GitHub.
 
 Somente administradores explicitamente habilitados podem ler e salvar dados.
 Uma conta criada no Supabase Auth, sozinha, não recebe acesso ao sistema.
-Gravações usam revisão esperada: se outra sessão salvou antes, a tela bloqueia
-novas alterações e solicita recarregamento. Não existe mesclagem automática.
+Gravações usam revisão esperada por registro: alterações independentes podem ocorrer
+em paralelo; duas alterações no mesmo registro exigem recarregamento. Um lote relacionado
+é salvo em uma única transação. Não existe mesclagem automática do mesmo registro.
 O indicador "Salvo no banco" só aparece após confirmação do servidor.
 
-O piloto mantém o estado de trabalho em um documento JSON versionado. As bases
-de referência ficam na mesma linha, mas não são substituídas pela função de gravação.
-Isso facilita a transição da versão local; não é uma arquitetura definitiva para
-grandes equipes. Perfis por módulo e entidades normalizadas precisam de uma etapa posterior.
+Projetos, Orçamento, Manutenção, Engenharia Clínica e Controle de Verbas possuem
+tabelas independentes. Cadastros compartilhados ficam no núcleo. Datas, valores,
+fases e vínculos são tipados e indexados; atributos legados adicionais ficam em uma
+extensão controlada até serem promovidos a campos oficiais.
 
 Anexos novos usam um bucket privado com limite de 10 MB por arquivo. Anexos que
 existiam apenas no IndexedDB de outro navegador não fazem parte do arquivo original
