@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import DOMPurify from 'dompurify';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { createSaveQueue } from './save-queue.js';
+import { createModuleStore } from './module-store.js';
 
 const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -44,13 +44,12 @@ async function start() {
     message.textContent = '';
     return;
   }
-  const { data: row, error: dataError } = await client.from('slt360_state').select('revision,payload').eq('id',1).maybeSingle();
-  if (dataError || !row) { message.textContent = 'A base ainda não foi instalada ou não está acessível. Nenhum dado de demonstração será carregado.'; return; }
-  const { payload } = row;
+  const { data: row, error: dataError } = await client.rpc('slt_module_load');
+  if (dataError || row?.schema_version !== 2) { message.textContent = 'A base modular não está acessível. Verifique a conexão e a liberação do acesso; nenhum dado local será usado.'; return; }
   const currentProfile = { ...profile, email: auth.user.email, status: 'Ativo', accessModules: ['projects','works','maintenance','clinical','budget','settings'] };
-  queue = createSaveQueue({ revision: row.revision,
-    async write(expected_revision, next_state) {
-      const { data, error } = await client.rpc('slt360_save', { expected_revision, next_state });
+  queue = createModuleStore({ records: row.records,
+    async commit(request_id, changes) {
+      const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
       if (error) throw error;
       return data;
     },
@@ -61,12 +60,13 @@ async function start() {
       if (status === 'failed') blockApp('Houve falha de conexão, perda de permissão ou outra sessão salvou uma versão mais recente.');
     },
   });
+  const payload = queue.payload;
   for (const key of ['SIC_BI_DATA','INVESTMENT_PLAN_DATA','UNIT_REGISTRY_DATA','MAINTENANCE_DATA','CAPEX_CONTROL_DATA','COMMISSION_OBRAS_DATA','HAPCAPEX_REFERENCE']) {
     if (Object.hasOwn(payload.datasets || {}, key)) globalThis[key] = payload.datasets[key];
   }
   globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: 'Admin' };
   globalThis.SLT_CLOUD = {
-    profile: currentProfile, cleanHTML, save: snapshot => queue.save(snapshot),
+    profile: currentProfile, cleanHTML, save: snapshot => queue.save(snapshot), acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
     async logout() { try { await queue.flush(); } catch { return; } await client.auth.signOut(); location.reload(); },
     async saveAttachment(record) {
       if (record.blob.size > 10485760) throw new Error('O limite por anexo é 10 MB.');

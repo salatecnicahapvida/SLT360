@@ -673,7 +673,7 @@ function clone(value) {
 function saveState() { globalThis.SLT_CLOUD.save(persistedStatePayload()); }
 
 function persistedStatePayload() {
- const keys = ['works','demands','sics','contracts','suppliers','funds','fundMovements','budgetRevisions','deletedDemands','deletedMaintenanceDemands','sprints','history','capexManualOiRows','projectDemands','maintenanceDemands'];
+ const keys = ['works','demands','sics','contracts','suppliers','funds','fundMovements','budgetRevisions','deletedDemands','deletedMaintenanceDemands','sprints','history','capexManualOiRows','projectDemands','maintenanceDemands','clinicalAssets'];
  const payload = Object.fromEntries(keys.map(key => [key, arrayOrFallback(state[key])]));
  payload.projectStatusOverrides = state.projectStatusOverrides || {};
  return payload;
@@ -7476,6 +7476,32 @@ function isClinicalMaintenanceDemand(item) {
   return isClinicalCostCenter(item?.centroCusto);
 }
 
+function syncClinicalAsset(item) {
+  if (!isClinicalMaintenanceDemand(item)) return;
+  const name = String(item.equipamento || item.assetName || "").trim();
+  const tag = String(item.patrimonio || item.numeroSerie || "").trim();
+  if (!name && !tag) return;
+  state.clinicalAssets = arrayOrFallback(state.clinicalAssets);
+  const signature = normalizeSearchText([item.unidadeId || item.unidadeNome, tag || name].join("|"));
+  let asset = state.clinicalAssets.find(candidate => candidate.id === item.assetId || normalizeSearchText([candidate.unidadeId || candidate.unidadeNome, candidate.patrimonio || candidate.numeroSerie || candidate.equipamento].join("|")) === signature);
+  if (!asset) {
+    asset = { id: nextCode("EQP", state.clinicalAssets), createdAt: todayISO() };
+    state.clinicalAssets.unshift(asset);
+  }
+  Object.assign(asset, {
+    equipamento: name || asset.equipamento || "",
+    patrimonio: tag || asset.patrimonio || "",
+    numeroSerie: String(item.numeroSerie || asset.numeroSerie || "").trim(),
+    fabricante: String(item.fabricante || asset.fabricante || "").trim(),
+    modelo: String(item.modelo || asset.modelo || "").trim(),
+    unidadeNome: item.unidadeNome || asset.unidadeNome || "",
+    unidadeId: item.unidadeId || asset.unidadeId || "",
+    status: asset.status || "Ativo",
+    updatedAt: todayISO(),
+  });
+  item.assetId = asset.id;
+}
+
 function maintenanceItemsForModule(module = activeMaintenanceModule()) {
   const items = state.maintenanceDemands || [];
   return module === "clinical" ? items.filter(isClinicalMaintenanceDemand) : items.filter((item) => !isClinicalMaintenanceDemand(item));
@@ -9363,6 +9389,7 @@ function handleMaintenanceDemandSubmit(form) {
     updatedAt: TODAY_ISO,
     historico: [{ fase: "Não iniciada", data: TODAY_ISO, observacao: "Demanda criada no SLT 360." }],
   };
+  syncClinicalAsset(demand);
   state.maintenanceDemands = [demand, ...(state.maintenanceDemands || [])];
   addHistory({
     entidade: "manutencao",
@@ -9417,6 +9444,7 @@ function handleMaintenanceDetailSubmit(form) {
     modelo: String(formData.get("modelo") || item.modelo || "").trim(),
     updatedAt: TODAY_ISO,
   });
+  syncClinicalAsset(item);
   const update = updateMaintenanceDemandPhase(item.id, formData.get("coluna") || item.coluna);
   if (update === false) return;
   if (previousPhase === item.coluna) saveState();
@@ -17971,4 +17999,5 @@ document.addEventListener("input", (event) => {
   }
 });
 
+globalThis.SLT_CLOUD.acceptInitialState(persistedStatePayload());
 render();
