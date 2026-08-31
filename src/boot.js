@@ -32,10 +32,16 @@ async function start() {
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) { message.textContent = ''; return; }
   document.querySelector('#cloudSignOut').hidden = false;
-  const { data: profile, error: profileError } = await client.from('slt360_profiles').select('id,nome,perfil,ativo').eq('id', auth.user.id).maybeSingle();
+  const { data: profile, error: profileError } = await client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password').eq('id', auth.user.id).maybeSingle();
   if (profileError || !profile?.ativo || profile.perfil !== 'Admin') {
     message.textContent = 'Sua conta ainda não foi habilitada para o piloto administrativo. Solicite a liberação ao responsável.';
     document.querySelector('#cloudSignOut').hidden = false;
+    return;
+  }
+  if (profile.must_change_password !== false) {
+    document.querySelector('#cloudLogin').hidden = true;
+    document.querySelector('#firstAccess').hidden = false;
+    message.textContent = '';
     return;
   }
   const { data: row, error: dataError } = await client.from('slt360_state').select('revision,payload').eq('id',1).maybeSingle();
@@ -109,6 +115,38 @@ document.querySelector('#cloudLogin').addEventListener('submit', async event => 
   finally { button.disabled = false; }
 });
 document.querySelector('#cloudSignOut').onclick = async () => { await client.auth.signOut(); location.reload(); };
+document.querySelector('#firstAccessForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button');
+  const password = form.elements.newPassword.value;
+  if (password !== form.elements.confirmPassword.value) {
+    message.textContent = 'As duas senhas precisam ser iguais.';
+    return;
+  }
+  if (password.length < 12 || new TextEncoder().encode(password).length > 72 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    message.textContent = 'Use de 12 a 72 caracteres (até 72 bytes), com maiúsculas, minúsculas e números.';
+    return;
+  }
+  button.disabled = true;
+  message.textContent = 'Atualizando sua senha…';
+  try {
+    const { error } = await client.auth.updateUser({ password });
+    if (error) {
+      message.textContent = error.code === 'same_password'
+        ? 'Escolha uma senha diferente da senha provisória.'
+        : error.code === 'weak_password'
+          ? 'A senha foi recusada por segurança. Escolha uma senha mais forte.'
+          : 'Não foi possível trocar a senha. Confira sua conexão e tente novamente; se a sessão expirou, saia e entre de novo.';
+      return;
+    }
+    form.reset();
+    message.textContent = 'Senha atualizada. Conferindo a liberação do acesso…';
+    location.reload();
+  } catch {
+    message.textContent = 'Não foi possível confirmar a troca. Tente entrar novamente com a nova senha antes de repetir.';
+  } finally { button.disabled = false; }
+});
 window.addEventListener('beforeunload', event => { if (queue?.dirty) { event.preventDefault(); event.returnValue = ''; } });
 client.auth.onAuthStateChange(event => {
   if (loaded && event === 'SIGNED_OUT') { shell.hidden = true; gate.hidden = false; location.reload(); }
