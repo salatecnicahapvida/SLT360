@@ -1,3 +1,4 @@
+import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 const STORAGE_KEY = "slt360-state-v6-historico";
 
 const MIRO_FLOW_URL = "https://miro.com/app/board/uXjVKxg3MFc=/";
@@ -223,6 +224,9 @@ const roleDefinitions = {
     label: "Admin",
     description: "Acesso completo, cadastros globais, configurações e controle financeiro.",
     blockedViews: [],
+  },
+  Gestor: {
+    label: "Gestor", description: "Gestão dos módulos autorizados.", blockedViews: [],
   },
   Gestão: {
     label: "Gestão",
@@ -703,7 +707,7 @@ function defaultAccessModulesForProfile(perfil) {
 
 function normalizeAccessModules(modules, perfil) {
   const valid = new Set(userAccessModules.map((module) => module.id));
-  const source = Array.isArray(modules) && modules.length ? modules : defaultAccessModulesForProfile(perfil);
+  const source = Array.isArray(modules) ? modules : [];
   return [...new Set(source.map(String).filter((module) => valid.has(module)))];
 }
 
@@ -771,7 +775,7 @@ function roleModuleAccessConfig(role = authenticatedRole()) {
 
 function moduleAccessConfig(role = authenticatedRole(), user = currentUser()) {
   const modules = normalizeAccessModules(user?.accessModules, role);
-  if (user && modules.length) {
+  if (user) {
     return userAccessModules.reduce((config, option) => {
       config[option.id] = modules.includes(option.id);
       return config;
@@ -781,7 +785,7 @@ function moduleAccessConfig(role = authenticatedRole(), user = currentUser()) {
 }
 
 function canAccessModule(module, role = authenticatedRole(), user = currentUser()) {
-  return moduleAccessConfig(role, user)[module] !== false;
+  return moduleAccessConfig(role, user)[module] === true;
 }
 
 function viewModule(view) {
@@ -1758,6 +1762,7 @@ function nextContractNumber() {
 }
 
 function addHistory({ entidade, entidadeId, campo, valorAnterior, valorNovo }) {
+  if (currentUser()?.perfil !== "Admin") return; // Every persisted change is audited by the database.
   if (!Array.isArray(state.history)) state.history = clone(baseState.history || []);
   state.history.unshift({
     id: nextCode("HIS", state.history),
@@ -1766,7 +1771,7 @@ function addHistory({ entidade, entidadeId, campo, valorAnterior, valorNovo }) {
     campo,
     valorAnterior,
     valorNovo,
-    usuario: "Gestão ST",
+    usuario: currentUser()?.nome || "Administrador",
     timestamp: new Date().toISOString(),
   });
 }
@@ -1878,9 +1883,45 @@ function canAccessView(view) {
   const module = viewModule(view);
   if (module !== "home" && !canAccessModule(module)) return false;
   if (user?.accessViews?.length && module !== "home") return user.accessViews.includes(normalized);
-  const blockedViews = roleDefinitions[activeRole()]?.blockedViews || [];
-  return !blockedViews.includes(normalized);
+  return true; // The account grants, not legacy role presets, control module access.
 }
+
+const editActions = new Set(['add-discipline-row','add-sic-draft-row','approve-sic','approve-sic-demand','create-budget-from-project','edit-work','move-demand','open-contract','open-delete-demand','open-demand','open-global-demand','open-global-demand-type','open-maintenance-demand','open-project-demand','open-sprint','open-work','post-sic-to-ev','reject-sic-demand','remove-discipline-row','remove-sic-draft-row','set-ev-line-na','start-budget-from-plan','start-demand-wizard','submit-demand-form','submit-demand-step','update-project-status','validate-budget-transfer']);
+function currentViewWritable() { return globalThis.SLT_CLOUD.canWrite(viewModule(currentView)); }
+function mutationAllowed(action) {
+  if(['create-budget-from-project','start-budget-from-plan','post-sic-to-ev'].includes(action)) return globalThis.SLT_CLOUD.canWrite('works');
+  if(action==='open-sprint') return currentUser()?.perfil==='Admin';
+  return currentViewWritable();
+}
+function applyReadOnlyControls() {
+  document.querySelectorAll('[data-action]').forEach(node=>{
+    if(!editActions.has(node.dataset.action)) return;
+    const blocked=!mutationAllowed(node.dataset.action);
+    if('disabled' in node) node.disabled=blocked;
+    if(blocked && !node.hasAttribute('data-permission-disabled')) node.setAttribute('data-permission-disabled','');
+    if(!blocked && node.hasAttribute('data-permission-disabled')) node.removeAttribute('data-permission-disabled');
+  });
+  if(!currentViewWritable()) {
+    document.querySelectorAll('#app form:not(#haptecForm), #modalRoot form').forEach(form=>{
+      form.querySelectorAll('input,select,textarea,button[type=submit]').forEach(node=>{if(!node.disabled)node.disabled=true;});
+    });
+    document.querySelectorAll('[data-action^="update-"],[data-action="assign-analyst"]').forEach(node=>{if('disabled' in node&&!node.disabled)node.disabled=true;});
+  }
+}
+document.addEventListener('click',event=>{
+ const node=event.target.closest('[data-action]');
+ if(node&&editActions.has(node.dataset.action)&&!mutationAllowed(node.dataset.action)){event.preventDefault();event.stopImmediatePropagation();showToast('Seu acesso a este módulo permite somente consulta.');}
+},true);
+document.addEventListener('submit',event=>{
+ if(['haptecForm','teamAccountForm','cloudLogin','firstAccessForm'].includes(event.target.id))return;
+ if(!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();showToast('Você não tem permissão para salvar neste módulo.');}
+},true);
+document.addEventListener('change',event=>{
+ const action=event.target.dataset.action||'';
+ if((action.startsWith('update-')||action==='assign-analyst')&&!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();render();}
+},true);
+for(const type of ['dragstart','drop'])document.addEventListener(type,event=>{if(!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();}},true);
+new MutationObserver(applyReadOnlyControls).observe(modalRoot,{childList:true,subtree:true});
 
 function applyRolePermissions() {
   const role = activeRole();
@@ -1901,7 +1942,8 @@ function applyRolePermissions() {
   const headerNewDemand = document.querySelector('.header-actions [data-action="open-demand"], .header-actions [data-action="open-global-demand"]');
   const isHome = currentView === "dashboard" || !user || requiresPasswordChange;
   if (headerSearch) headerSearch.hidden = isHome;
-  if (headerNewDemand) headerNewDemand.hidden = isHome;
+  if (headerNewDemand) headerNewDemand.hidden = isHome || !currentViewWritable();
+  applyReadOnlyControls();
   const logoutButton = document.querySelector('[data-action="logout"]');
   if (logoutButton) logoutButton.hidden = !user;
 }
@@ -1977,7 +2019,7 @@ function render() {
     suppliers: renderSuppliers,
     settings: renderSettings,
   };
-  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
+  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${currentView!=="dashboard" && !currentViewWritable()?'<div class="read-only-notice" role="status">Somente consulta · seu perfil não pode alterar os dados deste módulo.</div>':""}${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
   applyRolePermissions();
   scheduleDashboardCharts();
 }
@@ -5414,14 +5456,9 @@ function applyOperationalKpiFilter(key) {
 }
 
 function uniqueAnalysts() {
-  return [
-    ...new Set(
-      state.demands.flatMap((demand) => [
-        demand.analistaResponsavel,
-        ...(demand.analistasComplementares || []),
-      ])
-    ),
-  ].filter(Boolean);
+  const names = [...new Set([...(globalThis.SLT_CLOUD.analysts||[]).map(a=>a.nome),...state.demands.flatMap(d=>[d.analistaResponsavel,...(d.analistasComplementares||[])]),...state.projectDemands.map(d=>d.analistaResponsavel),...state.maintenanceDemands.map(d=>d.analistaResponsavel)])].filter(Boolean);
+  const mine=(globalThis.SLT_CLOUD.analysts||[]).find(a=>a.id===currentUser()?.analyst_id)?.nome;
+  return names.sort((a,b)=>a===mine?-1:b===mine?1:a.localeCompare(b,'pt-BR'));
 }
 
 function analystOptions(selected = "") {
@@ -14091,7 +14128,7 @@ function uniqueWorkValues(field) {
   return [...new Set(state.works.map((work) => work[field]).filter(Boolean))];
 }
 
-function renderUsersSettingsPanel() { return '<section class="panel"><h2>Acessos do piloto administrativo</h2><p>Os usuários são criados no Supabase Authentication e liberados explicitamente na tabela de perfis. O cadastro de senhas no navegador foi removido. Perfis por módulo serão habilitados após validação das políticas correspondentes.</p></section>'; }
+function renderUsersSettingsPanel() { return renderUsersPanel(globalThis.SLT_CLOUD); }
 
 function renderUserAccessCheckboxes(selectedModules = []) {
   const selected = new Set(selectedModules);
@@ -14128,8 +14165,8 @@ function renderSettings() {
     ${renderToolbar("Configuração", "Sprints, equipe, perfis, dicionários e auditoria global do SLT 360", `
 
     `)}
-    ${renderSprintSettingsPanel()}
     ${renderUsersSettingsPanel()}
+    ${renderSprintSettingsPanel()}
     <div class="content-grid">
       <section class="panel">
         <div class="panel-header">
@@ -15729,7 +15766,7 @@ function transactionDone(transaction) {
   });
 }
 
-async function saveAttachmentRecord(record) { return globalThis.SLT_CLOUD.saveAttachment(record); }
+async function saveAttachmentRecord(record) { const modules={projects:'projects',works:'budget',maintenance:'maintenance',clinical:'clinical',budget:'finance'}; return globalThis.SLT_CLOUD.saveAttachment({...record,module:modules[viewModule(currentView)]||'budget'}); }
 
 async function readAttachmentRecord(id) { return globalThis.SLT_CLOUD.readAttachment(id); }
 
@@ -16036,7 +16073,7 @@ function handleSprintSubmit(form) {
   render();
 }
 
-function handleUserSubmit() { showToast('Gerencie as contas pelo Supabase.'); }
+function handleUserSubmit() { showToast('Use Configuração → Usuários e Equipe.'); }
 
 function handleFirstAccessPasswordSubmit() { showToast('Gerencie a senha pelo Supabase Auth.'); }
 
@@ -17999,5 +18036,6 @@ document.addEventListener("input", (event) => {
   }
 });
 
+mountUsersAdmin(globalThis.SLT_CLOUD, () => render());
 globalThis.SLT_CLOUD.acceptInitialState(persistedStatePayload());
 render();

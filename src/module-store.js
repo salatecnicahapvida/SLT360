@@ -1,21 +1,21 @@
 import { ENTITIES, ENTITY_BY_NAME, flattenPayload, hydrateRecords, recordKey } from './module-model.js';
 const canonical = value => JSON.stringify(value,(_,v)=>v && typeof v==='object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])) : v);
 const content = r => canonical([r.document,r.child_fields,r.parent_key]);
-export function createModuleStore({records,commit,onStatus=()=>{},newRequestId=()=>crypto.randomUUID()}) {
-  let baseline=new Map(records.filter(r=>!ENTITY_BY_NAME.get(r.entity)?.readonly).map(r=>[recordKey(r),r]));
+export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=>{},newRequestId=()=>crypto.randomUUID()}) {
+  let baseline=new Map(records.filter(r=>!ENTITY_BY_NAME.get(r.entity)?.readonly && canWrite(ENTITY_BY_NAME.get(r.entity))).map(r=>[recordKey(r),r]));
   const versions=new Map(records.map(r=>[recordKey(r),r.revision]));
   let pending,active=false,failure=null,saving=Promise.resolve();
   function initial(snapshot) {
     if(active) throw new Error('Inicialização após gravação');
     // UI normalization is not itself a user edit. It is persisted with the next edit to that row.
-    baseline=new Map(flattenPayload({state:snapshot},{writableOnly:true}).map(r=>{ const old=baseline.get(recordKey(r)); return [recordKey(r),{...r,ordinal:old?.ordinal??r.ordinal}]; }));
+    baseline=new Map(flattenPayload({state:snapshot},{writableOnly:true}).filter(r=>canWrite(ENTITY_BY_NAME.get(r.entity))).map(r=>{ const old=baseline.get(recordKey(r)); return [recordKey(r),{...r,ordinal:old?.ordinal??r.ordinal}]; }));
   }
   async function drain() {
     active=true;
     try {
       while(pending!==undefined) {
         const snapshot=pending; pending=undefined;
-        const next=flattenPayload({state:snapshot},{writableOnly:true});
+        const next=flattenPayload({state:snapshot},{writableOnly:true}).filter(r=>canWrite(ENTITY_BY_NAME.get(r.entity)));
         const nextMap=new Map(next.map(r=>[recordKey(r),r]));
         const changes=[];
         for(let i=0;i<next.length;i++) {

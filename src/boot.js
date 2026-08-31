@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import DOMPurify from 'dompurify';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+import { decorateProfile, moduleAllowed, entityWritable, MODULE_OPTIONS } from './access.js';
 import { createModuleStore } from './module-store.js';
 
 const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -32,9 +33,9 @@ async function start() {
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) { message.textContent = ''; return; }
   document.querySelector('#cloudSignOut').hidden = false;
-  const { data: profile, error: profileError } = await client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password').eq('id', auth.user.id).maybeSingle();
-  if (profileError || !profile?.ativo || profile.perfil !== 'Admin') {
-    message.textContent = 'Sua conta ainda não foi habilitada para o piloto administrativo. Solicite a liberação ao responsável.';
+  const { data: profile, error: profileError } = await client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', auth.user.id).maybeSingle();
+  if (profileError || !profile?.ativo || !['Admin','Gestor','Analista'].includes(profile.perfil)) {
+    message.textContent = 'Sua conta não está ativa no sistema. Solicite a liberação ao responsável.';
     document.querySelector('#cloudSignOut').hidden = false;
     return;
   }
@@ -46,8 +47,16 @@ async function start() {
   }
   const { data: row, error: dataError } = await client.rpc('slt_module_load');
   if (dataError || row?.schema_version !== 2) { message.textContent = 'A base modular não está acessível. Verifique a conexão e a liberação do acesso; nenhum dado local será usado.'; return; }
-  const currentProfile = { ...profile, email: auth.user.email, status: 'Ativo', accessModules: ['projects','works','maintenance','clinical','budget','settings'] };
-  queue = createModuleStore({ records: row.records,
+  const [grants, directory] = await Promise.all([
+    client.from('slt_core_module_access').select('module,can_read,can_write').eq('user_id',profile.id),
+    client.from('slt_core_analysts').select('id,nome').order('nome'),
+  ]);
+  if(grants.error || directory.error){message.textContent='Não foi possível conferir as permissões. Tente entrar novamente.';return;}
+  const currentProfile = decorateProfile({...profile,email:auth.user.email,access:grants.data||[]});
+  let team=null;
+  if(profile.perfil==='Admin') { const response=await client.rpc('slt_admin_users'); if(response.error){message.textContent='Não foi possível carregar a gestão de acessos.';return;} team=response.data; }
+
+  queue = createModuleStore({ records: row.records, canWrite:entity=>entityWritable(currentProfile,entity),
     async commit(request_id, changes) {
       const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
       if (error) throw error;
@@ -64,16 +73,26 @@ async function start() {
   for (const key of ['SIC_BI_DATA','INVESTMENT_PLAN_DATA','UNIT_REGISTRY_DATA','MAINTENANCE_DATA','CAPEX_CONTROL_DATA','COMMISSION_OBRAS_DATA','HAPCAPEX_REFERENCE']) {
     if (Object.hasOwn(payload.datasets || {}, key)) globalThis[key] = payload.datasets[key];
   }
-  globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: 'Admin' };
+  globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: currentProfile.perfil };
   globalThis.SLT_CLOUD = {
-    profile: currentProfile, cleanHTML, save: snapshot => queue.save(snapshot), acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
+    profile: currentProfile, analysts: directory.data||[], team, cleanHTML,
+    canWrite: uiModule => moduleAllowed(currentProfile,MODULE_OPTIONS.find(m=>m.ui===uiModule)?.id||'core',true),
+    async adminUsers(){const r=await client.rpc('slt_admin_users');if(r.error)throw r.error;return r.data;},
+    async updateUser(target_id,details,expected_revision){const r=await client.rpc('slt_admin_update_user',{target_id,details,expected_revision});if(r.error)throw r.error;return r.data;},
+    async createUser(email,details){
+      const r=await client.functions.invoke('slt-users',{body:{email,details}});
+      if(r.error){let detail;try{detail=await r.error.context?.json();}catch{}throw new Error(detail?.error||'Não foi possível confirmar o cadastro. Atualize a lista antes de repetir.');}
+      return r.data;
+    },
+    save: snapshot => queue.save(snapshot), acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
     async logout() { try { await queue.flush(); } catch { return; } await client.auth.signOut(); location.reload(); },
     async saveAttachment(record) {
       if (record.blob.size > 10485760) throw new Error('O limite por anexo é 10 MB.');
+      // Metadata first: Storage policies verify the module before accepting the file.
+      const result = await client.from('slt360_attachments').insert({id:record.id,nome:record.nome,tipo:record.tipo,tamanho:record.tamanho,module:record.module});
+      if (result.error) throw result.error;
       const upload = await client.storage.from('slt360-attachments').upload(record.id, record.blob, { upsert:false, contentType:record.blob.type || 'application/octet-stream' });
       if (upload.error) throw upload.error;
-      const result = await client.from('slt360_attachments').insert({id:record.id,nome:record.nome,tipo:record.tipo,tamanho:record.tamanho});
-      if (result.error) throw result.error;
     },
     async readAttachment(id) {
       const info = await client.from('slt360_attachments').select('nome,tipo').eq('id',id).single();
