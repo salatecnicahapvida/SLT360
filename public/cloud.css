@@ -17,3 +17,27 @@
 body:has(#legacyShell:not([hidden])) { padding-bottom:28px; }
 dialog { max-width:520px; padding:28px; border:1px solid #c5d4e4; border-radius:16px; }
 dialog::backdrop { background:#10233ac9; }
+.users-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.users-panel .panel-header { flex-wrap:wrap; gap:18px; }
+.users-panel td { vertical-align:top; }
+.users-panel > p { margin-top:18px; line-height:1.5; }
+.user-editor { width:min(760px,calc(100vw - 32px)); max-width:760px; max-height:90vh; overflow:auto; color:#173b60; }
+.user-editor h2 { margin:0; }
+.user-editor .panel-header { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+.user-editor p { line-height:1.5; }
+.user-editor label { display:grid; gap:6px; font-weight:600; }
+.user-editor input:not([type=checkbox]), .user-editor select { width:100%; min-width:0; border:1px solid #b6c7da; border-radius:8px; padding:11px; background:white; color:#173b60; }
+.user-editor button { border:1px solid #b6c7da; padding:10px 16px; border-radius:8px; cursor:pointer; }
+.user-editor button.primary-button { background:#00599f; color:white; }
+.user-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0; }
+.user-editor .user-active { display:flex; align-items:center; gap:8px; }
+.user-permissions { margin:20px 0; border:1px solid #c5d4e4; border-radius:10px; padding:16px; }
+.user-permissions [data-grants] { display:grid; gap:12px; }
+.user-permissions label { grid-template-columns:1fr 1fr; align-items:center; }
+[data-team-error] { color:#a02222; }
+.read-only-notice { padding:12px 18px; margin-bottom:16px; border-radius:8px; background:#e9f2fb; color:#164a7a; }
+[data-permission-disabled] { opacity:.45; cursor:not-allowed!important; }
+@media(max-width:600px) { .user-form-grid { grid-template-columns:1fr; } .user-permissions label { grid-template-columns:1fr; } .user-editor { padding:20px; } }
+
+.users-panel button { padding:10px 16px; border:1px solid #b6c7da; border-radius:8px; background:white; color:#17476f; cursor:pointer; }
+.users-panel .primary-button { background:#00599f; color:white; border-color:#00599f; }
