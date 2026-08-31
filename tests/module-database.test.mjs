@@ -12,7 +12,7 @@ export async function database() {
     create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);
     create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);
     alter table storage.objects enable row level security; grant usage on schema storage to authenticated; grant select,insert on storage.objects to authenticated;`);
-  for(const migration of ['202608310001_pilot.sql','202608310002_first_access.sql','202608310003_modules.sql']) await db.exec(await fs.readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+  for(const migration of ['202608310001_pilot.sql','202608310002_first_access.sql','202608310003_modules.sql','202608310004_import_lock_budget.sql']) await db.exec(await fs.readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
   return db;
 }
 export const admin='11111111-1111-4111-8111-111111111111';
