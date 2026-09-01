@@ -486,6 +486,7 @@ let maintenanceFilters = {
   unitType: "",
 };
 let clinicalViewMode = "kanban";
+let clinicalParkQuery = "";
 let clinicalFilters = {
   query: "",
   sprint: "",
@@ -8730,6 +8731,27 @@ function renderMaintenanceSettings() {
 }
 
 function clinicalAssets() {
+  const registered = Array.isArray(state.clinicalAssets) ? state.clinicalAssets : [];
+  if (registered.length) {
+    const query = normalizeSearchText(clinicalParkQuery).trim();
+    return registered
+      .map((asset) => ({
+        ...asset,
+        equipamento: asset.equipamento || asset.name || "Equipamento sem descrição",
+        unidadeNome: asset.unidadeNome || "Unidade não informada",
+        patrimonio: asset.patrimonio || asset.assetTag || "",
+        numeroSerie: asset.numeroSerie || asset.serialNumber || "",
+        os: clinicalItems().filter((item) => String(item.assetId || "") === String(asset.id || "")).length,
+        valor: clinicalItems()
+          .filter((item) => String(item.assetId || "") === String(asset.id || ""))
+          .reduce((sum, item) => sum + maintenanceValue(item), 0),
+      }))
+      .filter((asset) => !query || normalizeSearchText([
+        asset.id, asset.tag, asset.patrimonio, asset.numeroSerie, asset.equipamento,
+        asset.fabricante, asset.modelo, asset.unidadeNome, asset.cidade, asset.uf,
+      ].join(" ")).includes(query))
+      .sort((a, b) => String(a.unidadeNome).localeCompare(String(b.unidadeNome), "pt-BR") || String(a.equipamento).localeCompare(String(b.equipamento), "pt-BR"));
+  }
   const seen = new Map();
   clinicalItems().forEach((item, index) => {
     const name = clinicalEquipmentName(item) || "Equipamento a vincular";
@@ -8761,6 +8783,10 @@ function renderClinicalAssetRegistry(assets) {
     `;
   }
   return `
+    <label class="field clinical-park-search">
+      <span>Localizar equipamento no parque</span>
+      <input type="search" data-clinical-park-search value="${escapeAttribute(clinicalParkQuery)}" placeholder="TAG, ID, patrimônio, série, equipamento, fabricante ou unidade..." autocomplete="off" />
+    </label>
     <div class="table-wrap">
       <table class="data-table">
         <thead>
@@ -8771,6 +8797,7 @@ function renderClinicalAssetRegistry(assets) {
             <th>Tipologia</th>
             <th>OS vinculadas</th>
             <th class="numeric">Valor SLT</th>
+            <th>Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -8782,9 +8809,10 @@ function renderClinicalAssetRegistry(assets) {
                   <td><strong>${asset.equipamento}</strong><br /><span class="muted">${asset.fabricante || "Fabricante a informar"} ${asset.modelo || ""}</span></td>
                   <td>${asset.unidadeNome}</td>
                   <td>${asset.patrimonio || "A informar"}</td>
-                  <td>${asset.tipologia}</td>
+                  <td>${asset.tipologia || asset.status || "Não informada"}</td>
                   <td>${asset.os}</td>
                   <td class="numeric">${money(asset.valor)}</td>
+                  <td><button class="primary-action compact-action" type="button" data-action="create-clinical-demand-for-asset" data-id="${escapeAttribute(asset.id || "")}">Criar demanda</button></td>
                 </tr>
               `
             )
@@ -8792,6 +8820,7 @@ function renderClinicalAssetRegistry(assets) {
         </tbody>
       </table>
     </div>
+    <p class="muted">Mostrando ${number(assets.length)} equipamento(s). A demanda criada manterá o vínculo pelo ID do ativo.</p>
   `;
 }
 
@@ -8995,9 +9024,12 @@ function applyUnitToWorkForm(form, unit) {
   setValue("endereco", unit.endereco || unit.cep);
 }
 
-function openMaintenanceDemandModal() {
+function openMaintenanceDemandModal(assetId = "") {
   const labels = maintenanceModuleLabels();
   const activeSprint = currentSprint();
+  const selectedAsset = labels.isClinical
+    ? (state.clinicalAssets || []).find((asset) => String(asset.id || "") === String(assetId || ""))
+    : null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card maintenance-demand-form" id="maintenanceDemandForm" aria-labelledby="maintenanceDemandTitle">
@@ -9016,9 +9048,10 @@ function openMaintenanceDemandModal() {
               <span>Unidade vinculada</span>
             </div>
             <input type="hidden" name="unidadeId" />
+            <input type="hidden" name="assetId" value="${escapeAttribute(selectedAsset?.id || "")}" />
             <label class="field">
               <span>Assistente de busca de unidades</span>
-              <input name="unidadeBusca" data-maintenance-unit-search placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" required />
+              <input name="unidadeBusca" data-maintenance-unit-search value="${escapeAttribute(selectedAsset?.unidadeNome || "")}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" required />
             </label>
             <div data-maintenance-unit-results>
               ${maintenanceUnitSearchResults()}
@@ -9097,19 +9130,19 @@ function openMaintenanceDemandModal() {
                   ? `
                     <label class="field">
                       <span>Equipamento / ativo</span>
-                      <input name="equipamento" placeholder="Ex.: Tomógrafo, raio-X, autoclave..." />
+                      <input name="equipamento" value="${escapeAttribute(selectedAsset?.equipamento || "")}" placeholder="Ex.: Tomógrafo, raio-X, autoclave..." ${selectedAsset ? "readonly" : ""} />
                     </label>
                     <label class="field">
                       <span>Patrimônio / nº de série</span>
-                      <input name="patrimonio" placeholder="Patrimônio, série ou TAG do ativo" />
+                      <input name="patrimonio" value="${escapeAttribute(selectedAsset?.patrimonio || selectedAsset?.tag || selectedAsset?.numeroSerie || "")}" placeholder="Patrimônio, série ou TAG do ativo" ${selectedAsset ? "readonly" : ""} />
                     </label>
                     <label class="field">
                       <span>Fabricante</span>
-                      <input name="fabricante" placeholder="Fabricante do equipamento" />
+                      <input name="fabricante" value="${escapeAttribute(selectedAsset?.fabricante || "")}" placeholder="Fabricante do equipamento" ${selectedAsset ? "readonly" : ""} />
                     </label>
                     <label class="field">
                       <span>Modelo</span>
-                      <input name="modelo" placeholder="Modelo do equipamento" />
+                      <input name="modelo" value="${escapeAttribute(selectedAsset?.modelo || "")}" placeholder="Modelo do equipamento" ${selectedAsset ? "readonly" : ""} />
                     </label>
                   `
                   : ""
@@ -9408,6 +9441,11 @@ function updateMaintenanceDemandPhase(id, nextColumnId) {
 function handleMaintenanceDemandSubmit(form) {
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
+  const assetId = String(formData.get("assetId") || "").trim();
+  if (labels.isClinical && !assetId) {
+    showFormError("Selecione o equipamento no Parque Tecnológico e use o botão \u201cCriar demanda\u201d.");
+    return;
+  }
   const unit = maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca"));
   if (!unit) {
     showFormError("Selecione uma unidade válida pelo assistente de busca.");
@@ -9455,6 +9493,7 @@ function handleMaintenanceDemandSubmit(form) {
     observacoes: String(formData.get("observacoes") || "").trim(),
     analistaResponsavel: String(formData.get("analistaResponsavel") || "").trim(),
     prioridade: String(formData.get("prioridade") || "Média"),
+    assetId,
     equipamento: String(formData.get("equipamento") || "").trim(),
     assetName: String(formData.get("equipamento") || "").trim(),
     patrimonio: String(formData.get("patrimonio") || "").trim(),
@@ -17337,6 +17376,10 @@ document.addEventListener("click", async (event) => {
     openDemandModal(mode);
   }
   if (action === "open-maintenance-demand") openMaintenanceDemandModal();
+  if (action === "create-clinical-demand-for-asset") {
+    openMaintenanceDemandModal(actionButton.dataset.id || "");
+    return;
+  }
   if (action === "open-maintenance-card") openMaintenanceCardModal(actionButton.dataset.id);
   if (action === "open-maintenance-slice") openMaintenanceSliceDetailModal(actionButton.dataset.field, actionButton.dataset.label);
   if (action === "export-works-operational") {
@@ -17983,6 +18026,17 @@ document.querySelector("#globalSearch").addEventListener("input", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-clinical-park-search]")) {
+    const value = event.target.value;
+    clinicalParkQuery = value;
+    render();
+    const input = document.querySelector("[data-clinical-park-search]");
+    if (input) {
+      input.focus();
+      input.setSelectionRange(value.length, value.length);
+    }
+    return;
+  }
   if (event.target.matches("[data-ev-area-input], .ev-value-input")) {
     updateEVAreaPreview(event.target.closest("#evForm"));
     return;
