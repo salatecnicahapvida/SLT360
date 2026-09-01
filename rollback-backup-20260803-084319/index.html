@@ -1,0 +1,131 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SLT 360</title>
+    <meta
+      name="description"
+      content="Sistema de Gestão da Sala Técnica de Engenharia"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <img class="brand-logo brand-logo--slt" src="assets/logo-slt360.png" alt="SLT 360" />
+        <span class="brand-divider" aria-hidden="true"></span>
+        <img class="brand-logo brand-logo--hapvida" src="assets/logo-hapvida.png" alt="Hapvida" />
+      </div>
+
+      <nav class="top-nav" aria-label="Navegação principal">
+        <button class="top-nav__item is-active" type="button" data-view="dashboard">
+          Início
+        </button>
+        <button class="top-nav__item" type="button" data-view="team">
+          Equipe
+        </button>
+        <button class="top-nav__item" type="button" data-view="worksHome" data-module="works">
+          Obras
+        </button>
+        <button class="top-nav__item" type="button" data-view="maintenance" data-module="maintenance">
+          Manutenção
+        </button>
+        <button class="top-nav__item" type="button" data-view="clinical" data-module="clinical">
+          Eng. Clínica
+        </button>
+        <button class="top-nav__item" type="button" data-view="budget">
+          Controle de Verbas
+        </button>
+        <button class="top-nav__item" type="button" data-view="reports">
+          Relatórios
+        </button>
+        <button class="top-nav__item" type="button" data-view="settings">
+          Configurações
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <label class="search-box">
+          <span class="sr-only">Buscar obra, demanda, fornecedor ou cidade</span>
+          <input id="globalSearch" type="search" placeholder="Buscar obra, demanda, fornecedor, cidade." />
+        </label>
+        <button class="primary-action" type="button" data-action="open-global-demand">
+          + Nova demanda
+        </button>
+        <span class="user-chip">Coordenação ST</span>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Menu lateral">
+        <button class="side-link is-active" type="button" data-view="dashboard">
+          <span>Início</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksHome">
+          <span>Obras 360</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksOperational">
+          <span>Operacional</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksManagement">
+          <span>Gerencial</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksStrategic">
+          <span>Estratégica</span>
+        </button>
+        <button class="side-link" type="button" data-view="portfolio">
+          <span>Portfólio</span>
+        </button>
+        <button class="side-link" type="button" data-view="investmentPlan">
+          <span>Plano de Investimento</span>
+        </button>
+        <button class="side-link" type="button" data-view="ev">
+          <span>EV detalhado</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksSettings">
+          <span>Config. Obras</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenance">
+          <span>Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenanceOperational">
+          <span>Operacional Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenanceReports">
+          <span>BI Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="clinical">
+          <span>Engenharia Clínica</span>
+        </button>
+        <button class="side-link" type="button" data-view="sics">
+          <span>SICs</span>
+        </button>
+        <button class="side-link" type="button" data-view="analytics">
+          <span>Disciplina & Tipologia</span>
+        </button>
+        <button class="side-link" type="button" data-view="budget">
+          <span>Controle de Verbas</span>
+        </button>
+        <button class="side-link" type="button" data-view="suppliers">
+          <span>Fornecedores</span>
+        </button>
+        <button class="side-link" type="button" data-view="settings">
+          <span>Configurações</span>
+        </button>
+      </aside>
+
+      <section class="workspace" id="app" aria-live="polite"></section>
+    </main>
+
+    <div id="modalRoot"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="data/traco-imported-state.js"></script>
+    <script src="data/sic-bi-data.js"></script>
+    <script src="data/investment-plan-data.js"></script>
+    <script src="data/unit-registry-data.js"></script>
+    <script src="data/maintenance-data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

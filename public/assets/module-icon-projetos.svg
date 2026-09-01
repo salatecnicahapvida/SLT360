@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Projetos 360">
-  <rect x="8" y="8" width="80" height="80" rx="24" fill="#0e7490" opacity=".12"/>
-  <rect x="24" y="22" width="36" height="46" rx="6" fill="#ffffff" stroke="#0e7490" stroke-width="4"/>
-  <path d="M33 34h18M33 44h18M33 54h12" fill="none" stroke="#0e7490" stroke-width="4" stroke-linecap="round"/>
-  <path d="M57 59l11-11 7 7-11 11-10 3 3-10Z" fill="#ff8702" stroke="#0e7490" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M65 51l7 7" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-</svg>

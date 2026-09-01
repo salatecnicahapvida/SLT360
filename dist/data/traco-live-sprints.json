@@ -1,0 +1,26 @@
+﻿[
+    {
+        "nome":  "Sprint 12",
+        "inicio":  "2026-06-29",
+        "fim":  "2026-07-19",
+        "status":  "Encerrada"
+    },
+    {
+        "nome":  "Sprint 13",
+        "inicio":  "2026-07-20",
+        "fim":  "2026-08-02",
+        "status":  "Encerrada"
+    },
+    {
+        "nome":  "Sprint 14",
+        "inicio":  "2026-08-03",
+        "fim":  "2026-08-16",
+        "status":  "Encerrada"
+    },
+    {
+        "nome":  "Sprint 15",
+        "inicio":  "2026-08-17",
+        "fim":  "2026-08-28",
+        "status":  "Ativa"
+    }
+]

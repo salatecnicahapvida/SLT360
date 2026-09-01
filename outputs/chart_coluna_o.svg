@@ -1,0 +1,21 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='560' viewBox='0 0 1200 560'>
+<rect width='100%' height='100%' fill='#FFFFFF'/>
+<text x='30' y='42' font-family='Aptos, Arial, sans-serif' font-size='26' font-weight='700' fill='#15253F'>R$/m² por Tipologia de Obra</text>
+<line x1='30' y1='62' x2='1170' y2='62' stroke='#D8E0EA' stroke-width='2'/>
+<text x='30' y='111' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Retrofit</text>
+<rect x='330' y='93' width='311' height='24' rx='5' fill='#2F65B7'/>
+<text x='655' y='112' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.009</text>
+<text x='1010' y='112' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>147.2 mil m² | R$ 148.5 mi</text>
+<text x='30' y='163' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Nova Unidade</text>
+<rect x='330' y='145' width='645' height='24' rx='5' fill='#2F65B7'/>
+<text x='989' y='164' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 2.090</text>
+<text x='1010' y='164' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>60.8 mil m² | R$ 127.1 mi</text>
+<text x='30' y='215' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Nova/R</text>
+<rect x='330' y='197' width='486' height='24' rx='5' fill='#F37021'/>
+<text x='830' y='216' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.574</text>
+<text x='1010' y='216' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>5.4 mil m² | R$ 8.4 mi</text>
+<text x='30' y='267' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Ampliação</text>
+<rect x='330' y='249' width='474' height='24' rx='5' fill='#2F65B7'/>
+<text x='818' y='268' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.535</text>
+<text x='1010' y='268' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>159 m² | R$ 244.0 mil</text>
+</svg>

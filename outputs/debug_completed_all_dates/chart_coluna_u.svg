@@ -1,0 +1,37 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='560' viewBox='0 0 1200 560'>
+<rect width='100%' height='100%' fill='#FFFFFF'/>
+<text x='30' y='42' font-family='Aptos, Arial, sans-serif' font-size='26' font-weight='700' fill='#15253F'>R$/m² por Tipo Obra (3)</text>
+<line x1='30' y1='62' x2='1170' y2='62' stroke='#D8E0EA' stroke-width='2'/>
+<text x='30' y='111' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Hospitais</text>
+<rect x='330' y='93' width='228' height='24' rx='5' fill='#008F5A'/>
+<text x='572' y='112' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.196</text>
+<text x='1010' y='112' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>92.0 mil m² | R$ 110.0 mi</text>
+<text x='30' y='163' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Clínicas Ambulatoriais, Laboratórios e Coletas</text>
+<rect x='330' y='145' width='306' height='24' rx='5' fill='#2F65B7'/>
+<text x='650' y='164' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.602</text>
+<text x='1010' y='164' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>79.0 mil m² | R$ 126.5 mi</text>
+<text x='30' y='215' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Obra regulatória com baixa intervenção</text>
+<rect x='330' y='197' width='73' height='24' rx='5' fill='#F37021'/>
+<text x='417' y='216' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 385</text>
+<text x='1010' y='216' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>67.3 mil m² | R$ 25.9 mi</text>
+<text x='30' y='267' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Pronto Atendimentos e Clínicas Complexas</text>
+<rect x='330' y='249' width='501' height='24' rx='5' fill='#008F5A'/>
+<text x='845' y='268' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 2.624</text>
+<text x='1010' y='268' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>41.2 mil m² | R$ 108.1 mi</text>
+<text x='30' y='319' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Obra regulatória com média intervenção</text>
+<rect x='330' y='301' width='247' height='24' rx='5' fill='#2F65B7'/>
+<text x='591' y='320' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.295</text>
+<text x='1010' y='320' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>7.1 mil m² | R$ 9.2 mi</text>
+<text x='30' y='371' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Adm e Outros</text>
+<rect x='330' y='353' width='146' height='24' rx='5' fill='#F37021'/>
+<text x='490' y='372' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 764</text>
+<text x='1010' y='372' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>5.2 mil m² | R$ 4.0 mi</text>
+<text x='30' y='423' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>Obra regulatória com alta intervenção</text>
+<rect x='330' y='405' width='645' height='24' rx='5' fill='#008F5A'/>
+<text x='989' y='424' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 3.379</text>
+<text x='1010' y='424' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>2.8 mil m² | R$ 9.5 mi</text>
+<text x='30' y='475' font-family='Aptos, Arial, sans-serif' font-size='18' font-weight='600' fill='#15253F'>(sem informação)</text>
+<rect x='330' y='457' width='209' height='24' rx='5' fill='#2F65B7'/>
+<text x='553' y='476' font-family='Aptos, Arial, sans-serif' font-size='17' font-weight='700' fill='#15253F'>R$ 1.095</text>
+<text x='1010' y='476' font-family='Aptos, Arial, sans-serif' font-size='13' fill='#64748B'>517 m² | R$ 565.9 mil</text>
+</svg>

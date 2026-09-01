@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SLT 360 - Padrões Lean de Visualização</title>
+  <style>
+    :root {
+      --navy: #013BA6;
+      --orange: #FF8702;
+      --orange-deep: #FF5007;
+      --red: #FF212C;
+      --green: #008A5B;
+      --ink: #08213f;
+      --muted: #58708c;
+      --line: #cdd9ea;
+      --track: #e7edf5;
+      --surface: #ffffff;
+      --bg: #f3f7fc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    header {
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      color: var(--navy);
+      font-size: 28px;
+    }
+
+    header p,
+    .why,
+    .muted {
+      color: var(--muted);
+    }
+
+    .palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .swatch {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .swatch i {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--color);
+    }
+
+    .pattern {
+      display: grid;
+      grid-template-columns: minmax(310px, 0.8fr) minmax(420px, 1.2fr);
+      gap: 16px;
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 16px;
+    }
+
+    .pattern h2 {
+      color: var(--navy);
+      font-size: 19px;
+    }
+
+    .meta {
+      display: grid;
+      gap: 9px;
+    }
+
+    .badge {
+      display: inline-flex;
+      width: fit-content;
+      min-height: 24px;
+      align-items: center;
+      border-radius: 999px;
+      background: #eef5ff;
+      color: var(--navy);
+      padding: 3px 9px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .visual {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .demo-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .kpi-number {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .kpi-number strong {
+      color: var(--status);
+      font-size: 42px;
+      line-height: 1;
+    }
+
+    .status-pill {
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--status) 12%, white);
+      color: var(--status);
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .trend {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .target-bar {
+      position: relative;
+      height: 14px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: visible;
+    }
+
+    .target-bar span {
+      display: block;
+      width: var(--value);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--status);
+    }
+
+    .target-bar::after {
+      position: absolute;
+      left: var(--target);
+      top: -5px;
+      width: 3px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--ink);
+      content: "";
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 190px 1fr 58px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      height: 9px;
+      border-radius: 999px;
+      background: var(--track);
+    }
+
+    .bar-track span {
+      display: block;
+      width: var(--value);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--status, var(--navy));
+    }
+
+    .treemap {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 0.8fr;
+      grid-template-rows: 90px 70px;
+      gap: 6px;
+      min-height: 170px;
+    }
+
+    .tile {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--navy);
+      border-radius: 6px;
+      background: #f8fbff;
+      padding: 10px;
+      font-weight: 800;
+    }
+
+    .tile small {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .donut-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .donut {
+      display: grid;
+      width: 126px;
+      height: 126px;
+      place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(var(--green) 0 57%, var(--red) 57% 71%, #9aaaba 71% 100%);
+    }
+
+    .donut::after {
+      display: grid;
+      width: 74px;
+      height: 74px;
+      place-items: center;
+      border-radius: 50%;
+      background: #fff;
+      color: var(--navy);
+      font-size: 26px;
+      font-weight: 900;
+      content: "7";
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--color);
+    }
+
+    .critical-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .critical-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--severity);
+      border-radius: 7px;
+      padding: 9px 10px;
+    }
+
+    .critical-item strong {
+      display: block;
+    }
+
+    .severity {
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--severity) 13%, white);
+      color: var(--severity);
+      padding: 5px 8px;
+      font-weight: 900;
+    }
+
+    pre {
+      max-height: 230px;
+      margin: 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 12px;
+      color: #17324f;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    @media (max-width: 880px) {
+      .pattern {
+        grid-template-columns: 1fr;
+      }
+
+      .bar-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>SLT 360 - biblioteca Lean de visual management</h1>
+      <p>Padronizacao visual para dashboards executivos de Obras, Manutencao, Engenharia Clinica e Controle de Verbas.</p>
+      <div class="palette" aria-label="Paleta semantica">
+        <span class="swatch" style="--color: var(--navy)"><i></i>Navy neutro</span>
+        <span class="swatch" style="--color: var(--green)"><i></i>Dentro da meta</span>
+        <span class="swatch" style="--color: var(--orange)"><i></i>Atencao</span>
+        <span class="swatch" style="--color: var(--red)"><i></i>Critico</span>
+      </div>
+    </header>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">1. KPI unico com meta</span>
+        <h2>Number card com status e tendencia</h2>
+        <p class="why">Lean: em ate 3 segundos o usuario ve valor, meta, tendencia e se esta dentro ou fora do padrao.</p>
+      </div>
+      <div class="visual">
+        <div class="demo-card" style="--status: var(--red)">
+          <p class="muted">Lead time medio</p>
+          <div class="kpi-number">
+            <strong>13 d</strong>
+            <span class="status-pill">Acima da meta</span>
+          </div>
+          <p class="trend">Meta: ate 10 d | tendencia: piorou 2 d vs. semana anterior</p>
+        </div>
+        <pre><code>&lt;article class="lean-kpi" data-status="critical"&gt;
+  &lt;span&gt;Lead time medio&lt;/span&gt;
+  &lt;strong&gt;13 d&lt;/strong&gt;
+  &lt;em&gt;Meta: ate 10 d | tendencia: +2 d&lt;/em&gt;
+&lt;/article&gt;
+
+const status = value &lt;= target ? "ok" : value &lt;= target * 1.15 ? "attention" : "critical";</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">2. Progresso vs meta/capacidade</span>
+        <h2>Barra de capacidade com marcador de limite</h2>
+        <p class="why">Lean: a barra mostra uso atual e a linha vertical mostra o limite operacional, evitando cor decorativa por pessoa.</p>
+      </div>
+      <div class="visual">
+        <div class="demo-card">
+          <p class="muted">Capacidade em uso - Skarth</p>
+          <div class="target-bar" style="--value: 92%; --target: 80%; --status: var(--red)"><span></span></div>
+          <p class="trend">Uso: 92% | Limite visual: 80% | Status: sobrecarga</p>
+        </div>
+        <pre><code>// Chart.js: barra horizontal com plugin simples para meta
+const targetMarkerPlugin = {
+  id: "targetMarker",
+  afterDatasetsDraw(chart, args, opts) {
+    const scale = chart.scales.x;
+    const x = scale.getPixelForValue(opts.target);
+    const {top, bottom} = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save(); ctx.strokeStyle = "#08213f"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke(); ctx.restore();
+  }
+};
+
+new Chart(ctx, {
+  type: "bar",
+  data: {labels: ["Skarth"], datasets: [{data: [92], backgroundColor: ["#FF212C"]}]},
+  options: {indexAxis: "y", scales: {x: {min: 0, max: 100}}},
+  plugins: [targetMarkerPlugin],
+});</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">3. Ranking comparativo</span>
+        <h2>Barra horizontal ordenada com outlier destacado</h2>
+        <p class="why">Lean: o ranking continua adequado, mas somente o top/outlier recebe cor de atencao; o restante fica neutro.</p>
+      </div>
+      <div class="visual">
+        <div class="demo-card">
+          <div class="bar-row"><strong>Novo TEA Cabo</strong><div class="bar-track"><span style="--value:100%;--status:var(--orange)"></span></div><span>4</span></div>
+          <div class="bar-row"><strong>VISA Derby</strong><div class="bar-track"><span style="--value:75%;--status:var(--navy)"></span></div><span>3</span></div>
+          <div class="bar-row"><strong>Prefeitura Clinica</strong><div class="bar-track"><span style="--value:50%;--status:var(--navy)"></span></div><span>2</span></div>
+        </div>
+        <pre><code>const sorted = rows.sort((a, b) =&gt; b.value - a.value);
+new Chart(ctx, {
+  type: "bar",
+  data: {
+    labels: sorted.map(r =&gt; r.label),
+    datasets: [{
+      data: sorted.map(r =&gt; r.value),
+      backgroundColor: sorted.map((r, i) =&gt; i === 0 ? "#FF8702" : "#013BA6")
+    }]
+  },
+  options: {indexAxis: "y", plugins: {legend: {display: false}}}
+});</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">4. Composicao percentual</span>
+        <h2>Treemap ou barra 100% empilhada</h2>
+        <p class="why">Lean: composicao e parte-do-todo pedem area/proporcao, nao uma lista de barras independentes.</p>
+      </div>
+      <div class="visual">
+        <div class="treemap" role="img" aria-label="Treemap do portfolio por tipo de unidade">
+          <div class="tile" style="grid-row: span 2"><span>Hospital</span><small>48%</small></div>
+          <div class="tile"><span>Clinica</span><small>21%</small></div>
+          <div class="tile"><span>TEA</span><small>13%</small></div>
+          <div class="tile"><span>PA</span><small>10%</small></div>
+          <div class="tile"><span>Outros</span><small>8%</small></div>
+        </div>
+        <pre><code>&lt;div class="lean-treemap"&gt;
+  &lt;button style="--size:48"&gt;Hospital &lt;b&gt;48%&lt;/b&gt;&lt;/button&gt;
+  &lt;button style="--size:21"&gt;Clinica &lt;b&gt;21%&lt;/b&gt;&lt;/button&gt;
+  &lt;button style="--size:13"&gt;TEA &lt;b&gt;13%&lt;/b&gt;&lt;/button&gt;
+&lt;/div&gt;
+
+// Alternativa Chart.js: bar stacked 100%, uma unica barra com segmentos.</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">5. Distribuicao geografica</span>
+        <h2>Cartograma/mini-mapa ou treemap regional</h2>
+        <p class="why">Lean: quando mapa real nao cabe, o treemap regional preserva concentracao sem parecer ranking falso.</p>
+      </div>
+      <div class="visual">
+        <div class="treemap" role="img" aria-label="Treemap regional">
+          <div class="tile" style="grid-column: span 2"><span>Sudeste</span><small>61 obras | R$ 335 mi</small></div>
+          <div class="tile"><span>Nordeste</span><small>42 obras</small></div>
+          <div class="tile"><span>Sul</span><small>12 obras</small></div>
+          <div class="tile"><span>Norte</span><small>9 obras</small></div>
+          <div class="tile"><span>Centro-Oeste</span><small>6 obras</small></div>
+        </div>
+        <pre><code>&lt;section class="region-treemap" aria-label="Distribuicao regional"&gt;
+  &lt;article data-region="Sudeste"&gt;&lt;strong&gt;Sudeste&lt;/strong&gt;&lt;span&gt;R$ 335 mi&lt;/span&gt;&lt;/article&gt;
+  &lt;article data-region="Nordeste"&gt;&lt;strong&gt;Nordeste&lt;/strong&gt;&lt;span&gt;42 obras&lt;/span&gt;&lt;/article&gt;
+&lt;/section&gt;
+
+// Se houver GeoJSON: usar choropleth/cartograma; se nao houver, usar treemap por regiao.</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">6. Status / fluxo</span>
+        <h2>Donut semantico ou funil de fluxo</h2>
+        <p class="why">Lean: verde, vermelho e cinza comunicam no prazo, atraso e sem dado sem depender de leitura detalhada.</p>
+      </div>
+      <div class="visual">
+        <div class="demo-card donut-wrap">
+          <div class="donut" aria-label="7 concluidas"></div>
+          <div class="legend">
+            <span><i style="--color:var(--green)"></i>No prazo: 4</span>
+            <span><i style="--color:var(--red)"></i>Com atraso: 1</span>
+            <span><i style="--color:#9aaaba"></i>Sem data: 2</span>
+          </div>
+        </div>
+        <pre><code>new Chart(ctx, {
+  type: "doughnut",
+  data: {
+    labels: ["No prazo", "Com atraso", "Sem data"],
+    datasets: [{data: [4, 1, 2], backgroundColor: ["#008A5B", "#FF212C", "#9AAABA"]}]
+  },
+  options: {cutout: "62%", plugins: {legend: {position: "right"}}}
+});</code></pre>
+      </div>
+    </section>
+
+    <section class="pattern">
+      <div class="meta">
+        <span class="badge">7. Fila critica / atrasos</span>
+        <h2>Lista priorizada com badge de severidade</h2>
+        <p class="why">Lean: atraso exige acao, dono e severidade; grafico aqui esconde o que precisa ser resolvido.</p>
+      </div>
+      <div class="visual">
+        <div class="critical-list">
+          <div class="critical-item" style="--severity:var(--red)">
+            <div><strong>DEM-003 - Novo TEA Cabo de Santo Agostinho</strong><span class="muted">Skarth | Aguardando validacao Obras</span></div>
+            <span class="severity">18 d</span>
+          </div>
+          <div class="critical-item" style="--severity:var(--orange)">
+            <div><strong>DEM-010 - Novo TEA Abreu e Lima</strong><span class="muted">Herbson | Validacao Obras</span></div>
+            <span class="severity">7 d</span>
+          </div>
+        </div>
+        <pre><code>&lt;ul class="critical-queue"&gt;
+  &lt;li data-severity="critical"&gt;
+    &lt;strong&gt;DEM-003 - Novo TEA Cabo&lt;/strong&gt;
+    &lt;span&gt;Skarth | Validacao Obras&lt;/span&gt;
+    &lt;b&gt;18 d&lt;/b&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;</code></pre>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
