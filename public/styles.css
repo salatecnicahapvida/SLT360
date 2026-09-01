@@ -117,7 +117,7 @@ button {
   height: clamp(56px, 4.9vw, 76px);
   border: 8px solid rgba(255, 255, 255, 0.74);
   border-radius: 22px;
-  background: #054c9e;
+  background: rgba(0, 80, 168, 0.9);
   object-fit: contain;
   object-position: center;
   padding: 4px 8px;
@@ -8416,9 +8416,9 @@ button.alert-item {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 60px;
-  padding: 6px 14px 6px 8px;
+  gap: 12px;
+  min-height: 86px;
+  padding: 9px 20px 9px 12px;
   border: 1px solid rgba(114, 194, 255, 0.34);
   border-radius: 999px;
   background:
@@ -8472,12 +8472,8 @@ button.alert-item {
 
 .haptec-launcher small {
   color: rgba(255, 255, 255, 0.78);
-  font-size: 0.625rem;
+  font-size: 0.72rem;
   font-weight: 700;
-}
-
-.haptec-launcher strong {
-  font-size: 0.85rem;
 }
 
 .haptec-robot {
@@ -8492,7 +8488,7 @@ button.alert-item {
 }
 
 .haptec-robot.is-launcher {
-  --robot-scale: 0.6;
+  --robot-scale: 1.1;
 }
 
 .haptec-robot.is-panel {

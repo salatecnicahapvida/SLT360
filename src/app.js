@@ -51,7 +51,20 @@ const strategicCostTargets = [
   },
 ];
 
-const hapcapexReference = globalThis.HAPCAPEX_REFERENCE || {capexInicial:0,contingenciamentos:0,aportesExtras:0,capexAtual:0,previstoHistorico:{}};
+const hapcapexReference = {
+  capexInicial: 286137351,
+  contingenciamentos: 52331203,
+  aportesExtras: 3347836.71,
+  capexAtual: 237153984.71,
+  previstoHistorico: {
+    JAN: 17045693.261,
+    FEV: 20316465.204913463,
+    MAR: 21406238.50691346,
+    ABR: 23752282.418254368,
+    MAI: 21756900.62125437,
+    JUN: 20597676.51212937,
+  },
+};
 
 const columns = [
   { id: "fazer", label: "Fazer" },
@@ -225,9 +238,6 @@ const roleDefinitions = {
     description: "Acesso completo, cadastros globais, configurações e controle financeiro.",
     blockedViews: [],
   },
-  Gestor: {
-    label: "Gestor", description: "Gestão dos módulos autorizados.", blockedViews: [],
-  },
   Gestão: {
     label: "Gestão",
     description: "Acesso gerencial às visões executivas, obras, SICs e controle de verbas.",
@@ -358,10 +368,12 @@ const disciplineAliases = {
 };
 
 const defaultState = {
- version: 7, works: [], demands: [], sics: [], contracts: [], suppliers: [],
- users: [], activeRole: 'Admin', deletedDemands: [], deletedMaintenanceDemands: [],
- sprints: [], history: [], funds: [], fundMovements: [], budgetRevisions: [],
- maintenanceDemands: [], projectDemands: []
+  version: 7,
+  works: [], demands: [], sics: [], contracts: [], suppliers: [],
+  users: [], activeRole: 'Admin', deletedDemands: [], deletedMaintenanceDemands: [],
+  sprints: [], history: [], funds: [], fundMovements: [], budgetRevisions: [],
+  maintenanceDemands: [], projectDemands: [], capexManualOiRows: [],
+  projectStatusOverrides: {}
 };
 
 const importedState = globalThis.TRACO_IMPORTED_STATE || {};
@@ -674,14 +686,20 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function saveState() { globalThis.SLT_CLOUD.save(persistedStatePayload()); }
+function saveState() {
+  return globalThis.SLT_CLOUD.save(persistedStatePayload());
+}
 
 function persistedStatePayload() {
- const keys = ['works','demands','sics','contracts','suppliers','funds','fundMovements','budgetRevisions','deletedDemands','deletedMaintenanceDemands','sprints','history','capexManualOiRows','projectDemands','maintenanceDemands','clinicalAssets'];
- const payload = Object.fromEntries(keys.map(key => [key, arrayOrFallback(state[key])]));
- payload.projectStatusOverrides = state.projectStatusOverrides || {};
- return payload;
- }
+  const keys = [
+    'works','demands','sics','contracts','suppliers','funds','fundMovements',
+    'budgetRevisions','deletedDemands','deletedMaintenanceDemands','sprints','history',
+    'capexManualOiRows','projectDemands','maintenanceDemands'
+  ];
+  const payload = Object.fromEntries(keys.map((key) => [key, arrayOrFallback(state[key])]));
+  payload.projectStatusOverrides = state.projectStatusOverrides || {};
+  return payload;
+}
 
 function activeUsers() {
   return arrayOrFallback(state.users).filter((user) => normalizeSearchText(user.status || "Ativo") !== "inativo");
@@ -692,6 +710,7 @@ function userById(id) {
 }
 
 function normalizeUserProfile(perfil) {
+  if (perfil === "Gestor") return "Gestão";
   return roleDefinitions[perfil] ? perfil : "Analista";
 }
 
@@ -721,19 +740,25 @@ function accessViewsForModules(modules = []) {
 }
 
 function normalizeUserCredentials(user = {}) {
- return { id:user.id, nome:user.nome, email:user.email, perfil:normalizeUserProfile(user.perfil),status:user.status || 'Ativo',accessModules:normalizeAccessModules(user.accessModules,user.perfil),mustChangePassword:false };
- }
-
-function loadAuthSession() { return {userId:globalThis.SLT_CLOUD.profile.id}; }
-
-function saveAuthSession() { /* Sessão gerenciada exclusivamente pelo Supabase Auth. */ }
-
-function currentUser() { return globalThis.SLT_CLOUD.profile; }
-
-function isAuthenticated() {
-  return Boolean(currentUser());
+  const perfil = normalizeUserProfile(user.perfil);
+  const accessModules = normalizeAccessModules(user.accessModules || user.modulos || user.modules, perfil);
+  return {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    perfil,
+    status: user.status || 'Ativo',
+    accessModules,
+    accessViews: accessViewsForModules(accessModules),
+    mustChangePassword: false,
+    senhaProvisoria: false,
+  };
 }
 
+function loadAuthSession() { return { userId: globalThis.SLT_CLOUD.profile.id }; }
+function saveAuthSession() { /* Sessão gerenciada exclusivamente pelo Supabase Auth. */ }
+function currentUser() { return globalThis.SLT_CLOUD.profile; }
+function isAuthenticated() { return Boolean(currentUser()); }
 function loginUser() { return false; }
 
 function userByEmail(email) {
@@ -743,9 +768,7 @@ function userByEmail(email) {
 }
 
 function validateUserPassword() { return false; }
-
 function loginWithCredentials() { return false; }
-
 function logoutUser() { globalThis.SLT_CLOUD.logout(); }
 
 function authenticatedRole() {
@@ -847,7 +870,9 @@ function dateText(value) {
   return `${day}/${month}/${year}`;
 }
 
-function todayISO() { return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -1762,7 +1787,6 @@ function nextContractNumber() {
 }
 
 function addHistory({ entidade, entidadeId, campo, valorAnterior, valorNovo }) {
-  if (currentUser()?.perfil !== "Admin") return; // Every persisted change is audited by the database.
   if (!Array.isArray(state.history)) state.history = clone(baseState.history || []);
   state.history.unshift({
     id: nextCode("HIS", state.history),
@@ -1771,7 +1795,7 @@ function addHistory({ entidade, entidadeId, campo, valorAnterior, valorNovo }) {
     campo,
     valorAnterior,
     valorNovo,
-    usuario: currentUser()?.nome || "Administrador",
+    usuario: "Gestão ST",
     timestamp: new Date().toISOString(),
   });
 }
@@ -1883,45 +1907,59 @@ function canAccessView(view) {
   const module = viewModule(view);
   if (module !== "home" && !canAccessModule(module)) return false;
   if (user?.accessViews?.length && module !== "home") return user.accessViews.includes(normalized);
-  return true; // The account grants, not legacy role presets, control module access.
+  return true;
 }
 
-const editActions = new Set(['add-discipline-row','add-sic-draft-row','approve-sic','approve-sic-demand','create-budget-from-project','edit-work','move-demand','open-contract','open-delete-demand','open-demand','open-global-demand','open-global-demand-type','open-maintenance-demand','open-project-demand','open-sprint','open-work','post-sic-to-ev','reject-sic-demand','remove-discipline-row','remove-sic-draft-row','set-ev-line-na','start-budget-from-plan','start-demand-wizard','submit-demand-form','submit-demand-step','update-project-status','validate-budget-transfer']);
+const editActions = new Set([
+  'add-discipline-row','add-sic-draft-row','approve-sic','approve-sic-demand',
+  'create-budget-from-project','edit-work','move-demand','open-contract','open-delete-demand',
+  'open-demand','open-global-demand','open-global-demand-type','open-maintenance-demand',
+  'open-project-demand','open-sprint','open-work','post-sic-to-ev','reject-sic-demand',
+  'remove-discipline-row','remove-sic-draft-row','set-ev-line-na','start-budget-from-plan',
+  'start-demand-wizard','submit-demand-form','submit-demand-step','update-project-status',
+  'validate-budget-transfer'
+]);
 function currentViewWritable() { return globalThis.SLT_CLOUD.canWrite(viewModule(currentView)); }
 function mutationAllowed(action) {
-  if(['create-budget-from-project','start-budget-from-plan','post-sic-to-ev'].includes(action)) return globalThis.SLT_CLOUD.canWrite('works');
-  if(action==='open-sprint') return currentUser()?.perfil==='Admin';
+  if (['create-budget-from-project','start-budget-from-plan','post-sic-to-ev'].includes(action)) return globalThis.SLT_CLOUD.canWrite('works');
+  if (action === 'open-sprint') return currentUser()?.perfil === 'Admin';
   return currentViewWritable();
 }
 function applyReadOnlyControls() {
-  document.querySelectorAll('[data-action]').forEach(node=>{
-    if(!editActions.has(node.dataset.action)) return;
-    const blocked=!mutationAllowed(node.dataset.action);
-    if('disabled' in node) node.disabled=blocked;
-    if(blocked && !node.hasAttribute('data-permission-disabled')) node.setAttribute('data-permission-disabled','');
-    if(!blocked && node.hasAttribute('data-permission-disabled')) node.removeAttribute('data-permission-disabled');
+  document.querySelectorAll('[data-action]').forEach((node) => {
+    if (!editActions.has(node.dataset.action)) return;
+    const blocked = !mutationAllowed(node.dataset.action);
+    if ('disabled' in node) node.disabled = blocked;
+    if (blocked && !node.hasAttribute('data-permission-disabled')) node.setAttribute('data-permission-disabled','');
+    if (!blocked && node.hasAttribute('data-permission-disabled')) node.removeAttribute('data-permission-disabled');
   });
-  if(!currentViewWritable()) {
-    document.querySelectorAll('#app form:not(#haptecForm), #modalRoot form').forEach(form=>{
-      form.querySelectorAll('input,select,textarea,button[type=submit]').forEach(node=>{if(!node.disabled)node.disabled=true;});
+  if (!currentViewWritable()) {
+    document.querySelectorAll('#app form:not(#haptecForm), #modalRoot form').forEach((form) => {
+      form.querySelectorAll('input,select,textarea,button[type=submit]').forEach((node) => { if (!node.disabled) node.disabled = true; });
     });
-    document.querySelectorAll('[data-action^="update-"],[data-action="assign-analyst"]').forEach(node=>{if('disabled' in node&&!node.disabled)node.disabled=true;});
+    document.querySelectorAll('[data-action^="update-"],[data-action="assign-analyst"]').forEach((node) => { if ('disabled' in node && !node.disabled) node.disabled = true; });
   }
 }
-document.addEventListener('click',event=>{
- const node=event.target.closest('[data-action]');
- if(node&&editActions.has(node.dataset.action)&&!mutationAllowed(node.dataset.action)){event.preventDefault();event.stopImmediatePropagation();showToast('Seu acesso a este módulo permite somente consulta.');}
-},true);
-document.addEventListener('submit',event=>{
- if(['haptecForm','teamAccountForm','cloudLogin','firstAccessForm'].includes(event.target.id))return;
- if(!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();showToast('Você não tem permissão para salvar neste módulo.');}
-},true);
-document.addEventListener('change',event=>{
- const action=event.target.dataset.action||'';
- if((action.startsWith('update-')||action==='assign-analyst')&&!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();render();}
-},true);
-for(const type of ['dragstart','drop'])document.addEventListener(type,event=>{if(!currentViewWritable()){event.preventDefault();event.stopImmediatePropagation();}},true);
-new MutationObserver(applyReadOnlyControls).observe(modalRoot,{childList:true,subtree:true});
+document.addEventListener('click', (event) => {
+  const node = event.target.closest('[data-action]');
+  if (node && editActions.has(node.dataset.action) && !mutationAllowed(node.dataset.action)) {
+    event.preventDefault(); event.stopImmediatePropagation(); showToast('Seu acesso a este módulo permite somente consulta.');
+  }
+}, true);
+document.addEventListener('submit', (event) => {
+  if (['haptecForm','teamAccountForm','cloudLogin','firstAccessForm'].includes(event.target.id)) return;
+  if (!currentViewWritable()) { event.preventDefault(); event.stopImmediatePropagation(); showToast('Você não tem permissão para salvar neste módulo.'); }
+}, true);
+document.addEventListener('change', (event) => {
+  const action = event.target.dataset.action || '';
+  if ((action.startsWith('update-') || action === 'assign-analyst') && !currentViewWritable()) {
+    event.preventDefault(); event.stopImmediatePropagation(); render();
+  }
+}, true);
+for (const type of ['dragstart','drop']) document.addEventListener(type, (event) => {
+  if (!currentViewWritable()) { event.preventDefault(); event.stopImmediatePropagation(); }
+}, true);
+new MutationObserver(applyReadOnlyControls).observe(modalRoot, { childList: true, subtree: true });
 
 function applyRolePermissions() {
   const role = activeRole();
@@ -1983,43 +2021,27 @@ function render() {
   }
   if (!canAccessView(currentView)) currentView = "dashboard";
   const views = {
-    dashboard: renderDashboard,
-    team: renderTeam,
-    projectsHome: renderProjectsHome,
-    projectsPortfolio: renderProjectsPortfolio,
-    projectsPlan: renderProjectsPortfolio,
-    projectsOperational: renderProjectsOperational,
-    projectsManagement: renderProjectsManagement,
-    projectsStrategic: renderProjectsStrategic,
-    worksHome: renderWorksHome,
-    worksOperational: renderWorksOperational,
-    worksManagement: renderWorksManagement,
-    worksStrategic: renderWorksStrategic,
-    worksSettings: renderWorksSettings,
-    kanban: renderWorksOperational,
-    portfolio: renderPortfolio,
-    investmentPlan: renderProjectsPortfolio,
-    ev: renderEV,
-    maintenance: renderMaintenance,
-    maintenanceOperational: renderMaintenanceOperational,
-    maintenanceReports: renderMaintenanceReports,
-    maintenanceTimeline: renderMaintenanceTimeline,
-    maintenanceExecutive: renderMaintenanceExecutive,
-    maintenanceSettings: renderMaintenanceSettings,
-    clinical: renderClinical,
-    clinicalOperational: renderClinicalOperational,
-    clinicalReports: renderClinicalReports,
-    clinicalTimeline: renderClinicalTimeline,
-    clinicalExecutive: renderClinicalExecutive,
-    clinicalSettings: renderClinicalSettings,
-    budget: renderBudgetControl,
-    reports: renderReports,
-    sics: renderSics,
-    analytics: renderAnalytics,
-    suppliers: renderSuppliers,
-    settings: renderSettings,
+    dashboard: renderDashboard, team: renderTeam,
+    projectsHome: renderProjectsHome, projectsPortfolio: renderProjectsPortfolio,
+    projectsPlan: renderProjectsPortfolio, projectsOperational: renderProjectsOperational,
+    projectsManagement: renderProjectsManagement, projectsStrategic: renderProjectsStrategic,
+    worksHome: renderWorksHome, worksOperational: renderWorksOperational,
+    worksManagement: renderWorksManagement, worksStrategic: renderWorksStrategic,
+    worksSettings: renderWorksSettings, kanban: renderWorksOperational,
+    portfolio: renderPortfolio, investmentPlan: renderProjectsPortfolio, ev: renderEV,
+    maintenance: renderMaintenance, maintenanceOperational: renderMaintenanceOperational,
+    maintenanceReports: renderMaintenanceReports, maintenanceTimeline: renderMaintenanceTimeline,
+    maintenanceExecutive: renderMaintenanceExecutive, maintenanceSettings: renderMaintenanceSettings,
+    clinical: renderClinical, clinicalOperational: renderClinicalOperational,
+    clinicalReports: renderClinicalReports, clinicalTimeline: renderClinicalTimeline,
+    clinicalExecutive: renderClinicalExecutive, clinicalSettings: renderClinicalSettings,
+    budget: renderBudgetControl, reports: renderReports, sics: renderSics,
+    analytics: renderAnalytics, suppliers: renderSuppliers, settings: renderSettings,
   };
-  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${currentView!=="dashboard" && !currentViewWritable()?'<div class="read-only-notice" role="status">Somente consulta · seu perfil não pode alterar os dados deste módulo.</div>':""}${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
+  const readOnly = currentView !== "dashboard" && !currentViewWritable()
+    ? '<div class="read-only-notice" role="status">Somente consulta · seu perfil não pode alterar os dados deste módulo.</div>'
+    : '';
+  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${readOnly}${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
   applyRolePermissions();
   scheduleDashboardCharts();
 }
@@ -2520,7 +2542,7 @@ function haptecSystemNotice(message, face = "smiling_ready", shouldOpen = false)
 
 function refreshHaptecAssistant() {
   const assistant = document.querySelector(".haptec-assistant");
-  if (assistant) assistant.outerHTML = globalThis.SLT_CLOUD.cleanHTML(renderHaptecAssistant());
+  if (assistant) assistant.outerHTML = renderHaptecAssistant();
 }
 
 function haptecFaceForSystemMessage(message = "") {
@@ -3766,7 +3788,6 @@ function renderHomeFlower(modules) {
 }
 
 function renderHomeLaunchpadCard(module) {
-  const title = module.title.replace(/\s+360$/, "");
   const primary = module.metrics[0] || { label: "Indicador", value: "-" };
   const secondary = module.metrics[1] || null;
   const descriptions = {
@@ -3778,7 +3799,7 @@ function renderHomeLaunchpadCard(module) {
   };
   const description = module.description || descriptions[module.id] || "Acesse as visões operacionais, gerenciais e executivas.";
   return `
-    <button class="home-launchpad-card home-launchpad-card--${module.id}" type="button" data-tone="${module.tone}" data-view="${module.view}" aria-label="Abrir ${title}">
+    <button class="home-launchpad-card home-launchpad-card--${module.id}" type="button" data-tone="${module.tone}" data-view="${module.view}" aria-label="Abrir ${module.title}">
       <span class="home-launchpad-card__top">
         <span class="home-launchpad-card__icon" aria-hidden="true">
           <img src="${module.logo}" alt="" />
@@ -3786,7 +3807,7 @@ function renderHomeLaunchpadCard(module) {
         <span class="home-launchpad-card__number">${module.eyebrow}</span>
       </span>
       <span class="home-launchpad-card__body">
-        <strong>${title}</strong>
+        <strong>${module.title}</strong>
         <small>${description}</small>
       </span>
       <span class="home-launchpad-card__metrics">
@@ -3811,7 +3832,46 @@ function renderHomeLaunchpadCard(module) {
   `;
 }
 
-function renderLoginScreen() { return '<p>Use o login Supabase para acessar.</p>'; }
+function renderLoginScreen() {
+  const users = activeUsers();
+  return `
+    <section class="login-screen" aria-label="Login do SLT 360">
+      <div class="login-hero">
+        <div class="login-brand">
+          <img src="assets/logo-slt360.png" alt="SLT 360" />
+          <span></span>
+          <img src="assets/logo-hapvida.png" alt="Hapvida" />
+        </div>
+        <p class="login-eyebrow">Sala Técnica Hapvida</p>
+        <h1>SLT 360</h1>
+        <p>Entre com seu e-mail e senha cadastrados para acessar as visões liberadas da Sala Técnica.</p>
+      </div>
+
+      <div class="login-card">
+        <div>
+          <h2>Acesso seguro por equipe</h2>
+          <p>Use o e-mail cadastrado em Configuração. O sistema ajusta os módulos, indicadores e ações conforme o perfil do usuário.</p>
+        </div>
+        <form id="loginForm" class="login-form">
+          <div class="error-box inline-form-error" data-form-error></div>
+          <label class="field">
+            <span>E-mail</span>
+            <input name="email" type="email" required autocomplete="username" placeholder="nome@hapvida.com.br" />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input name="senha" type="password" required autocomplete="current-password" placeholder="Senha de acesso" />
+          </label>
+          <button class="primary-action" type="submit">Entrar no SLT 360</button>
+        </form>
+
+        <div class="login-users-grid">
+          ${users.map(renderLoginUserCard).join("") || `<div class="empty-state">Nenhum usuário ativo cadastrado.</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
 
 function renderFirstAccessPasswordScreen(user) {
   return `
@@ -5456,9 +5516,14 @@ function applyOperationalKpiFilter(key) {
 }
 
 function uniqueAnalysts() {
-  const names = [...new Set([...(globalThis.SLT_CLOUD.analysts||[]).map(a=>a.nome),...state.demands.flatMap(d=>[d.analistaResponsavel,...(d.analistasComplementares||[])]),...state.projectDemands.map(d=>d.analistaResponsavel),...state.maintenanceDemands.map(d=>d.analistaResponsavel)])].filter(Boolean);
-  const mine=(globalThis.SLT_CLOUD.analysts||[]).find(a=>a.id===currentUser()?.analyst_id)?.nome;
-  return names.sort((a,b)=>a===mine?-1:b===mine?1:a.localeCompare(b,'pt-BR'));
+  return [
+    ...new Set(
+      state.demands.flatMap((demand) => [
+        demand.analistaResponsavel,
+        ...(demand.analistasComplementares || []),
+      ])
+    ),
+  ].filter(Boolean);
 }
 
 function analystOptions(selected = "") {
@@ -7513,32 +7578,6 @@ function isClinicalMaintenanceDemand(item) {
   return isClinicalCostCenter(item?.centroCusto);
 }
 
-function syncClinicalAsset(item) {
-  if (!isClinicalMaintenanceDemand(item)) return;
-  const name = String(item.equipamento || item.assetName || "").trim();
-  const tag = String(item.patrimonio || item.numeroSerie || "").trim();
-  if (!name && !tag) return;
-  state.clinicalAssets = arrayOrFallback(state.clinicalAssets);
-  const signature = normalizeSearchText([item.unidadeId || item.unidadeNome, tag || name].join("|"));
-  let asset = state.clinicalAssets.find(candidate => candidate.id === item.assetId || normalizeSearchText([candidate.unidadeId || candidate.unidadeNome, candidate.patrimonio || candidate.numeroSerie || candidate.equipamento].join("|")) === signature);
-  if (!asset) {
-    asset = { id: nextCode("EQP", state.clinicalAssets), createdAt: todayISO() };
-    state.clinicalAssets.unshift(asset);
-  }
-  Object.assign(asset, {
-    equipamento: name || asset.equipamento || "",
-    patrimonio: tag || asset.patrimonio || "",
-    numeroSerie: String(item.numeroSerie || asset.numeroSerie || "").trim(),
-    fabricante: String(item.fabricante || asset.fabricante || "").trim(),
-    modelo: String(item.modelo || asset.modelo || "").trim(),
-    unidadeNome: item.unidadeNome || asset.unidadeNome || "",
-    unidadeId: item.unidadeId || asset.unidadeId || "",
-    status: asset.status || "Ativo",
-    updatedAt: todayISO(),
-  });
-  item.assetId = asset.id;
-}
-
 function maintenanceItemsForModule(module = activeMaintenanceModule()) {
   const items = state.maintenanceDemands || [];
   return module === "clinical" ? items.filter(isClinicalMaintenanceDemand) : items.filter((item) => !isClinicalMaintenanceDemand(item));
@@ -8840,7 +8879,7 @@ function renderMaintenanceMiniTable(items) {
 }
 
 function maintenanceAnalystOptions(selected = "") {
-  const analysts = [...new Set(uniqueAnalysts().filter(Boolean))];
+  const analysts = [...new Set([...uniqueAnalysts(), "Thalles", "Skarth", "Rosa", "Herbson", "Leonardo", "Robério"].filter(Boolean))];
   return [`<option value="">A definir</option>`]
     .concat(analysts.map((analyst) => `<option value="${analyst}" ${analyst === selected ? "selected" : ""}>${analyst}</option>`))
     .join("");
@@ -8908,7 +8947,7 @@ function updateSharedUnitSearch(input, resultsSelector) {
   const hidden = form?.querySelector('[name="unidadeId"]');
   const results = form?.querySelector(resultsSelector);
   if (hidden) hidden.value = "";
-  if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value));
+  if (results) results.innerHTML = maintenanceUnitSearchResults(input.value);
 }
 
 function updateMaintenanceUnitSearch(input) {
@@ -8927,7 +8966,7 @@ function updateWorkUnitSearch(input) {
     const results = form?.querySelector("[data-work-unit-results]");
     if (hidden) hidden.value = exactUnit.id;
     applyUnitToWorkForm(form, exactUnit);
-    if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, exactUnit.id));
+    if (results) results.innerHTML = maintenanceUnitSearchResults(input.value, exactUnit.id);
     return;
   }
   updateSharedUnitSearch(input, "[data-work-unit-results]");
@@ -9426,7 +9465,6 @@ function handleMaintenanceDemandSubmit(form) {
     updatedAt: TODAY_ISO,
     historico: [{ fase: "Não iniciada", data: TODAY_ISO, observacao: "Demanda criada no SLT 360." }],
   };
-  syncClinicalAsset(demand);
   state.maintenanceDemands = [demand, ...(state.maintenanceDemands || [])];
   addHistory({
     entidade: "manutencao",
@@ -9481,7 +9519,6 @@ function handleMaintenanceDetailSubmit(form) {
     modelo: String(formData.get("modelo") || item.modelo || "").trim(),
     updatedAt: TODAY_ISO,
   });
-  syncClinicalAsset(item);
   const update = updateMaintenanceDemandPhase(item.id, formData.get("coluna") || item.coluna);
   if (update === false) return;
   if (previousPhase === item.coluna) saveState();
@@ -10818,7 +10855,7 @@ function disposeTransferChart(id) {
 
 function renderTransferChartEmpty(id, message) {
   const element = document.getElementById(id);
-  if (element) element.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<div class="transfer-empty transfer-chart-empty">${message}</div>`);
+  if (element) element.innerHTML = `<div class="transfer-empty transfer-chart-empty">${message}</div>`;
 }
 
 function renderTransferDashboardCharts() {
@@ -11724,7 +11761,7 @@ function chartCurrencyOptions() {
 function renderHapcapexChartEmpty(id, message) {
   const canvas = document.getElementById(id);
   const container = canvas?.closest(".chart-container");
-  if (container) container.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<div class="empty-state">${message}</div>`);
+  if (container) container.innerHTML = `<div class="empty-state">${message}</div>`;
 }
 
 function renderHapcapexDashboardCharts() {
@@ -12944,7 +12981,19 @@ function renderSicView(data) {
   return (views[sicViewMode] || renderSicReportView)(data);
 }
 
-function renderSicApprovalView() { return renderSicApprovalSyncedList(); }
+function renderSicApprovalView() {
+  return `
+    <section class="sic-approval-exact-shell">
+      <iframe
+        class="sic-approval-dashboard-frame"
+        data-sic-approval-dashboard-frame
+        src="sic-approval-dashboard.html"
+        title="Controle de EVs - Aditivos e Revisões"
+      ></iframe>
+    </section>
+    ${renderSicApprovalSyncedList()}
+  `;
+}
 
 function renderSicApprovalSyncedList() {
   const data = sicApprovalDashboardData();
@@ -13915,7 +13964,7 @@ function renderWorksSettings() {
   return `
     ${renderWorksToolbar("worksSettings", "Configurações de Obras", "Legenda da chave e listas de apoio do módulo Obras", `
       <button class="secondary-action" type="button" data-view="settings">Configuração global</button>
-
+      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Orçamento 360</button>
     `)}
 
     <div class="content-grid">
@@ -14163,10 +14212,10 @@ function renderSettings() {
   const history = Array.isArray(state.history) ? state.history : [];
   return `
     ${renderToolbar("Configuração", "Sprints, equipe, perfis, dicionários e auditoria global do SLT 360", `
-
+      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Orçamento 360</button>
     `)}
-    ${renderUsersSettingsPanel()}
     ${renderSprintSettingsPanel()}
+    ${renderUsersSettingsPanel()}
     <div class="content-grid">
       <section class="panel">
         <div class="panel-header">
@@ -15077,7 +15126,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
   const work = draft.obraId ? workById(draft.obraId) : null;
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const analysts = uniqueAnalysts();
-  const preferredAnalyst = analysts[0] || "";
+  const preferredAnalyst = analysts.includes("Thalles") ? "Thalles" : analysts[0] || "Skarth";
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
@@ -15478,7 +15527,7 @@ function updateSicWorkSearch(input) {
   if (hidden) hidden.value = "";
   if (workCode) workCode.value = "";
   if (workName) workName.value = "";
-  if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value));
+  if (results) results.innerHTML = renderSicWorkSearchResults(input.value);
 }
 
 function openSicDemandModal(workId = "") {
@@ -15564,7 +15613,7 @@ function openSicDemandModal(workId = "") {
             </label>
             <label class="field">
               <span>Analista da Sala Técnica</span>
-              <input name="analistaSalaTecnica" list="sicAnalystOptions" value="${escapeAttribute(uniqueAnalysts()[0] || "")}" required />
+              <input name="analistaSalaTecnica" list="sicAnalystOptions" value="${escapeAttribute(uniqueAnalysts()[0] || "Skarth")}" required />
               <datalist id="sicAnalystOptions">
                 ${uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}"></option>`).join("")}
               </datalist>
@@ -15766,7 +15815,10 @@ function transactionDone(transaction) {
   });
 }
 
-async function saveAttachmentRecord(record) { const modules={projects:'projects',works:'budget',maintenance:'maintenance',clinical:'clinical',budget:'finance'}; return globalThis.SLT_CLOUD.saveAttachment({...record,module:modules[viewModule(currentView)]||'budget'}); }
+async function saveAttachmentRecord(record) {
+  const modules = { projects:'projects', works:'budget', maintenance:'maintenance', clinical:'clinical', budget:'finance' };
+  return globalThis.SLT_CLOUD.saveAttachment({ ...record, module: modules[viewModule(currentView)] || 'budget' });
+}
 
 async function readAttachmentRecord(id) { return globalThis.SLT_CLOUD.readAttachment(id); }
 
@@ -15829,7 +15881,7 @@ async function downloadStoredAttachment(id) {
     const record = await readAttachmentRecord(id);
     const blob = record?.blob;
     if (!record || !blob) {
-      showToast("Arquivo não encontrado no banco. Anexos antigos devem ser enviados novamente.");
+      showToast("Arquivo não encontrado no armazenamento local. Reanexe o arquivo neste card.");
       return;
     }
     const url = URL.createObjectURL(blob);
@@ -15842,7 +15894,7 @@ async function downloadStoredAttachment(id) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     console.warn("Falha ao acessar anexo.", error);
-    showToast("Não consegui acessar o anexo no Supabase. Verifique sua conexão.");
+    showToast("Não consegui acessar o anexo salvo neste navegador.");
   }
 }
 
@@ -15958,7 +16010,7 @@ async function handleEVSubmit(form, mode = "final") {
     files = await fileAttachmentMetadata(fileInput, { entidade: "ev", entidadeId: work.ev.id || work.id, workId: work.id });
   } catch (error) {
     console.warn("Falha ao gravar anexos do EV.", error);
-    showFormError("Não consegui salvar os anexos do EV no navegador. Tente anexar novamente ou reduza o tamanho dos arquivos.", form);
+    showFormError("Não consegui salvar os anexos do EV no Supabase. Verifique a conexão, as permissões ou reduza o tamanho dos arquivos.", form);
     return;
   }
   if (files.length) {
@@ -16073,9 +16125,101 @@ function handleSprintSubmit(form) {
   render();
 }
 
-function handleUserSubmit() { showToast('Use Configuração → Usuários e Equipe.'); }
+function handleUserSubmit(form) {
+  const formData = new FormData(form);
+  const nome = String(formData.get("nome") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const senha = String(formData.get("senha") || "").trim();
+  const perfil = String(formData.get("perfil") || "Analista");
+  const accessModules = formData.getAll("accessModules").map(String);
+  const mustChangePassword = formData.get("mustChangePassword") === "on";
+  if (!nome || !email || !senha) {
+    showFormError("Informe nome, e-mail e senha para criar o usuário.", form);
+    return;
+  }
+  if (!accessModules.length) {
+    showFormError("Selecione pelo menos um módulo de acesso para o usuário.", form);
+    return;
+  }
+  if (userByEmail(email)) {
+    showFormError("Já existe um usuário ativo com este e-mail cadastrado.", form);
+    return;
+  }
+  if (senha.length < 6) {
+    showFormError("A senha provisória precisa ter pelo menos 6 caracteres.", form);
+    return;
+  }
+  const user = {
+    id: nextCode("usr", state.users || []),
+    nome,
+    email,
+    senha,
+    perfil: normalizeUserProfile(perfil),
+    accessModules: normalizeAccessModules(accessModules, perfil),
+    accessViews: accessViewsForModules(accessModules),
+    mustChangePassword,
+    senhaProvisoria: mustChangePassword,
+    status: "Ativo",
+    createdAt: new Date().toISOString(),
+  };
+  state.users = [...(state.users || []), user];
+  addHistory({
+    entidade: "usuario",
+    entidadeId: user.id,
+    campo: "criação",
+    valorAnterior: "Não existia",
+    valorNovo: `${user.nome} | ${user.perfil}`,
+  });
+  saveState();
+  showToast(mustChangePassword ? "Usuário criado com senha provisória e troca obrigatória." : "Usuário criado com perfil de acesso.");
+  render();
+}
 
-function handleFirstAccessPasswordSubmit() { showToast('Gerencie a senha pelo Supabase Auth.'); }
+function handleFirstAccessPasswordSubmit(form) {
+  const user = currentUser();
+  if (!user) return;
+  const formData = new FormData(form);
+  const senhaAtual = String(formData.get("senhaAtual") || "").trim();
+  const novaSenha = String(formData.get("novaSenha") || "").trim();
+  const confirmarSenha = String(formData.get("confirmarSenha") || "").trim();
+  if (!validateUserPassword(user, senhaAtual)) {
+    showFormError("A senha provisória atual não confere.", form);
+    return;
+  }
+  if (novaSenha.length < 8) {
+    showFormError("A nova senha precisa ter pelo menos 8 caracteres.", form);
+    return;
+  }
+  if (novaSenha === senhaAtual) {
+    showFormError("A nova senha não pode ser igual à senha provisória.", form);
+    return;
+  }
+  if (novaSenha !== confirmarSenha) {
+    showFormError("A confirmação não confere com a nova senha.", form);
+    return;
+  }
+  state.users = (state.users || []).map((item) =>
+    item.id === user.id
+      ? {
+          ...item,
+          senha: novaSenha,
+          mustChangePassword: false,
+          senhaProvisoria: false,
+          passwordUpdatedAt: new Date().toISOString(),
+        }
+      : item
+  );
+  addHistory({
+    entidade: "usuario",
+    entidadeId: user.id,
+    campo: "senha",
+    valorAnterior: "Senha provisória",
+    valorNovo: "Senha definitiva cadastrada no primeiro acesso",
+  });
+  saveState();
+  showToast("Senha atualizada. Acesso liberado.");
+  render();
+}
 
 function handleWorkSubmit(form) {
   const formData = new FormData(form);
@@ -17416,14 +17560,14 @@ document.addEventListener("click", async (event) => {
     closeModal();
   }
   if (action === "add-discipline-row") {
-    document.querySelector("#disciplineRows").insertAdjacentHTML("beforeend", globalThis.SLT_CLOUD.cleanHTML(disciplineRowTemplate()));
+    document.querySelector("#disciplineRows").insertAdjacentHTML("beforeend", disciplineRowTemplate());
   }
   if (action === "remove-discipline-row") {
     const rows = document.querySelectorAll(".discipline-row");
     if (rows.length > 1) actionButton.closest(".discipline-row").remove();
   }
   if (action === "add-sic-draft-row") {
-    actionButton.closest(".sic-draft-editor")?.querySelector("[data-sic-draft-rows]")?.insertAdjacentHTML("beforeend", globalThis.SLT_CLOUD.cleanHTML(sicDraftDisciplineRowTemplate()));
+    actionButton.closest(".sic-draft-editor")?.querySelector("[data-sic-draft-rows]")?.insertAdjacentHTML("beforeend", sicDraftDisciplineRowTemplate());
   }
   if (action === "remove-sic-draft-row") {
     const editor = actionButton.closest(".sic-draft-editor");
@@ -17470,7 +17614,7 @@ document.addEventListener("click", async (event) => {
       hidden.value = work.id;
       if (workCode) workCode.value = work.chaveUnica || work.codigoOriginal || "";
       if (workName) workName.value = work.nome || "";
-      if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value, work.id));
+      if (results) results.innerHTML = renderSicWorkSearchResults(input.value, work.id);
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
     }
@@ -17485,10 +17629,17 @@ document.addEventListener("click", async (event) => {
       input.value = sharedUnitSearchLabel(unit);
       hidden.value = unit.id;
       if (form?.id === "workForm") applyUnitToWorkForm(form, unit);
-      if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, unit.id));
+      if (results) results.innerHTML = maintenanceUnitSearchResults(input.value, unit.id);
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
     }
+  }
+  if (action === "reset-demo") {
+    state = clone(baseState);
+    selectedWorkId = state.works[0]?.id || "";
+    saveState();
+    showToast("Base Orçamento 360 restaurada.");
+    render();
   }
 });
 
@@ -17638,7 +17789,7 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches('[data-action="contract-work-select"]')) {
     const select = document.querySelector("#contractDisciplineSelect");
-    if (select) select.innerHTML = globalThis.SLT_CLOUD.cleanHTML(contractDisciplineOptions(event.target.value));
+    if (select) select.innerHTML = contractDisciplineOptions(event.target.value);
   }
   if (event.target.matches('[data-action="assign-analyst"]')) {
     const demand = state.demands.find((item) => item.id === event.target.dataset.id);
