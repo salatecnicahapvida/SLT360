@@ -1,0 +1,151 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SLT 360</title>
+    <meta
+      name="description"
+      content="Sistema de Gestão da Sala Técnica de Engenharia"
+    />
+    <link rel="stylesheet" href="styles.css?v=20260831-compact-haptec" />
+  <link rel="stylesheet" href="cloud.css"><meta name="referrer" content="no-referrer"></head>
+  <body>
+<section id="cloudGate" class="cloud-gate"><div class="cloud-login-card">
+<img src="assets/logo-slt360.png" alt="SLT360" width="180"><h1>Sala Técnica</h1>
+<p>Acesso individual · ambiente protegido</p>
+<form id="cloudLogin"><label>E-mail<input name="email" type="email" autocomplete="username" required></label>
+<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Entrar</button></form>
+<section id="firstAccess" hidden aria-labelledby="firstAccessTitle">
+<h2 id="firstAccessTitle">Crie sua senha pessoal</h2>
+<p>Este é seu primeiro acesso. Troque a senha provisória para liberar o sistema.</p>
+<form id="firstAccessForm">
+<label>Nova senha<input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required aria-describedby="passwordHint"></label>
+<small id="passwordHint">Use pelo menos 12 caracteres, com letras maiúsculas, minúsculas e números. Não reutilize a senha provisória.</small>
+<label>Confirmar nova senha<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+<button type="submit">Salvar nova senha e entrar</button>
+</form></section>
+<p id="cloudMessage" role="status"></p>
+<button id="cloudSignOut" type="button" hidden>Sair desta conta</button>
+</div></section><div id="legacyShell" hidden><div id="cloudStatus" role="status">Conectado ao banco</div>
+    <header class="app-header">
+      <div class="brand">
+        <button class="brand-home" type="button" data-view="dashboard" aria-label="Voltar para Home do SLT 360">
+          <img class="brand-logo brand-logo--slt" src="assets/logo-slt360.png" alt="SLT 360" />
+        </button>
+        <span class="brand-divider" aria-hidden="true"></span>
+        <img class="brand-logo brand-logo--hapvida" src="assets/logo-hapvida.png" alt="Hapvida" />
+      </div>
+
+      <nav class="top-nav" aria-label="Navegação principal">
+        <button class="top-nav__item top-nav__home is-active" type="button" data-view="dashboard">
+          Home
+        </button>
+        <button class="top-nav__item" type="button" data-view="projectsHome" data-module="projects">
+          Projetos
+        </button>
+        <button class="top-nav__item" type="button" data-view="worksHome" data-module="works">
+          Orçamento
+        </button>
+        <button class="top-nav__item" type="button" data-view="maintenance" data-module="maintenance">
+          Manutenção
+        </button>
+        <button class="top-nav__item" type="button" data-view="clinical" data-module="clinical">
+          Eng. Clínica
+        </button>
+        <button class="top-nav__item" type="button" data-view="budget">
+          Controle de Verbas
+        </button>
+        <button class="top-nav__item" type="button" data-view="settings">
+          Configuração
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <label class="search-box">
+          <span class="sr-only">Buscar obra, demanda, fornecedor ou cidade</span>
+          <input id="globalSearch" type="search" placeholder="Buscar obra, demanda, fornecedor, cidade." />
+        </label>
+        <span class="user-chip">Coordenação ST</span>
+        <button class="secondary-action logout-action" type="button" data-action="logout" hidden>Sair</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Menu lateral">
+        <button class="side-link is-active" type="button" data-view="dashboard">
+          <span>Início</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksHome">
+          <span>Orçamento 360</span>
+        </button>
+        <button class="side-link" type="button" data-view="projectsHome">
+          <span>Projetos 360</span>
+        </button>
+        <button class="side-link" type="button" data-view="projectsPortfolio">
+          <span>Portfólio Projetos</span>
+        </button>
+        <button class="side-link" type="button" data-view="projectsPlan">
+          <span>Plano de Investimento</span>
+        </button>
+        <button class="side-link" type="button" data-view="projectsOperational">
+          <span>Operacional Projetos</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksOperational">
+          <span>Operacional Orçamento</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksManagement">
+          <span>Gerencial</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksStrategic">
+          <span>Estratégica</span>
+        </button>
+        <button class="side-link" type="button" data-view="portfolio">
+          <span>Portfólio</span>
+        </button>
+        <button class="side-link" type="button" data-view="investmentPlan">
+          <span>Plano de Investimento</span>
+        </button>
+        <button class="side-link" type="button" data-view="ev">
+          <span>EV detalhado</span>
+        </button>
+        <button class="side-link" type="button" data-view="worksSettings">
+          <span>Config. Orçamento</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenance">
+          <span>Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenanceOperational">
+          <span>Operacional Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="maintenanceReports">
+          <span>BI Manutenção</span>
+        </button>
+        <button class="side-link" type="button" data-view="clinical">
+          <span>Engenharia Clínica</span>
+        </button>
+        <button class="side-link" type="button" data-view="sics">
+          <span>SICs</span>
+        </button>
+        <button class="side-link" type="button" data-view="analytics">
+          <span>Disciplina & Tipologia</span>
+        </button>
+        <button class="side-link" type="button" data-view="budget">
+          <span>Controle de Verbas</span>
+        </button>
+        <button class="side-link" type="button" data-view="suppliers">
+          <span>Fornecedores</span>
+        </button>
+        <button class="side-link" type="button" data-view="settings">
+          <span>Configurações</span>
+        </button>
+      </aside>
+
+      <section class="workspace" id="app" aria-live="polite"></section>
+    </main>
+
+    <div id="modalRoot"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div><script type="module" src="boot.js"></script></body>
+</html>

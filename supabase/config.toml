@@ -1,0 +1,2 @@
+[functions.slt-users]
+verify_jwt = true
