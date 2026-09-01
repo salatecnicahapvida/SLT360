@@ -1,5 +1,7 @@
 name: Publicar piloto SLT360
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   pull_request:
 permissions:
@@ -20,11 +22,11 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - uses: actions/upload-pages-artifact@v4
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           path: dist
   deploy:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
