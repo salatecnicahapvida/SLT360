@@ -9,26 +9,8 @@
       content="Sistema de Gestão da Sala Técnica de Engenharia"
     />
     <link rel="stylesheet" href="styles.css?v=20260901-clinical-equipment-park" />
-  <link rel="stylesheet" href="cloud.css"><meta name="referrer" content="no-referrer"></head>
+  </head>
   <body>
-<section id="cloudGate" class="cloud-gate"><div class="cloud-login-card">
-<img src="assets/logo-slt360.png" alt="SLT360" width="180"><h1>Sala Técnica</h1>
-<p>Acesso individual · ambiente protegido</p>
-<form id="cloudLogin"><label>E-mail<input name="email" type="email" autocomplete="username" required></label>
-<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-<button type="submit">Entrar</button></form>
-<section id="firstAccess" hidden aria-labelledby="firstAccessTitle">
-<h2 id="firstAccessTitle">Crie sua senha pessoal</h2>
-<p>Este é seu primeiro acesso. Troque a senha provisória para liberar o sistema.</p>
-<form id="firstAccessForm">
-<label>Nova senha<input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required aria-describedby="passwordHint"></label>
-<small id="passwordHint">Use pelo menos 12 caracteres, com letras maiúsculas, minúsculas e números. Não reutilize a senha provisória.</small>
-<label>Confirmar nova senha<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
-<button type="submit">Salvar nova senha e entrar</button>
-</form></section>
-<p id="cloudMessage" role="status"></p>
-<button id="cloudSignOut" type="button" hidden>Sair desta conta</button>
-</div></section><div id="legacyShell" hidden><div id="cloudStatus" role="status">Conectado ao banco</div>
     <header class="app-header">
       <div class="brand">
         <button class="brand-home" type="button" data-view="dashboard" aria-label="Voltar para Home do SLT 360">
@@ -147,5 +129,20 @@
 
     <div id="modalRoot"></div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  </div><script type="module" src="boot.js"></script></body>
+
+    <script src="data/traco-imported-state.js?v=20260819-traco-projetos"></script>
+    <script src="data/sic-bi-data.js?v=20260819-traco-projetos"></script>
+    <script src="data/investment-plan-data.js?v=20260819-traco-projetos"></script>
+    <script src="data/unit-registry-data.js?v=20260819-traco-projetos"></script>
+    <script src="data/maintenance-data.js?v=20260814-pipefy-maintenance"></script>
+    <script src="data/clinical-equipment-data.js?v=20260901-clinical-park"></script>
+    <script src="data/capex-control-data.js?v=20260819-traco-projetos"></script>
+    <script src="data/commission-obras-data.js?v=20260819-traco-projetos"></script>
+    <script src="data/general-works-data.js?v=20260827-obras-historicas"></script>
+    <script src="data/ev-historical-data.js?v=20260901-ev-rev2-operational-reset"></script>
+    <script src="data/sic-approval-dashboard-html.js?v=20260825-sic-approval-update1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="app.js?v=20260901-clinical-module-unified"></script>
+  </body>
 </html>
