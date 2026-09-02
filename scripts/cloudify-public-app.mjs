@@ -126,7 +126,10 @@ function replaceFunction(source, name, body) {
   const pattern = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`);
   const match = pattern.exec(source);
   if (!match) throw new Error(`Função obrigatória não encontrada: ${name}`);
-  const open = source.indexOf("{", match.index + match[0].length);
+  const paramsClose = source.indexOf(")", match.index + match[0].length);
+  if (paramsClose === -1) throw new Error(`Parâmetros não encerrados: ${name}`);
+  const open = source.indexOf("{", paramsClose + 1);
+  if (open === -1) throw new Error(`Corpo não encontrado: ${name}`);
   const close = matchingBrace(source, open);
   return `${source.slice(0, open + 1)}\n  ${body.replace(/\n/g, "\n  ")}\n${source.slice(close)}`;
 }
