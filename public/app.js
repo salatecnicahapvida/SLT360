@@ -10361,16 +10361,16 @@ function clinicalParkAssets(query = "") {
 }
 
 function clinicalEquipmentFromRow(row) {
-  const path = String(row?.[16] || "");
+  const path = String(row?.[11] || "");
   const pathParts = path.split("\\").map((part) => part.trim()).filter(Boolean);
   const unitFromPath = pathParts.length > 1 ? pathParts[pathParts.length - 2] : "";
   return {
     id: String(row?.[0] || ""), tag: String(row?.[1] || ""), numeroSerie: String(row?.[2] || ""),
-    patrimonio: String(row?.[3] || ""), tagAntiga: String(row?.[5] || ""), equipamento: String(row?.[6] || "Equipamento não informado"),
-    modelo: String(row?.[7] || ""), fabricante: String(row?.[8] || ""), criticidade: String(row?.[9] || ""), prioridade: String(row?.[10] || ""),
-    unidadeNome: String(row?.[22] || row?.[14] || unitFromPath || "Unidade não informada").trim(), setor: String(row?.[15] || ""),
-    caminhoSetor: path, endereco: String(row?.[17] || ""), uf: String(row?.[18] || ""), cidade: String(row?.[20] || ""),
-    anvisa: String(row?.[33] || ""), propriedade: String(row?.[35] || ""), status: String(row?.[36] || ""), fornecedor: String(row?.[39] || ""),
+    patrimonio: String(row?.[3] || ""), tagAntiga: String(row?.[4] || ""), equipamento: String(row?.[5] || "Equipamento não informado"),
+    modelo: String(row?.[6] || ""), fabricante: String(row?.[7] || ""), criticidade: String(row?.[8] || ""), prioridade: String(row?.[9] || ""),
+    unidadeNome: String(unitFromPath || "Unidade não informada").trim(), setor: String(row?.[10] || ""),
+    caminhoSetor: path, endereco: String(row?.[12] || ""), uf: String(row?.[13] || ""), cidade: String(row?.[14] || ""),
+    anvisa: String(row?.[20] || ""), propriedade: String(row?.[21] || ""), status: String(row?.[22] || ""), fornecedor: String(row?.[24] || ""),
   };
 }
 
@@ -10476,7 +10476,7 @@ function clinicalParkStats() {
     const normalizedStatus = normalizeSearchText(asset.status);
     if (normalizedStatus === "ativo") active += 1; else if (normalizedStatus) inactive += 1;
     if (["alta", "critica", "critico"].includes(normalizeSearchText(asset.criticidade))) highCriticality += 1;
-    acquisitionValue += parseCurrency(row?.[24] || 0); replacementValue += parseCurrency(row?.[26] || 0);
+    acquisitionValue += parseCurrency(row?.[16] || 0); replacementValue += parseCurrency(row?.[17] || 0);
   }
   const rows = (map, limit = 12) => [...map.entries()].map(([label, valor]) => ({ label, value: label, valor, count: valor })).sort((a, b) => b.valor - a.valor).slice(0, limit);
   return {
@@ -10571,10 +10571,10 @@ function renderClinicalTimelineIntegrated() {
     return Boolean(year);
   };
   for (const row of clinicalEquipmentRecords()) {
-    if (addYear(acquisitions, row?.[23])) withAcquisition += 1;
-    if (addYear(manufacturing, row?.[27])) withManufacture += 1;
-    if (addYear(installations, row?.[28])) withInstallation += 1;
-    if (String(row?.[37] || "").trim()) withEndOfLife += 1;
+    if (addYear(acquisitions, row?.[15])) withAcquisition += 1;
+    if (addYear(manufacturing, row?.[18])) withManufacture += 1;
+    if (addYear(installations, row?.[19])) withInstallation += 1;
+    if (String(row?.[23] || "").trim()) withEndOfLife += 1;
   }
   const series = (map) => [...map.entries()].map(([label, valor]) => ({ label, valor })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR", { numeric: true })).slice(-15);
   return `
