@@ -20165,19 +20165,30 @@ document.addEventListener("submit", async (event) => {
 document.querySelector("#globalSearch").addEventListener("input", (event) => {
   if (!isAuthenticated()) return;
   searchTerm = event.target.value;
-  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "ev", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) render();
+  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "ev", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) scheduleInputRender();
 });
+
+let inputRenderTimer = null;
+
+function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
+  clearTimeout(inputRenderTimer);
+  inputRenderTimer = setTimeout(() => {
+    render();
+    if (!focusSelector) return;
+    const nextInput = document.querySelector(focusSelector);
+    if (!nextInput) return;
+    nextInput.focus({ preventScroll: true });
+    if (typeof nextInput.setSelectionRange === "function") {
+      nextInput.setSelectionRange(value.length, value.length);
+    }
+  }, delay);
+}
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-clinical-park-search]")) {
     const value = event.target.value;
     clinicalParkQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-clinical-park-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-clinical-park-search]", value);
     return;
   }
   if (event.target.matches("[data-clinical-asset-search]")) {
@@ -20191,12 +20202,7 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-strategic-decision-search]")) {
     const value = event.target.value;
     strategicEVDecisionFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-strategic-decision-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-strategic-decision-search]", value);
     return;
   }
   if (event.target.matches("[data-ev-delete-check]")) {
@@ -20220,23 +20226,13 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-ev-history-search]")) {
     const value = event.target.value;
     evHistoricalFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-ev-history-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-ev-history-search]", value);
     return;
   }
   if (event.target.matches("[data-strategic-history-search]")) {
     const value = event.target.value;
     strategicHistoricalQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-strategic-history-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-strategic-history-search]", value);
     return;
   }
   if (event.target.matches("[data-ev-area-input], .ev-value-input")) {
@@ -20261,12 +20257,7 @@ document.addEventListener("input", (event) => {
     const value = event.target.value;
     evAssistantQuery = value;
     selectedWorkId = "all";
-    render();
-    const nextInput = document.querySelector("[data-ev-assistant-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-ev-assistant-search]", value);
     return;
   }
   if (event.target.matches("[data-sic-work-search]")) {
@@ -20276,136 +20267,76 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-portfolio-search]")) {
     const value = event.target.value;
     portfolioQuickFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-portfolio-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-portfolio-search]", value);
     return;
   }
   if (event.target.matches("[data-investment-plan-search]")) {
     const value = event.target.value;
     investmentPlanFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-investment-plan-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-investment-plan-search]", value);
     return;
   }
   if (event.target.matches("[data-project-plan-search]")) {
     const value = event.target.value;
     projectPlanFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-project-plan-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-project-plan-search]", value);
     return;
   }
   if (event.target.matches("[data-project-operational-search]")) {
     const value = event.target.value;
     projectOperationalFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-project-operational-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-project-operational-search]", value);
     return;
   }
   if (event.target.matches("[data-operational-search]")) {
     const value = event.target.value;
     operationalFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-operational-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-operational-search]", value);
     return;
   }
   if (event.target.matches("[data-maintenance-search]")) {
     const value = event.target.value;
     maintenanceFiltersForActiveModule().query = value;
-    render();
-    const nextInput = document.querySelector("[data-maintenance-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-maintenance-search]", value);
     return;
   }
   if (event.target.matches("[data-budget-search]")) {
     const value = event.target.value;
     budgetFilters.query = value;
     budgetTransferCheck = null;
-    render();
-    const nextInput = document.querySelector("[data-budget-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-budget-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-tracker-search]")) {
     const value = event.target.value;
     transferTrackerQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-transfer-tracker-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-tracker-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-tracker-search2]")) {
     const value = event.target.value;
     transferTrackerQuery2 = value;
-    render();
-    const nextInput = document.querySelector("[data-transfer-tracker-search2]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-tracker-search2]", value);
     return;
   }
   if (event.target.matches("[data-transfer-all-search]")) {
     const value = event.target.value;
     transferAllSearch = value;
     transferAllPage = 1;
-    render();
-    const nextInput = document.querySelector("[data-transfer-all-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-all-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-net-search]")) {
     const value = event.target.value;
     transferNetSearch = value;
     transferNetPage = 1;
-    render();
-    const nextInput = document.querySelector("[data-transfer-net-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-net-search]", value);
     return;
   }
   if (event.target.matches("[data-clinical-equipment-search]")) {
     const value = event.target.value;
     clinicalFilters.equipment = value;
-    render();
-    const nextInput = document.querySelector("[data-clinical-equipment-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-clinical-equipment-search]", value);
     return;
   }
   if (event.target.matches("[data-maintenance-unit-search]")) {
@@ -20423,24 +20354,14 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-sic-search]")) {
     const value = event.target.value;
     sicSearchQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-sic-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-sic-search]", value);
     return;
   }
   if (!event.target.matches("[data-filter-field]")) return;
   const field = event.target.dataset.filterField;
   const value = event.target.value;
   portfolioFilters[field] = value;
-  render();
-  const nextInput = document.querySelector(`[data-filter-field="${field}"]`);
-  if (nextInput) {
-    nextInput.focus();
-    nextInput.setSelectionRange(value.length, value.length);
-  }
+  scheduleInputRender(`[data-filter-field="${field}"]`, value);
 });
 
 render();
