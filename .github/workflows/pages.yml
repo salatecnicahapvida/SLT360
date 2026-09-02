@@ -1,29 +1,59 @@
 name: Publicar SLT360
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
-  pull_request:
+
 permissions:
   contents: read
+
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: public
-      - uses: actions/deploy-pages@v4
+          version: 10
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Testar aplicação
+        run: pnpm test
+
+      - name: Gerar build de produção
+        run: pnpm build
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Enviar build do Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+      - name: Publicar GitHub Pages
+        uses: actions/deploy-pages@v4
         id: deployment
