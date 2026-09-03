@@ -4,19 +4,108 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { decorateProfile, moduleAllowed, entityWritable, MODULE_OPTIONS } from './access.js';
 import { createModuleStore } from './module-store.js';
 
+function createPersistentAuthStorage() {
+  const persistent = globalThis.localStorage;
+  const legacy = globalThis.sessionStorage;
+
+  return {
+    getItem(key) {
+      let value = null;
+      try { value = persistent.getItem(key); } catch {}
+      if (value !== null) return value;
+
+      try { value = legacy.getItem(key); } catch {}
+      if (value !== null) {
+        try {
+          persistent.setItem(key, value);
+          legacy.removeItem(key);
+        } catch {}
+      }
+      return value;
+    },
+    setItem(key, value) {
+      try {
+        persistent.setItem(key, value);
+        try { legacy.removeItem(key); } catch {}
+      } catch {
+        try { legacy.setItem(key, value); } catch {}
+      }
+    },
+    removeItem(key) {
+      try { persistent.removeItem(key); } catch {}
+      try { legacy.removeItem(key); } catch {}
+    },
+  };
+}
+
 const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  auth: {
+    storage: createPersistentAuthStorage(),
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  },
 });
+
 const gate = document.querySelector('#cloudGate');
 const message = document.querySelector('#cloudMessage');
 const shell = document.querySelector('#legacyShell');
-let queue, loaded = false;
+const loginForm = document.querySelector('#cloudLogin');
+const firstAccess = document.querySelector('#firstAccess');
+const signOutButton = document.querySelector('#cloudSignOut');
+let queue;
+let loaded = false;
+let starting = null;
 
 function cleanHTML(html) {
   return DOMPurify.sanitize(String(html), {
     USE_PROFILES: { html: true, svg: true, svgFilters: true },
     ADD_ATTR: ['target'], FORBID_TAGS: ['iframe','object','embed','script'],
   });
+}
+
+function showRestoring(text = 'Abrindo o SLT 360…') {
+  gate.hidden = false;
+  gate.classList.remove('is-ready');
+  gate.setAttribute('aria-busy', 'true');
+  shell.hidden = true;
+  loginForm.hidden = false;
+  firstAccess.hidden = true;
+  signOutButton.hidden = true;
+  message.textContent = text;
+}
+
+function showLogin(text = '') {
+  gate.hidden = false;
+  gate.classList.add('is-ready');
+  gate.removeAttribute('aria-busy');
+  shell.hidden = true;
+  loginForm.hidden = false;
+  firstAccess.hidden = true;
+  signOutButton.hidden = true;
+  message.textContent = text;
+}
+
+function showFirstAccess() {
+  gate.hidden = false;
+  gate.classList.add('is-ready');
+  gate.removeAttribute('aria-busy');
+  shell.hidden = true;
+  loginForm.hidden = true;
+  firstAccess.hidden = false;
+  signOutButton.hidden = false;
+  message.textContent = '';
+}
+
+function showAccessError(text) {
+  gate.hidden = false;
+  gate.classList.add('is-ready');
+  gate.removeAttribute('aria-busy');
+  shell.hidden = true;
+  loginForm.hidden = true;
+  firstAccess.hidden = true;
+  signOutButton.hidden = false;
+  message.textContent = text;
 }
 
 function blockApp(text) {
@@ -28,35 +117,60 @@ function blockApp(text) {
   dialog.showModal();
 }
 
-async function start() {
-  message.textContent = 'Conferindo acesso…';
-  const { data: auth, error: authError } = await client.auth.getUser();
-  if (authError || !auth.user) { message.textContent = ''; return; }
-  document.querySelector('#cloudSignOut').hidden = false;
-  const { data: profile, error: profileError } = await client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', auth.user.id).maybeSingle();
+async function startInternal() {
+  showRestoring('Restaurando sua sessão…');
+
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  const session = sessionData?.session;
+  const authUser = session?.user;
+  if (sessionError || !authUser) {
+    showLogin();
+    return;
+  }
+
+  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto')]);
+  const [profileResponse, moduleResponse] = await Promise.all([
+    client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', authUser.id).maybeSingle(),
+    client.rpc('slt_module_load'),
+  ]);
+
+  const { data: profile, error: profileError } = profileResponse;
   if (profileError || !profile?.ativo || !['Admin','Gestor','Analista'].includes(profile.perfil)) {
-    message.textContent = 'Sua conta não está ativa no sistema. Solicite a liberação ao responsável.';
-    document.querySelector('#cloudSignOut').hidden = false;
+    showAccessError('Sua conta não está ativa no sistema. Solicite a liberação ao responsável.');
     return;
   }
   if (profile.must_change_password !== false) {
-    document.querySelector('#cloudLogin').hidden = true;
-    document.querySelector('#firstAccess').hidden = false;
-    message.textContent = '';
+    showFirstAccess();
     return;
   }
-  const { data: row, error: dataError } = await client.rpc('slt_module_load');
-  if (dataError || row?.schema_version !== 2) { message.textContent = 'A base modular não está acessível. Verifique a conexão e a liberação do acesso; nenhum dado local será usado.'; return; }
-  const [grants, directory] = await Promise.all([
-    client.from('slt_core_module_access').select('module,can_read,can_write').eq('user_id',profile.id),
-    client.from('slt_core_analysts').select('id,nome').order('nome'),
-  ]);
-  if(grants.error || directory.error){message.textContent='Não foi possível conferir as permissões. Tente entrar novamente.';return;}
-  const currentProfile = decorateProfile({...profile,email:auth.user.email,access:grants.data||[]});
-  let team=null;
-  if(profile.perfil==='Admin') { const response=await client.rpc('slt_admin_users'); if(response.error){message.textContent='Não foi possível carregar a gestão de acessos.';return;} team=response.data; }
 
-  queue = createModuleStore({ records: row.records, canWrite:entity=>entityWritable(currentProfile,entity),
+  const { data: row, error: dataError } = moduleResponse;
+  if (dataError || row?.schema_version !== 2) {
+    showAccessError('A base modular não está acessível. Verifique a conexão e a liberação do acesso; nenhum dado local será usado.');
+    return;
+  }
+
+  const [grants, directory, teamResponse] = await Promise.all([
+    client.from('slt_core_module_access').select('module,can_read,can_write').eq('user_id', profile.id),
+    client.from('slt_core_analysts').select('id,nome').order('nome'),
+    profile.perfil === 'Admin' ? client.rpc('slt_admin_users') : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (grants.error || directory.error) {
+    showAccessError('Não foi possível conferir as permissões. Tente entrar novamente.');
+    return;
+  }
+  if (teamResponse.error) {
+    showAccessError('Não foi possível carregar a gestão de acessos.');
+    return;
+  }
+
+  const currentProfile = decorateProfile({ ...profile, email: authUser.email, access: grants.data || [] });
+  const team = teamResponse.data;
+
+  queue = createModuleStore({
+    records: row.records,
+    canWrite: entity => entityWritable(currentProfile, entity),
     async commit(request_id, changes) {
       const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
       if (error) throw error;
@@ -69,58 +183,94 @@ async function start() {
       if (status === 'failed') blockApp('Houve falha de conexão, perda de permissão ou outra sessão salvou uma versão mais recente.');
     },
   });
+
   const payload = queue.payload;
   for (const key of ['SIC_BI_DATA','INVESTMENT_PLAN_DATA','UNIT_REGISTRY_DATA','MAINTENANCE_DATA','CAPEX_CONTROL_DATA','COMMISSION_OBRAS_DATA','HAPCAPEX_REFERENCE']) {
     if (Object.hasOwn(payload.datasets || {}, key)) globalThis[key] = payload.datasets[key];
   }
+
   globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: currentProfile.perfil };
   globalThis.SLT_CLOUD = {
-    profile: currentProfile, analysts: directory.data||[], team, cleanHTML,
-    canWrite: uiModule => moduleAllowed(currentProfile,MODULE_OPTIONS.find(m=>m.ui===uiModule)?.id||'core',true),
-    async adminUsers(){const r=await client.rpc('slt_admin_users');if(r.error)throw r.error;return r.data;},
-    async updateUser(target_id,details,expected_revision){const r=await client.rpc('slt_admin_update_user',{target_id,details,expected_revision});if(r.error)throw r.error;return r.data;},
-    async createUser(email,details){
-      const r=await client.functions.invoke('slt-users',{body:{email,details}});
-      if(r.error){let detail;try{detail=await r.error.context?.json();}catch{}throw new Error(detail?.error||'Não foi possível confirmar o cadastro. Atualize a lista antes de repetir.');}
+    profile: currentProfile,
+    analysts: directory.data || [],
+    team,
+    cleanHTML,
+    canWrite: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core', true),
+    async adminUsers() {
+      const r = await client.rpc('slt_admin_users');
+      if (r.error) throw r.error;
       return r.data;
     },
-    async resetUserPassword(target_id){
-      const r=await client.functions.invoke('slt-users',{body:{action:'reset_password',target_id}});
-      if(r.error){let detail;try{detail=await r.error.context?.json();}catch{}throw new Error(detail?.error||'Não foi possível redefinir a senha. Atualize a lista e tente novamente.');}
+    async updateUser(target_id, details, expected_revision) {
+      const r = await client.rpc('slt_admin_update_user', { target_id, details, expected_revision });
+      if (r.error) throw r.error;
       return r.data;
     },
-    save: snapshot => queue.save(snapshot), acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
-    async logout() { try { await queue.flush(); } catch { return; } await client.auth.signOut(); location.reload(); },
+    async createUser(email, details) {
+      const r = await client.functions.invoke('slt-users', { body: { email, details } });
+      if (r.error) {
+        let detail;
+        try { detail = await r.error.context?.json(); } catch {}
+        throw new Error(detail?.error || 'Não foi possível confirmar o cadastro. Atualize a lista antes de repetir.');
+      }
+      return r.data;
+    },
+    async resetUserPassword(target_id) {
+      const r = await client.functions.invoke('slt-users', { body: { action: 'reset_password', target_id } });
+      if (r.error) {
+        let detail;
+        try { detail = await r.error.context?.json(); } catch {}
+        throw new Error(detail?.error || 'Não foi possível redefinir a senha. Atualize a lista e tente novamente.');
+      }
+      return r.data;
+    },
+    save: snapshot => queue.save(snapshot),
+    acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
+    async logout() {
+      try { await queue.flush(); } catch { return; }
+      await client.auth.signOut();
+      location.reload();
+    },
     async saveAttachment(record) {
       if (record.blob.size > 10485760) throw new Error('O limite por anexo é 10 MB.');
-      // Metadata first: Storage policies verify the module before accepting the file.
-      const result = await client.from('slt360_attachments').insert({id:record.id,nome:record.nome,tipo:record.tipo,tamanho:record.tamanho,module:record.module});
+      const result = await client.from('slt360_attachments').insert({ id: record.id, nome: record.nome, tipo: record.tipo, tamanho: record.tamanho, module: record.module });
       if (result.error) throw result.error;
-      const upload = await client.storage.from('slt360-attachments').upload(record.id, record.blob, { upsert:false, contentType:record.blob.type || 'application/octet-stream' });
+      const upload = await client.storage.from('slt360-attachments').upload(record.id, record.blob, { upsert: false, contentType: record.blob.type || 'application/octet-stream' });
       if (upload.error) throw upload.error;
     },
     async readAttachment(id) {
-      const info = await client.from('slt360_attachments').select('nome,tipo').eq('id',id).single();
+      const info = await client.from('slt360_attachments').select('nome,tipo').eq('id', id).single();
       if (info.error) throw info.error;
       const file = await client.storage.from('slt360-attachments').download(id);
       if (file.error) throw file.error;
-      return {...info.data,blob:file.data};
+      return { ...info.data, blob: file.data };
     },
   };
+
+  const [echarts, chart] = await chartLibrariesPromise;
+  globalThis.echarts = echarts;
+  globalThis.Chart = chart.default;
+
   gate.hidden = true;
+  gate.classList.remove('is-ready');
+  gate.removeAttribute('aria-busy');
   shell.hidden = false;
+
   try {
-    const [echarts, chart] = await Promise.all([import('echarts'), import('chart.js/auto')]);
-    globalThis.echarts = echarts;
-    globalThis.Chart = chart.default;
     await import('./app.js');
     loaded = true;
   } catch (error) {
     shell.hidden = true;
-    gate.hidden = false;
-    message.textContent = 'Não foi possível iniciar o sistema. Informe o responsável; a base não foi substituída.';
+    showAccessError('Não foi possível iniciar o sistema. Informe o responsável; a base não foi substituída.');
     throw error;
   }
+}
+
+function start() {
+  if (!starting) {
+    starting = startInternal().finally(() => { starting = null; });
+  }
+  return starting;
 }
 
 document.querySelector('#cloudLogin').addEventListener('submit', async event => {
@@ -131,14 +281,25 @@ document.querySelector('#cloudLogin').addEventListener('submit', async event => 
   message.textContent = 'Entrando…';
   try {
     const values = new FormData(form);
-    const { error } = await client.auth.signInWithPassword({email:String(values.get('email')).trim(),password:String(values.get('password'))});
+    const { error } = await client.auth.signInWithPassword({ email: String(values.get('email')).trim(), password: String(values.get('password')) });
     form.elements.password.value = '';
-    if (error) { message.textContent = 'Não foi possível entrar. Verifique seu e-mail, senha e conexão.'; return; }
+    if (error) {
+      showLogin('Não foi possível entrar. Verifique seu e-mail, senha e conexão.');
+      return;
+    }
     await start();
-  } catch { message.textContent = 'Falha de conexão. Tente novamente.'; }
-  finally { button.disabled = false; }
+  } catch {
+    showLogin('Falha de conexão. Tente novamente.');
+  } finally {
+    button.disabled = false;
+  }
 });
-document.querySelector('#cloudSignOut').onclick = async () => { await client.auth.signOut(); location.reload(); };
+
+signOutButton.onclick = async () => {
+  await client.auth.signOut();
+  location.reload();
+};
+
 document.querySelector('#firstAccessForm').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -169,10 +330,26 @@ document.querySelector('#firstAccessForm').addEventListener('submit', async even
     location.reload();
   } catch {
     message.textContent = 'Não foi possível confirmar a troca. Tente entrar novamente com a nova senha antes de repetir.';
-  } finally { button.disabled = false; }
+  } finally {
+    button.disabled = false;
+  }
 });
-window.addEventListener('beforeunload', event => { if (queue?.dirty) { event.preventDefault(); event.returnValue = ''; } });
+
+window.addEventListener('beforeunload', event => {
+  if (queue?.dirty) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+
 client.auth.onAuthStateChange(event => {
-  if (loaded && event === 'SIGNED_OUT') { shell.hidden = true; gate.hidden = false; location.reload(); }
+  if (loaded && event === 'SIGNED_OUT') {
+    shell.hidden = true;
+    gate.hidden = false;
+    location.reload();
+  }
 });
-start().catch(() => { message.textContent = 'Não foi possível carregar o sistema. Verifique sua conexão.'; });
+
+start().catch(() => {
+  showAccessError('Não foi possível carregar o sistema. Verifique sua conexão.');
+});
