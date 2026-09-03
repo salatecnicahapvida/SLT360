@@ -23,17 +23,18 @@ export function createUserHandler(admin,allowedOrigin) {
    if(body.action==='reset_password'){
     const target_id=String(body.target_id||'').trim();
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target_id))return reply(400,{error:'Usuário inválido.'});
+    if(target_id===auth.user.id)return reply(400,{error:'Para sua própria conta, use a troca de senha do usuário em vez da redefinição administrativa.'});
     const {data:target,error:targetError}=await admin.from('slt360_profiles').select('id,nome,must_change_password').eq('id',target_id).maybeSingle();
     if(targetError)return reply(503,{error:'Não foi possível conferir a conta. Tente novamente.'});
     if(!target)return reply(404,{error:'Usuário não encontrado.'});
     const temporary_password=temporaryPassword();
     const {data:updated,error:updateError}=await admin.auth.admin.updateUserById(target_id,{password:temporary_password});
     if(updateError||!updated?.user)return reply(400,{error:'Não foi possível redefinir a senha desta conta.'});
-    const {data:marked,error:markError}=await admin.from('slt360_profiles').update({must_change_password:true,password_changed_at:null}).eq('id',target_id).select('id').maybeSingle();
-    if(markError||!marked)return reply(503,{error:'A senha foi alterada, mas não foi possível confirmar a troca obrigatória. Revise a conta no Supabase antes de entregar a nova senha.'});
+    const mark=()=>admin.from('slt360_profiles').update({must_change_password:true,password_changed_at:null}).eq('id',target_id).select('id').maybeSingle();
+    let marked=await mark();if(marked.error||!marked.data)marked=await mark();
+    if(marked.error||!marked.data)return reply(503,{error:'A senha foi alterada, mas não foi possível confirmar a troca obrigatória. Revise a conta no Supabase antes de entregar a nova senha.'});
     const audit=await admin.from('slt_core_access_audit').insert({actor:auth.user.id,target_id,operation:'reset_password',before_values:{must_change_password:target.must_change_password},after_values:{must_change_password:true}});
-    if(audit.error)return reply(503,{error:'A senha foi redefinida, mas a auditoria não pôde ser confirmada. Revise a conta antes de repetir a operação.'});
-    return reply(200,{id:target_id,email:updated.user.email,temporary_password});
+    return reply(200,{id:target_id,email:updated.user.email,temporary_password,audit_warning:Boolean(audit.error)});
    }
 
    const email=String(body.email||'').trim().toLowerCase(),d=body.details;
