@@ -1,5 +1,6 @@
 // Nenhuma senha, chave ou token deve ser registrado em logs.
 export function createUserHandler(admin,allowedOrigin) {
+ const temporaryPassword=()=> 'Aa9!'+Array.from(crypto.getRandomValues(new Uint8Array(20)),n=>n.toString(16).padStart(2,'0')).join('');
  return async request=>{
   const origin=request.headers.get('origin');
   const headers={'Cache-Control':'no-store','Content-Type':'application/json','Vary':'Origin',
@@ -15,15 +16,32 @@ export function createUserHandler(admin,allowedOrigin) {
    const {data:auth,error:authError}=await admin.auth.getUser(authorization.slice(7));
    if(authError||!auth?.user)return reply(401,{error:'Sessão inválida. Entre novamente.'});
    const {data:profile,error:profileError}=await admin.from('slt360_profiles').select('id,perfil,ativo,must_change_password').eq('id',auth.user.id).maybeSingle();
-   if(profileError||!profile?.ativo||profile.perfil!=='Admin'||profile.must_change_password!==false)return reply(403,{error:'Apenas administradores podem criar usuários.'});
+   if(profileError||!profile?.ativo||profile.perfil!=='Admin'||profile.must_change_password!==false)return reply(403,{error:'Apenas administradores podem gerenciar usuários.'});
    const bodyText=await request.text();if(bodyText.length>8192)return reply(413,{error:'Cadastro muito grande.'});
    let body;try{body=JSON.parse(bodyText);}catch{return reply(400,{error:'Cadastro inválido.'});}
+
+   if(body.action==='reset_password'){
+    const target_id=String(body.target_id||'').trim();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target_id))return reply(400,{error:'Usuário inválido.'});
+    const {data:target,error:targetError}=await admin.from('slt360_profiles').select('id,nome,must_change_password').eq('id',target_id).maybeSingle();
+    if(targetError)return reply(503,{error:'Não foi possível conferir a conta. Tente novamente.'});
+    if(!target)return reply(404,{error:'Usuário não encontrado.'});
+    const temporary_password=temporaryPassword();
+    const {data:updated,error:updateError}=await admin.auth.admin.updateUserById(target_id,{password:temporary_password});
+    if(updateError||!updated?.user)return reply(400,{error:'Não foi possível redefinir a senha desta conta.'});
+    const {data:marked,error:markError}=await admin.from('slt360_profiles').update({must_change_password:true,password_changed_at:null}).eq('id',target_id).select('id').maybeSingle();
+    if(markError||!marked)return reply(503,{error:'A senha foi alterada, mas não foi possível confirmar a troca obrigatória. Revise a conta no Supabase antes de entregar a nova senha.'});
+    const audit=await admin.from('slt_core_access_audit').insert({actor:auth.user.id,target_id,operation:'reset_password',before_values:{must_change_password:target.must_change_password},after_values:{must_change_password:true}});
+    if(audit.error)return reply(503,{error:'A senha foi redefinida, mas a auditoria não pôde ser confirmada. Revise a conta antes de repetir a operação.'});
+    return reply(200,{id:target_id,email:updated.user.email,temporary_password});
+   }
+
    const email=String(body.email||'').trim().toLowerCase(),d=body.details;
    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||!d||typeof d.nome!=='string'||d.nome.trim().length<2||d.nome.length>160||!['Admin','Gestor','Analista'].includes(d.perfil)||typeof d.ativo!=='boolean'||!Array.isArray(d.access)||d.access.length>5)return reply(400,{error:'Revise nome, e-mail, perfil e permissões.'});
    const modules=new Set();
    for(const g of d.access){if(!g||!['projects','budget','maintenance','clinical','finance'].includes(g.module)||modules.has(g.module)||typeof g.can_read!=='boolean'||typeof g.can_write!=='boolean'||g.can_write&&!g.can_read)return reply(400,{error:'Permissões inválidas.'});modules.add(g.module);}
    // Criptograficamente aleatória; caracteres fixos garantem as classes exigidas no primeiro acesso.
-   const temporary_password='Aa9!'+Array.from(crypto.getRandomValues(new Uint8Array(20)),n=>n.toString(16).padStart(2,'0')).join('');
+   const temporary_password=temporaryPassword();
    const {data:created,error:createError}=await admin.auth.admin.createUser({email,password:temporary_password,email_confirm:true,user_metadata:{name:d.nome.trim()}});
    if(createError||!created?.user)return reply(createError?.code==='email_exists'||createError?.code==='email_already_exists'?409:400,{error:'Não foi possível criar a conta. Confira se o e-mail já está cadastrado.'});
    const id=created.user.id;
@@ -39,6 +57,6 @@ export function createUserHandler(admin,allowedOrigin) {
     }
    }
    return reply(201,{id,email,temporary_password});
-  }catch{return reply(503,{error:'Falha de conexão. Confira a lista de usuários antes de repetir o cadastro.'});}
+  }catch{return reply(503,{error:'Falha de conexão. Confira a lista de usuários antes de repetir a operação.'});}
  };
 }
