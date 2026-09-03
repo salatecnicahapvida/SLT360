@@ -117,14 +117,30 @@ function blockApp(text) {
   dialog.showModal();
 }
 
+async function clearInvalidLocalSession() {
+  try {
+    await client.auth.signOut({ scope: 'local' });
+  } catch {}
+}
+
 async function startInternal() {
   showRestoring('Restaurando sua sessão…');
 
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   const session = sessionData?.session;
-  const authUser = session?.user;
-  if (sessionError || !authUser) {
+  if (sessionError || !session) {
     showLogin();
+    return;
+  }
+
+  // A sessão persistida pode existir no navegador mesmo quando o token já não é válido.
+  // Confirma o usuário no Supabase antes de consultar perfil/RLS para não confundir
+  // uma sessão antiga com uma conta inativa.
+  const { data: authData, error: authError } = await client.auth.getUser();
+  const authUser = authData?.user;
+  if (authError || !authUser) {
+    await clearInvalidLocalSession();
+    showLogin('Sua sessão anterior expirou. Entre novamente uma vez para manter este dispositivo conectado.');
     return;
   }
 
@@ -135,8 +151,20 @@ async function startInternal() {
   ]);
 
   const { data: profile, error: profileError } = profileResponse;
-  if (profileError || !profile?.ativo || !['Admin','Gestor','Analista'].includes(profile.perfil)) {
-    showAccessError('Sua conta não está ativa no sistema. Solicite a liberação ao responsável.');
+  if (profileError) {
+    showAccessError('Não foi possível confirmar seu perfil agora. Recarregue a página ou tente novamente em instantes.');
+    return;
+  }
+  if (!profile) {
+    showAccessError('Sua conta está autenticada, mas ainda não está vinculada a um perfil do SLT 360. Solicite a liberação ao responsável.');
+    return;
+  }
+  if (!profile.ativo) {
+    showAccessError('Sua conta está inativa no sistema. Solicite a liberação ao responsável.');
+    return;
+  }
+  if (!['Admin','Gestor','Analista'].includes(profile.perfil)) {
+    showAccessError('Seu perfil não possui acesso ao SLT 360. Solicite a liberação ao responsável.');
     return;
   }
   if (profile.must_change_password !== false) {
