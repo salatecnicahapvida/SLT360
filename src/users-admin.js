@@ -4,7 +4,7 @@ export function renderUsersPanel(cloud) {
  if(cloud.profile.perfil!=='Admin') return '';
  const users=cloud.team?.users||[], analysts=cloud.team?.analysts||[];
  return `<section class="panel users-panel" aria-labelledby="usersTitle"><div class="panel-header"><div><h2 id="usersTitle">Usuários e Equipe</h2><p class="panel-subtitle">Contas individuais, vínculo de analistas e permissões por módulo.</p></div><div class="users-actions"><button class="secondary-button" data-team-action="refresh">Atualizar lista</button><button class="primary-button" data-team-action="create">Novo usuário</button></div></div>
- <div class="table-wrap"><table class="data-table"><thead><tr><th>Usuário</th><th>Perfil / situação</th><th>Analista vinculado</th><th>Acesso aos módulos</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><strong>${esc(u.nome)}</strong><br><small>${esc(u.email)}</small></td><td>${esc(u.perfil)} · ${u.ativo?'Ativo':'Inativo'}${u.must_change_password?'<br><small>Troca de senha pendente</small>':''}</td><td>${esc(analysts.find(a=>a.id===u.analyst_id)?.nome||'Sem vínculo')}</td><td>${u.perfil==='Admin'?'Todos · edição':MODULE_OPTIONS.filter(m=>u.access?.some(g=>g.module===m.id&&g.can_read)).map(m=>`${m.label}: ${u.access.find(g=>g.module===m.id).can_write?'edição':'consulta'}`).join('<br>')||'Nenhum módulo'}</td><td><button class="secondary-button" data-team-action="edit" data-user-id="${esc(u.id)}" aria-label="Editar ${esc(u.nome)}">Editar acesso</button></td></tr>`).join('')||'<tr><td colspan="5">Atualize a lista para consultar os usuários.</td></tr>'}</tbody></table></div>
+ <div class="table-wrap"><table class="data-table"><thead><tr><th>Usuário</th><th>Perfil / situação</th><th>Analista vinculado</th><th>Acesso aos módulos</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><strong>${esc(u.nome)}</strong><br><small>${esc(u.email)}</small></td><td>${esc(u.perfil)} · ${u.ativo?'Ativo':'Inativo'}${u.must_change_password?'<br><small>Troca de senha pendente</small>':''}</td><td>${esc(analysts.find(a=>a.id===u.analyst_id)?.nome||'Sem vínculo')}</td><td>${u.perfil==='Admin'?'Todos · edição':MODULE_OPTIONS.filter(m=>u.access?.some(g=>g.module===m.id&&g.can_read)).map(m=>`${m.label}: ${u.access.find(g=>g.module===m.id).can_write?'edição':'consulta'}`).join('<br>')||'Nenhum módulo'}</td><td><div class="users-actions"><button class="secondary-button" data-team-action="edit" data-user-id="${esc(u.id)}" aria-label="Editar ${esc(u.nome)}">Editar acesso</button>${u.id!==cloud.profile.id?`<button class="secondary-button" data-team-action="reset-password" data-user-id="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">Redefinir senha</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Atualize a lista para consultar os usuários.</td></tr>'}</tbody></table></div>
  <p class="muted">O vínculo identifica o responsável nas demandas. As permissões liberam os registros do módulo, não apenas as tarefas desse analista. Desativar a conta bloqueia novos acessos aos dados e gravações; o histórico é preservado.</p></section>`;
 }
 export function mountUsersAdmin(cloud,onUpdated) {
@@ -17,6 +17,26 @@ export function mountUsersAdmin(cloud,onUpdated) {
    button.disabled=true;try{await refresh();}catch{button.textContent='Falha ao atualizar. Tente novamente.';button.disabled=false;}return;
   }
   const user=cloud.team?.users.find(u=>u.id===button.dataset.userId);
+  if(button.dataset.teamAction==='reset-password'){
+   if(!user||user.id===cloud.profile.id)return;
+   const resetDialog=document.createElement('dialog');resetDialog.className='user-editor';
+   resetDialog.innerHTML=cloud.cleanHTML(`<div class="panel-header"><h2>Redefinir senha</h2><button type="button" data-reset-close aria-label="Fechar">×</button></div><p>Redefinir a senha de <strong>${esc(user.nome)}</strong>?</p><p>A senha atual deixará de funcionar. Uma nova senha provisória será exibida uma única vez e a pessoa deverá criar outra senha no próximo acesso.</p><p role="alert" data-reset-error></p><div class="users-actions"><button type="button" data-reset-close>Cancelar</button><button type="button" class="primary-button" data-reset-confirm>Redefinir senha</button></div>`);
+   document.body.append(resetDialog);resetDialog.showModal();let busy=false;
+   const close=()=>{if(!busy){resetDialog.close();resetDialog.remove();}};
+   resetDialog.querySelectorAll('[data-reset-close]').forEach(b=>b.onclick=close);
+   resetDialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+   resetDialog.querySelector('[data-reset-confirm]').onclick=async()=>{
+    if(busy)return;busy=true;resetDialog.querySelectorAll('button').forEach(b=>b.disabled=true);
+    const errorBox=resetDialog.querySelector('[data-reset-error]');errorBox.textContent='';
+    try{
+     const result=await cloud.resetUserPassword(user.id);
+     resetDialog.innerHTML=cloud.cleanHTML(`<h2>Senha redefinida</h2><p><strong>${esc(result.email||user.email)}</strong></p><label>Nova senha provisória<input readonly value="${esc(result.temporary_password)}" autocomplete="off"></label><p>Guarde agora e entregue por um canal seguro. Esta senha não será exibida novamente. No próximo acesso, o usuário será obrigado a criar uma senha pessoal.</p><button class="primary-button" data-reset-finish>Concluir</button><p role="status" data-refresh-status></p>`);
+     busy=false;resetDialog.querySelector('[data-reset-finish]').onclick=close;
+     try{await refresh();}catch{resetDialog.querySelector('[data-refresh-status]').textContent='Senha redefinida. Atualize a lista depois de fechar.';}
+    }catch(error){errorBox.textContent=error.message||'Não foi possível redefinir a senha. Atualize a lista antes de tentar novamente.';busy=false;resetDialog.querySelectorAll('button').forEach(b=>b.disabled=false);}
+   };
+   return;
+  }
   const dialog=document.createElement('dialog');dialog.className='user-editor';
   const self=user?.id===cloud.profile.id;
   dialog.innerHTML=cloud.cleanHTML(`<form id="teamAccountForm"><div class="panel-header"><h2>${user?'Editar acesso':'Novo usuário'}</h2><button type="button" data-team-close aria-label="Fechar">×</button></div><p>Preencha a conta e, se necessário, associe o analista usado nas demandas.</p>
