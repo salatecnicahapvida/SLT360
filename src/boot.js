@@ -84,6 +84,11 @@ async function start() {
       if(r.error){let detail;try{detail=await r.error.context?.json();}catch{}throw new Error(detail?.error||'Não foi possível confirmar o cadastro. Atualize a lista antes de repetir.');}
       return r.data;
     },
+    async resetUserPassword(target_id){
+      const r=await client.functions.invoke('slt-users',{body:{action:'reset_password',target_id}});
+      if(r.error){let detail;try{detail=await r.error.context?.json();}catch{}throw new Error(detail?.error||'Não foi possível redefinir a senha. Atualize a lista e tente novamente.');}
+      return r.data;
+    },
     save: snapshot => queue.save(snapshot), acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
     async logout() { try { await queue.flush(); } catch { return; } await client.auth.signOut(); location.reload(); },
     async saveAttachment(record) {
