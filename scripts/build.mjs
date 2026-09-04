@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { cloudifyPublicApp } from './cloudify-public-app.mjs';
+import { scopeBudgetData } from './scope-budget-data.mjs';
 
 const root = process.cwd();
 const dest = path.join(root, 'dist');
@@ -24,7 +25,7 @@ try {
 
   // A versão standalone não é publicada. O build gera uma cópia cloud-safe do app atual.
   const latestPublicApp = await fs.readFile(path.join(root, 'public', 'app.js'), 'utf8');
-  const cloudApp = cloudifyPublicApp(latestPublicApp);
+  const cloudApp = scopeBudgetData(cloudifyPublicApp(latestPublicApp));
   await fs.writeFile(cloudAppPath, cloudApp, 'utf8');
 
   await fs.rm(path.join(dest, 'app.js'), { force: true });
