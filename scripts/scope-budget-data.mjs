@@ -91,6 +91,50 @@ const BUDGET_SCOPED_FUNCTIONS = [
 ];
 
 const helpers = `
+function historicalBudgetWorks() {
+  return arrayOrFallback(state.evs).map((record) => {
+    const typology = evTypologyFromProjectName(record?.project) || record?.typology || "Não informada";
+    const area = Number(record?.area || 0);
+    const revisionMatch = String(record?.revision || "").match(/\\d+/);
+    const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
+    const lines = Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
+      disciplinaId,
+      valorOrcado: Number(valorOrcado || 0),
+      status: "Orçado",
+    }));
+    return {
+      id: \`historical-budget-\${record.id}\`,
+      chaveUnica: record?.code || "",
+      codigoOriginal: record?.code || "",
+      nome: record?.project || "EV histórico",
+      tipoUnidade: typology,
+      tipologiaObra: typology,
+      areaConstruida: area,
+      areaEquivalente: area,
+      uf: record?.uf || "",
+      regiao: record?.region || "",
+      status: "Histórico",
+      _historicalBudgetWork: true,
+      historicalRecordId: record.id,
+      ev: {
+        id: record.id,
+        versaoAtual: revisionNumber,
+        status: "Completo",
+        lines,
+        versions: [{
+          numero: revisionNumber,
+          data: record?.date || "",
+          origem: "Base histórica",
+          valorTotal: Number(record?.total || 0),
+          custoM2: area ? Number(record?.total || 0) / area : 0,
+        }],
+        demandaIds: [],
+        sicIds: [],
+      },
+    };
+  });
+}
+
 function budgetWorks() {
   const ids = new Set();
   for (const demand of state.demands || []) if (demand?.obraId) ids.add(String(demand.obraId));
@@ -100,7 +144,8 @@ function budgetWorks() {
     const id = revision?.obraId || revision?.workId;
     if (id) ids.add(String(id));
   }
-  return (state.works || []).filter((work) => !work?.ev?._virtualEmptyEV || ids.has(String(work?.id || "")));
+  const current = (state.works || []).filter((work) => !work?.ev?._virtualEmptyEV || ids.has(String(work?.id || "")));
+  return [...historicalBudgetWorks(), ...current];
 }
 `;
 
@@ -111,18 +156,24 @@ export function scopeBudgetData(input) {
     source = transformFunction(source, name, body => body.replace(/\bstate\.works\b/g, "budgetWorks()"));
   }
 
+  source = transformFunction(source, "workTotals", body => body.replace(
+    "const includeRisk = options.includeRisk === true;",
+    "const includeRisk = options.includeRisk === true || work?._historicalBudgetWork === true;"
+  ));
+
   source = transformFunction(source, "renderEV", body => body
     .replace(/\bstate\.works\b/g, "budgetWorks()")
     .replace("Nenhuma obra cadastrada.", "Nenhum EV cadastrado."));
 
   source = transformFunction(source, "filteredEVWorks", body => body.replace(
     /arrayOrFallback\(state\.works\)\.filter\(\(work\) => !work\.ev\?\._virtualEmptyEV\)/g,
-    "arrayOrFallback(budgetWorks()).filter((work) => !work.ev?._virtualEmptyEV)"
+    "arrayOrFallback(budgetWorks()).filter((work) => !work.ev?._virtualEmptyEV && !work._historicalBudgetWork)"
   ));
 
   const marker = "globalThis.SLT_CLOUD.acceptInitialState(persistedStatePayload());";
   const index = source.lastIndexOf(marker);
   if (index === -1) throw new Error("Ponto de inicialização cloud não encontrado");
-  source = `${source.slice(0, index)}${helpers}\n${source.slice(index)}`;
+  const historicalGlobal = `globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };\n`;
+  source = `${source.slice(0, index)}${helpers}\n${historicalGlobal}${source.slice(index)}`;
   return source;
 }
