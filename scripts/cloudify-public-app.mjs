@@ -1,8 +1,45 @@
 const functionBodies = {
-  loadState: `return normalizeState(baseState);`,
+  loadState: `const loaded = normalizeState(baseState);
+  loaded.works = arrayOrFallback(loaded.works).map((work) => {
+    if (work?.ev) return work;
+    return {
+      ...work,
+      ev: {
+        id: \`EV-\${work?.id || ""}\`,
+        status: "Sem EV",
+        versaoAtual: 0,
+        lines: [],
+        versions: [],
+        demandaIds: [],
+        sicIds: [],
+        _virtualEmptyEV: true,
+      },
+    };
+  });
+  return loaded;`,
   saveState: `return globalThis.SLT_CLOUD.save(persistedStatePayload());`,
-  persistedStatePayload: `return {
-    works: arrayOrFallback(state.works),
+  persistedStatePayload: `const works = arrayOrFallback(state.works).map((work) => {
+    if (!work?.ev?._virtualEmptyEV) return work;
+    const ev = work.ev;
+    const hasBudgetData =
+      Number(ev.versaoAtual || 0) > 0 ||
+      (ev.lines || []).length > 0 ||
+      (ev.versions || []).length > 0 ||
+      (ev.demandaIds || []).length > 0 ||
+      (ev.sicIds || []).length > 0 ||
+      (ev.status && !["Sem EV", "Rascunho"].includes(ev.status));
+    const cleanWork = { ...work };
+    if (!hasBudgetData) {
+      delete cleanWork.ev;
+      return cleanWork;
+    }
+    cleanWork.ev = { ...ev };
+    delete cleanWork.ev._virtualEmptyEV;
+    if (cleanWork.ev.status === "Sem EV") cleanWork.ev.status = "Rascunho";
+    return cleanWork;
+  });
+  return {
+    works,
     demands: arrayOrFallback(state.demands),
     sics: arrayOrFallback(state.sics),
     contracts: arrayOrFallback(state.contracts),
@@ -26,6 +63,13 @@ const functionBodies = {
     strategicTargetOverrides: state.strategicTargetOverrides || {},
     deletedEVRecordIds: arrayOrFallback(state.deletedEVRecordIds),
   };`,
+  filteredEVWorks: `const works = arrayOrFallback(state.works).filter((work) => !work.ev?._virtualEmptyEV);
+  const terms = normalizeSearchText([searchTerm, evAssistantQuery].filter(Boolean).join(" "))
+    .trim()
+    .split(/\\s+/)
+    .filter(Boolean);
+  if (!terms.length) return works;
+  return works.filter((work) => terms.every((term) => workSearchText(work).includes(term)));`,
   normalizeUserProfile: `if (perfil === "Gestor") return "Gestão";
   return roleDefinitions[perfil] ? perfil : "Analista";`,
   defaultPasswordForProfile: `return "";`,
@@ -159,6 +203,10 @@ export function cloudifyPublicApp(input) {
     if (!exists && ["saveAttachmentRecord", "readAttachmentRecord"].includes(name)) continue;
     source = replaceFunction(source, name, body);
   }
+  source = source.replaceAll(
+    'work.ev.status !== "Completo"',
+    '!work.ev?._virtualEmptyEV && work.ev.status !== "Completo"'
+  );
   source = insertBeforeFinalRender(source);
 
   const forbidden = /admin360|gestao360|analista360|orcamento360|projetos360|Novo Hospital Ibirapuera|\bOBR-\d{4}-\d{3}\b|\bDEM-\d{3}\b/;
