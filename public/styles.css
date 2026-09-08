@@ -2887,13 +2887,23 @@ button {
 
 .portfolio-filter-bar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) repeat(3, minmax(120px, 160px)) auto;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  align-items: end;
   margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fbff;
-  padding: 10px;
+  padding: 12px;
+}
+
+.portfolio-filter-bar .portfolio-search-field {
+  grid-column: span 2;
+  min-width: 280px;
+}
+
+.portfolio-filter-bar .secondary-action {
+  min-height: 38px;
 }
 
 .portfolio-filter-bar input,
@@ -8692,6 +8702,26 @@ button.alert-item {
   min-width: 1840px;
 }
 
+.portfolio-works-table {
+  min-width: 1460px;
+}
+
+.portfolio-works-table th:nth-child(2),
+.portfolio-works-table td:nth-child(2) {
+  min-width: 320px;
+  white-space: normal;
+}
+
+.portfolio-works-table th:nth-child(10),
+.portfolio-works-table td:nth-child(10) {
+  min-width: 160px;
+}
+
+.portfolio-works-table th:nth-child(11),
+.portfolio-works-table td:nth-child(11) {
+  min-width: 130px;
+}
+
 .portfolio-plan-table {
   min-width: 1780px;
   border-collapse: separate;
@@ -8799,6 +8829,19 @@ button.alert-item {
 .portfolio-table th:nth-child(3),
 .portfolio-table td:nth-child(3) {
   min-width: 260px;
+}
+
+.portfolio-works-table th:nth-child(3),
+.portfolio-works-table td:nth-child(3) {
+  min-width: 90px;
+}
+
+.portfolio-works-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--navy);
+  box-shadow: 0 2px 0 rgba(255, 255, 255, 0.16), 0 10px 18px rgba(0, 56, 109, 0.12);
 }
 
 .portfolio-table th:nth-child(14),

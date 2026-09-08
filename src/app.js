@@ -495,12 +495,21 @@ let haptecSuppressToggleClick = false;
 let demandWizardDraft = {};
 let workModalReturnMode = "";
 let workModalPlanDraft = null;
-let portfolioQuickFilters = {
-  query: "",
-  tipoUnidade: "",
-  regional: "",
-  evStatus: "",
-};
+function createPortfolioQuickFilters() {
+  return {
+    query: "",
+    year: "",
+    categoria: "",
+    tipoUnidade: "",
+    tipologia: "",
+    regional: "",
+    uf: "",
+    evStatus: "",
+    origem: "",
+  };
+}
+
+let portfolioQuickFilters = createPortfolioQuickFilters();
 let investmentPlanFilters = {
   query: "",
   etapa: "Projetos",
@@ -2173,7 +2182,7 @@ function haptecMissingDataMessage(context = "") {
 function haptecCurrentContext() {
   if (currentView === "dashboard") return "Início";
   if (projectViewIds.includes(currentView)) return "Projetos 360";
-  if (["portfolio", "investmentPlan"].includes(currentView)) return "Portfólio de Orçamento";
+  if (["portfolio", "investmentPlan"].includes(currentView)) return "Portfólio de Obras";
   if (["worksOperational", "kanban"].includes(currentView)) return "Operacional de Orçamento";
   if (currentView === "worksManagement") return "Gerencial de Orçamento";
   if (currentView === "worksStrategic") return "Estratégica de Orçamento";
@@ -2201,7 +2210,7 @@ function haptecViewHelp() {
     return "Em Projetos 360 você acompanha o Plano de Investimento, prazos de entrega de projetos e o Kanban que alimenta o início da orçamentação na Sala Técnica.";
   }
   if (["portfolio", "investmentPlan"].includes(currentView)) {
-    return "No Portfólio de Orçamento ficam as obras cadastradas para EV e orçamento. Use a busca e filtros para localizar a obra, abrir o EV, editar cadastro ou criar uma demanda de orçamento.";
+    return "No Portfólio de Obras ficam as obras com EV vinculado. Use a busca e os filtros para localizar a obra e abrir seu EV independente.";
   }
   if (["worksOperational", "kanban"].includes(currentView)) {
     return "No Operacional do Orçamento 360 você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
@@ -4280,7 +4289,7 @@ function kpiDetailData(key) {
   const workDetail = (title, subtitle, works, metrics, view = "portfolio", viewLabel = "Abrir portfólio") => ({
     title,
     subtitle,
-    eyebrow: "Portfólio de Orçamento",
+    eyebrow: "Portfólio de Obras",
     metrics,
     columns: ["Obra", "Região", "Tipo", "EV", "CAPEX"],
     rows: works.map((work) => {
@@ -6232,40 +6241,101 @@ function openInvestmentDetailModal(workId) {
 }
 
 function renderPortfolio() {
-  const allRows = investmentPlanRows(false);
-  const rows = investmentPlanRows(true);
-  const projectRows = allRows.filter((row) => row.isProject);
-  const uniqueWorks = new Set(allRows.map((row) => row.obra)).size;
-  const linkedWorks = allRows.filter((row) => row.obraId).length;
-  const upcomingProjects = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= todayISO() && daysBetween(todayISO(), row.terminoPlanejado) <= 30);
-  const overdueProjects = projectRows.filter((row) => planDeliveryStatus(row).label === "Projeto atrasado");
+  const allRows = portfolioRows(false, false);
+  const rows = portfolioRows(true, false);
 
   return `
-    ${renderWorksToolbar("portfolio", "Portfólio de Orçamento", "Carteira unificada do Orçamento 360 com Plano de Investimento 2026, cadastro técnico e EV", `
-      <span class="tag">${uniqueWorks} obras no plano</span>
-      <button class="secondary-action" type="button" data-action="feature-soon">Importar base</button>
+    ${renderWorksToolbar("portfolio", "Portfólio de Obras", "Carteira unificada de obras com um EV independente por registro", `
+      <span class="tag">${allRows.length} obras com EV vinculado</span>
       <button class="primary-action" type="button" data-action="open-work">+ Nova obra</button>
     `)}
 
     <section class="kpi-grid portfolio-kpis">
-      ${kpi("Obras no plano", String(uniqueWorks), `${rows.length} linha(s) no filtro atual`, "blue")}
-      ${kpi("Etapas de Projetos", String(projectRows.length), "Base para entrada na Sala Técnica", "orange")}
-      ${kpi("Projetos próximos", String(upcomingProjects.length), "Término planejado nos próximos 30 dias", "green")}
-      ${kpi("Projetos atrasados", String(overdueProjects.length), "Sem término real e data planejada vencida", "red")}
-      ${kpi("Vínculos com EV", String(linkedWorks), "Linhas encontradas no cadastro Orçamento 360", "blue")}
+      ${kpi("Obras no portfólio", String(rows.length), rows.length === allRows.length ? "Todas com EV independente vinculado" : `de ${allRows.length} obra(s) cadastrada(s)`, "blue")}
     </section>
 
     <section class="panel portfolio-panel">
       <div class="panel-heading">
         <div>
-          <h2>Carteira unificada 2026</h2>
-          <p class="panel-subtitle">O nome da obra segue o Plano de Investimento; dados técnicos e EV aparecem quando houver vínculo cadastrado.</p>
+          <h2>Carteira de obras e EVs</h2>
+          <p class="panel-subtitle">Cada linha representa uma obra com seu próprio EV; a base histórica e os cadastros atuais ficam na mesma visão.</p>
         </div>
-        <button class="secondary-action" type="button" data-action="clear-investment-plan-filters">Limpar filtros</button>
       </div>
-      ${renderInvestmentPlanFilters(allRows)}
-      ${renderPortfolioInvestmentPlanTable(rows)}
+      ${renderPortfolioFilters(allRows)}
+      ${renderPortfolioTable(rows)}
     </section>
+  `;
+}
+
+function portfolioFilterOptions(rows, field, selected, allLabel) {
+  const values = [...new Set(rows.map((row) => row[field]).filter((value) => value !== "" && value !== null && value !== undefined))]
+    .sort((left, right) => String(left).localeCompare(String(right), "pt-BR", { numeric: true }));
+  return `<option value="">${allLabel}</option>${values
+    .map((value) => `<option value="${escapeAttribute(value)}" ${String(value) === String(selected) ? "selected" : ""}>${escapeAttribute(value)}</option>`)
+    .join("")}`;
+}
+
+function renderPortfolioFilters(rows) {
+  return `
+    <div class="portfolio-filter-bar">
+      <label class="field portfolio-search-field">
+        <span>Buscar obra</span>
+        <input data-portfolio-search value="${escapeAttribute(portfolioQuickFilters.query)}" placeholder="Nome, código, cidade, região ou técnico..." />
+      </label>
+      <label class="field"><span>Ano</span><select data-portfolio-quick-filter="year">${portfolioFilterOptions(rows, "year", portfolioQuickFilters.year, "Todos os anos")}</select></label>
+      <label class="field"><span>Categoria</span><select data-portfolio-quick-filter="categoria">${portfolioFilterOptions(rows, "categoria", portfolioQuickFilters.categoria, "Todas")}</select></label>
+      <label class="field"><span>Tipo</span><select data-portfolio-quick-filter="tipoUnidade">${portfolioFilterOptions(rows, "tipoUnidade", portfolioQuickFilters.tipoUnidade, "Todos")}</select></label>
+      <label class="field"><span>Tipologia</span><select data-portfolio-quick-filter="tipologia">${portfolioFilterOptions(rows, "tipologia", portfolioQuickFilters.tipologia, "Todas")}</select></label>
+      <label class="field"><span>Região</span><select data-portfolio-quick-filter="regional">${portfolioFilterOptions(rows, "regional", portfolioQuickFilters.regional, "Todas")}</select></label>
+      <label class="field"><span>UF</span><select data-portfolio-quick-filter="uf">${portfolioFilterOptions(rows, "uf", portfolioQuickFilters.uf, "Todas")}</select></label>
+      <label class="field"><span>Status do EV</span><select data-portfolio-quick-filter="evStatus">${portfolioFilterOptions(rows, "evStatus", portfolioQuickFilters.evStatus, "Todos")}</select></label>
+      <label class="field"><span>Origem</span><select data-portfolio-quick-filter="origem">${portfolioFilterOptions(rows, "origem", portfolioQuickFilters.origem, "Todas")}</select></label>
+      <button class="secondary-action" type="button" data-action="clear-portfolio-filters">Limpar filtros</button>
+    </div>
+  `;
+}
+
+function renderPortfolioTable(rows) {
+  return `
+    <div class="table-wrap portfolio-plan-table-wrap">
+      <table class="data-table portfolio-table portfolio-works-table">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Nome da obra</th>
+            <th>Ano</th>
+            <th>Categoria</th>
+            <th>Tipo</th>
+            <th>Tipologia</th>
+            <th>Região / UF</th>
+            <th class="numeric">Área (m²)</th>
+            <th class="numeric">Total orçado</th>
+            <th>EV</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td><strong>${escapeAttribute(row.codigo || "—")}</strong></td>
+              <td><strong>${escapeAttribute(row.nome)}</strong><br /><span class="muted">${escapeAttribute(row.origem)}${row.tecnico ? ` · ${escapeAttribute(row.tecnico)}` : ""}</span></td>
+              <td>${escapeAttribute(row.year || "—")}</td>
+              <td>${escapeAttribute(row.categoria || "—")}</td>
+              <td>${escapeAttribute(row.tipoUnidade || "—")}</td>
+              <td>${escapeAttribute(row.tipologia || "—")}</td>
+              <td>${escapeAttribute([row.regional, row.uf].filter(Boolean).join(" / ") || "—")}</td>
+              <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : "—"}</td>
+              <td class="numeric"><strong>${money(row.capex)}</strong></td>
+              <td><span class="status-pill" data-status="${escapeAttribute(row.evStatus)}">${escapeAttribute(row.evStatus)}</span><br /><span class="muted">${escapeAttribute(row.evId)}</span></td>
+              <td><div class="table-actions portfolio-actions">
+                <button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>
+                ${row.isHistorical ? "" : `<button class="ghost-button compact-action" type="button" data-action="edit-work" data-id="${escapeAttribute(row.id)}">Editar</button>`}
+              </div></td>
+            </tr>
+          `).join("") || `<tr><td colspan="11"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -6344,21 +6414,35 @@ function renderPortfolioInvestmentPlanTable(rows) {
 
 function portfolioRows(applySearch = false, applyColumnFilters = true) {
   const milestones = ["EV aprovado", "Orçamento executivo", "Contratação", "Início de obra", "Entrega técnica"];
-  const works = applySearch ? budgetWorks().filter(workMatchesPortfolioFilters) : budgetWorks();
+  const works = budgetWorks().filter((work) => work?.ev && !work.ev._virtualEmptyEV);
   const rows = works.map((work, index) => {
+    const historicalRecord = work._historicalBudgetWork
+      ? arrayOrFallback(state.evs).find((record) => record.id === work.historicalRecordId)
+      : null;
     const totals = workTotals(work);
     const capex = totals.orcado + totals.aditivado;
     const saldoRatio = totals.saldo / Math.max(capex, 1);
+    const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);
+    const year = String(historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
+    const tipologia = evTypologyFromProjectName(work.nome) || work.tipologiaObra || work.tipoUnidade || "Não informada";
     return {
       id: work.id,
       idApp: work.chaveUnica,
       codigo: work.codigoOriginal,
       nome: work.nome,
       regional: work.regiao,
+      uf: work.uf,
       cidadeUf: `${work.cidade}/${work.uf}`,
       tipoUnidade: work.tipoUnidade,
-      tipologia: work.tipologiaObra,
+      tipologia,
       classificacao: work.classificacaoObra,
+      categoria: work.classificacaoObra || tipologia,
+      year,
+      origem: work._historicalBudgetWork ? "Histórico" : "Atual",
+      tecnico: historicalRecord?.technician || "",
+      isHistorical: Boolean(work._historicalBudgetWork),
+      openId: work._historicalBudgetWork ? work.historicalRecordId : work.id,
+      evId: work.ev.id || (work._historicalBudgetWork ? work.historicalRecordId : `EV-${work.id}`),
       prazo: work.prazoDias || plannedDurationForWork(work),
       areaEquivalente: work.areaEquivalente || 0,
       areaConstruida: work.areaConstruida || 0,
@@ -6375,16 +6459,19 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       risco: saldoRatio < 0.18 ? "Alto" : !work.ev?._virtualEmptyEV && work.ev.status !== "Completo" ? "Médio" : "Baixo",
     };
   });
-  return applyColumnFilters ? rows.filter(portfolioRowMatchesFilters) : rows;
+  const quickFiltered = applySearch ? rows.filter(portfolioRowMatchesQuickFilters) : rows;
+  return applyColumnFilters ? quickFiltered.filter(portfolioRowMatchesFilters) : quickFiltered;
 }
 
-function workMatchesPortfolioFilters(work) {
+function portfolioRowMatchesQuickFilters(row) {
   const terms = normalizeSearchText([searchTerm, portfolioQuickFilters.query].filter(Boolean).join(" ")).trim();
-  if (terms && !terms.split(/\s+/).every((term) => workSearchText(work).includes(term))) return false;
-  if (portfolioQuickFilters.tipoUnidade && work.tipoUnidade !== portfolioQuickFilters.tipoUnidade) return false;
-  if (portfolioQuickFilters.regional && work.regiao !== portfolioQuickFilters.regional) return false;
-  if (portfolioQuickFilters.evStatus && work.ev.status !== portfolioQuickFilters.evStatus) return false;
-  return true;
+  const searchable = normalizeSearchText([
+    row.idApp, row.codigo, row.nome, row.cidadeUf, row.regional, row.uf, row.tipoUnidade,
+    row.tipologia, row.categoria, row.year, row.evStatus, row.origem, row.tecnico,
+  ].join(" "));
+  if (terms && !terms.split(/\s+/).every((term) => searchable.includes(term))) return false;
+  return ["year", "categoria", "tipoUnidade", "tipologia", "regional", "uf", "evStatus", "origem"]
+    .every((field) => !portfolioQuickFilters[field] || String(row[field]) === String(portfolioQuickFilters[field]));
 }
 
 function portfolioRowMatchesFilters(row) {
@@ -15850,7 +15937,7 @@ function handleWorkSubmit(form) {
   syncWorkBudgetIntegration(work);
   selectedWorkId = work.id;
   workModalPlanDraft = null;
-  portfolioQuickFilters = { query: "", tipoUnidade: "", regional: "", evStatus: "" };
+  portfolioQuickFilters = createPortfolioQuickFilters();
   portfolioFilters = Object.fromEntries(Object.keys(portfolioFilters).map((key) => [key, ""]));
   addHistory({
     entidade: "obra",
@@ -16690,7 +16777,8 @@ function openPlanWorkInPortfolio(workId) {
   const work = workById(workId);
   if (!work) return;
   investmentPlanFilters = { query: work.nome, etapa: "", status: "", regiao: "", dateFrom: "", dateTo: "" };
-  portfolioQuickFilters = { query: "", tipoUnidade: "", regional: "", evStatus: "" };
+  portfolioQuickFilters = createPortfolioQuickFilters();
+  portfolioQuickFilters.query = work.nome;
   portfolioFilters = Object.fromEntries(Object.keys(portfolioFilters).map((key) => [key, ""]));
   selectedWorkId = work.id;
   setView("portfolio");
@@ -17143,7 +17231,7 @@ document.addEventListener("click", async (event) => {
     if (hidden) hidden.value = actionButton.dataset.saveMode;
   }
   if (action === "clear-portfolio-filters") {
-    portfolioQuickFilters = { query: "", tipoUnidade: "", regional: "", evStatus: "" };
+    portfolioQuickFilters = createPortfolioQuickFilters();
     portfolioFilters = Object.fromEntries(Object.keys(portfolioFilters).map((key) => [key, ""]));
     render();
   }
