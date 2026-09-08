@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="styles.css?v=20260902-ev-full-width" />
     <link rel="stylesheet" href="header-nav-fix.css?v=20260908-1" />
     <link rel="stylesheet" href="home-launchpad-compact.css?v=20260908-1" />
+    <link rel="stylesheet" href="ui-scope-20260908.css?v=20260908-1" />
     <link rel="stylesheet" href="cloud.css" />
   </head>
   <body>
@@ -50,8 +51,7 @@
 
         <nav class="top-nav" aria-label="Navegação principal">
           <button class="top-nav__item top-nav__home is-active" type="button" data-view="dashboard">Home</button>
-          <button class="top-nav__item" type="button" data-view="projectsHome" data-module="projects">Projetos</button>
-          <button class="top-nav__item" type="button" data-view="worksHome" data-module="works">Orçamento</button>
+          <button class="top-nav__item" type="button" data-view="worksOperational" data-module="works">Orçamento</button>
           <button class="top-nav__item" type="button" data-view="maintenance" data-module="maintenance">Manutenção</button>
           <button class="top-nav__item" type="button" data-view="clinical" data-module="clinical">Eng. Clínica</button>
           <button class="top-nav__item" type="button" data-view="budget">Controle de Verbas</button>
@@ -71,11 +71,6 @@
       <main class="app-shell">
         <aside class="sidebar" aria-label="Menu lateral">
           <button class="side-link is-active" type="button" data-view="dashboard"><span>Início</span></button>
-          <button class="side-link" type="button" data-view="worksHome"><span>Orçamento 360</span></button>
-          <button class="side-link" type="button" data-view="projectsHome"><span>Projetos 360</span></button>
-          <button class="side-link" type="button" data-view="projectsPortfolio"><span>Portfólio Projetos</span></button>
-          <button class="side-link" type="button" data-view="projectsPlan"><span>Plano de Investimento</span></button>
-          <button class="side-link" type="button" data-view="projectsOperational"><span>Operacional Projetos</span></button>
           <button class="side-link" type="button" data-view="worksOperational"><span>Operacional Orçamento</span></button>
           <button class="side-link" type="button" data-view="worksManagement"><span>Gerencial</span></button>
           <button class="side-link" type="button" data-view="worksStrategic"><span>Estratégica</span></button>
@@ -102,6 +97,7 @@
     </div>
 
     <script type="module" src="users-cloud-bridge.js"></script>
+    <script type="module" src="ui-routing-fixes.js?v=20260908-1"></script>
     <script type="module" src="boot.js"></script>
   </body>
 </html>
