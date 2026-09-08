@@ -56,6 +56,8 @@ const signOutButton = document.querySelector('#cloudSignOut');
 let queue;
 let loaded = false;
 let starting = null;
+let cloudWritesEnabled = false;
+shell.inert = true;
 
 function cleanHTML(html) {
   return DOMPurify.sanitize(String(html), {
@@ -69,6 +71,7 @@ function showRestoring(text = 'Abrindo o SLT 360…') {
   gate.classList.remove('is-ready');
   gate.setAttribute('aria-busy', 'true');
   shell.hidden = true;
+  shell.inert = true;
   loginForm.hidden = false;
   firstAccess.hidden = true;
   signOutButton.hidden = true;
@@ -80,6 +83,7 @@ function showLogin(text = '') {
   gate.classList.add('is-ready');
   gate.removeAttribute('aria-busy');
   shell.hidden = true;
+  shell.inert = true;
   loginForm.hidden = false;
   firstAccess.hidden = true;
   signOutButton.hidden = true;
@@ -91,6 +95,7 @@ function showFirstAccess() {
   gate.classList.add('is-ready');
   gate.removeAttribute('aria-busy');
   shell.hidden = true;
+  shell.inert = true;
   loginForm.hidden = true;
   firstAccess.hidden = false;
   signOutButton.hidden = false;
@@ -102,6 +107,7 @@ function showAccessError(text) {
   gate.classList.add('is-ready');
   gate.removeAttribute('aria-busy');
   shell.hidden = true;
+  shell.inert = true;
   loginForm.hidden = true;
   firstAccess.hidden = true;
   signOutButton.hidden = false;
@@ -124,6 +130,7 @@ async function clearInvalidLocalSession() {
 }
 
 async function startInternal() {
+  cloudWritesEnabled = false;
   showRestoring('Restaurando sua sessão…');
 
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
@@ -144,6 +151,7 @@ async function startInternal() {
     return;
   }
 
+  showRestoring('Carregando e validando os dados da nuvem…');
   const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto')]);
   const [profileResponse, moduleResponse] = await Promise.all([
     client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', authUser.id).maybeSingle(),
@@ -178,6 +186,13 @@ async function startInternal() {
     return;
   }
 
+  showRestoring('Conferindo o backup automático…');
+  const dailyBackup = await client.rpc('slt_backup_daily');
+  if (dailyBackup.error) {
+    showAccessError('Não foi possível confirmar o backup automático. Para proteger os dados, o sistema não liberou alterações. Recarregue e tente novamente.');
+    return;
+  }
+
   const [grants, directory, teamResponse] = await Promise.all([
     client.from('slt_core_module_access').select('module,can_read,can_write').eq('user_id', profile.id),
     client.from('slt_core_analysts').select('id,nome').order('nome'),
@@ -200,6 +215,7 @@ async function startInternal() {
     records: row.records,
     canWrite: entity => entityWritable(currentProfile, entity),
     async commit(request_id, changes) {
+      if (!cloudWritesEnabled) throw new Error('Os dados da nuvem ainda não foram confirmados para edição.');
       const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
       if (error) throw error;
       return data;
@@ -224,6 +240,7 @@ async function startInternal() {
     team,
     cleanHTML,
     canWrite: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core', true),
+    readyForWrites: () => cloudWritesEnabled,
     async adminUsers() {
       const r = await client.rpc('slt_admin_users');
       if (r.error) throw r.error;
@@ -252,10 +269,46 @@ async function startInternal() {
       }
       return r.data;
     },
-    save: snapshot => queue.save(snapshot),
-    acceptInitialState: snapshot => queue.acceptInitialState(snapshot),
+    async backupList() {
+      const r = await client.rpc('slt_backup_list');
+      if (r.error) throw r.error;
+      return r.data || [];
+    },
+    async createBackup(label = '') {
+      const r = await client.rpc('slt_backup_manual', { backup_label: label });
+      if (r.error) throw r.error;
+      return r.data;
+    },
+    async exportBackup() {
+      const r = await client.rpc('slt_backup_export');
+      if (r.error) throw r.error;
+      return r.data;
+    },
+    async restoreBackup(backup_id) {
+      if (currentProfile.perfil !== 'Admin') throw new Error('Somente Admin pode restaurar um backup.');
+      await queue.flush();
+      cloudWritesEnabled = false;
+      shell.inert = true;
+      const r = await client.rpc('slt_backup_restore', { backup_id });
+      if (r.error) {
+        cloudWritesEnabled = true;
+        shell.inert = false;
+        throw r.error;
+      }
+      location.reload();
+      return r.data;
+    },
+    save: snapshot => {
+      if (!cloudWritesEnabled) return;
+      queue.save(snapshot);
+    },
+    acceptInitialState: snapshot => {
+      queue.acceptInitialState(snapshot);
+      cloudWritesEnabled = true;
+    },
     async logout() {
       try { await queue.flush(); } catch { return; }
+      cloudWritesEnabled = false;
       await client.auth.signOut();
       location.reload();
     },
@@ -279,16 +332,19 @@ async function startInternal() {
   globalThis.echarts = echarts;
   globalThis.Chart = chart.default;
 
-  gate.hidden = true;
-  gate.classList.remove('is-ready');
-  gate.removeAttribute('aria-busy');
-  shell.hidden = false;
-
   try {
     await import('./app.js');
+    if (!cloudWritesEnabled) throw new Error('O estado inicial da nuvem não foi confirmado pelo aplicativo.');
     loaded = true;
+    gate.hidden = true;
+    gate.classList.remove('is-ready');
+    gate.removeAttribute('aria-busy');
+    shell.hidden = false;
+    shell.inert = false;
   } catch (error) {
+    cloudWritesEnabled = false;
     shell.hidden = true;
+    shell.inert = true;
     showAccessError('Não foi possível iniciar o sistema. Informe o responsável; a base não foi substituída.');
     throw error;
   }
@@ -324,6 +380,7 @@ document.querySelector('#cloudLogin').addEventListener('submit', async event => 
 });
 
 signOutButton.onclick = async () => {
+  cloudWritesEnabled = false;
   await client.auth.signOut();
   location.reload();
 };
@@ -372,7 +429,9 @@ window.addEventListener('beforeunload', event => {
 
 client.auth.onAuthStateChange(event => {
   if (loaded && event === 'SIGNED_OUT') {
+    cloudWritesEnabled = false;
     shell.hidden = true;
+    shell.inert = true;
     gate.hidden = false;
     location.reload();
   }
