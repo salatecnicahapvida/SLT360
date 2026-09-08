@@ -16,6 +16,17 @@ function applyRequestedUiScope(root = document) {
     if (label) label.textContent = "Operacional Orçamento";
   });
 
+  // Portfólio de Obras: padroniza o nome em menu lateral e abas internas.
+  root.querySelectorAll('[data-view="portfolio"]').forEach((button) => {
+    const label = button.querySelector('span');
+    if (label) {
+      label.textContent = "Portfólio de Obras";
+    } else if (button.classList.contains('module-tab') || button.classList.contains('side-link')) {
+      button.textContent = "Portfólio de Obras";
+    }
+    button.setAttribute('aria-label', 'Portfólio de Obras');
+  });
+
   // Projetos fica indisponível na interface sem excluir dados.
   root.querySelectorAll(`[data-view^="${PROJECT_VIEW_PREFIX}"]`).forEach((element) => {
     element.hidden = true;
