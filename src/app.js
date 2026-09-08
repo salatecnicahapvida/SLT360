@@ -4119,7 +4119,7 @@ function moduleSummaries() {
   const clinicalPortfolioMetrics = moduleDemandMetrics("clinical");
   const fundsBalance = positiveFundsBalanceTotal();
   const totals = allTotals();
-  const pendingEvs = (state.works || []).filter((work) => work.ev?.status !== "Completo").length;
+  const pendingEvs = budgetWorks().filter((work) => work.ev?.status !== "Completo").length;
   const historicalEVCount = Array.isArray(globalThis.EV_HISTORICAL_DATA?.records) ? globalThis.EV_HISTORICAL_DATA.records.length : 0;
   const clinicalEquipmentCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.equipment || clinicalEquipmentRecords().length || 0);
   const clinicalUnitCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.units || 0);
@@ -5890,7 +5890,7 @@ function renderWorksStrategic() {
   const decisionYears = [...new Set(decisionRows.map((row) => String(row.record.year)).filter(Boolean))].sort((a, b) => b.localeCompare(a, "pt-BR", { numeric: true }));
 
   return `
-    ${renderWorksToolbar("worksStrategic", "Visão Estratégica", `Base unificada de ${sourceRecords.length} EVs · mesma inteligência da aba EV`, `
+    ${renderWorksToolbar("worksStrategic", "Visão Estratégica", `Base oficial de ${sourceRecords.length} EVs · mesma fonte da DADOS EVS`, `
       <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
       <button class="primary-action" type="button" data-view="budget">Controle de Verbas</button>
     `)}
@@ -5901,16 +5901,16 @@ function renderWorksStrategic() {
         <div class="strategic-main-kpi__body">
           <span class="strategic-main-ring"><b>${number(sourceRecords.length)}</b><small>EVs</small></span>
           <span class="strategic-main-copy">
-            <strong>Base estratégica totalmente unificada</strong>
-            <small>Todos os indicadores abaixo são recalculados diretamente com os mesmos registros da aba EV.</small>
+            <strong>Base estratégica sincronizada com a DADOS EVS</strong>
+            <small>Todos os indicadores abaixo usam a carga inicial oficial e os novos EVs cadastrados depois dela.</small>
             <span class="strategic-main-breakdown">
-              <span data-tone="green"><i></i><b>${historicalCount}</b><small>Históricos</small></span>
-              <span data-tone="blue"><i></i><b>${currentCount}</b><small>Atuais</small></span>
+              <span data-tone="green"><i></i><b>${historicalCount}</b><small>Base DADOS EVS</small></span>
+              <span data-tone="blue"><i></i><b>${currentCount}</b><small>Novos cadastros</small></span>
               <span data-tone="orange"><i></i><b>${validAreaRecords.length}</b><small>Com área válida</small></span>
             </span>
           </span>
         </div>
-        <span class="strategic-main-footer"><i>Base unificada · EV histórico + cadastro atual</i><b>Atualização automática</b></span>
+        <span class="strategic-main-footer"><i>Base inicial DADOS EVS + novos cadastros</i><b>Atualização automática</b></span>
       </article>
       <div class="strategic-hero-metrics">
         ${strategicHeroMetric("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "EV", "blue", 100)}
@@ -5925,13 +5925,13 @@ function renderWorksStrategic() {
       <p>Valores abreviados para leitura rápida, com o montante exato logo abaixo.</p>
     </div>
     <section class="strategic-kpis">
-      ${executiveKpi("EVs unificados", number(sourceRecords.length), `${historicalCount} históricos + ${currentCount} atuais`, "Quantidade da mesma base exibida na aba EV", "blue", "strategicUnifiedEV", "EV")}
+      ${executiveKpi("EVs oficiais", number(sourceRecords.length), `${historicalCount} iniciais + ${currentCount} novos`, "Quantidade da mesma base exibida na aba EV", "blue", "strategicUnifiedEV", "EV")}
       ${executiveKpi("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "Soma dos valores dos EVs unificados", "green", "strategicUnifiedEV", "VALOR")}
       ${executiveKpi("Área equivalente válida", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m²`, `${validAreaRecords.length} EVs com valor e área`, "blue", "strategicUnifiedEV", "ÁREA")}
       ${executiveKpi("Registros históricos", number(historicalCount), `${number((historicalCount / Math.max(sourceRecords.length, 1)) * 100, 1)}% da base`, "EVs históricos disponíveis para inteligência", "green", "strategicUnifiedEV", "HIST")}
       ${executiveKpi("Sem leitura de m²", number(sourceRecords.length - validAreaRecords.length), `${validAreaRecords.length} leituras válidas`, "EVs sem valor ou área equivalente", sourceRecords.length > validAreaRecords.length ? "orange" : "green", "strategicUnifiedEV", "QUALIDADE")}
       ${executiveKpi("Tipologias", number(typologies), "Classificações disponíveis na base EV", "Agrupamento unificado por tipologia", "green", "strategicUnifiedEV", "TIPO")}
-      ${executiveKpi("Anos disponíveis", number(years), "Histórico de 2020 a 2026 + atuais", "Períodos disponíveis para inteligência", "blue", "strategicUnifiedEV", "ANO")}
+      ${executiveKpi("Anos disponíveis", number(years), "Períodos presentes na DADOS EVS", "Períodos disponíveis para inteligência", "blue", "strategicUnifiedEV", "ANO")}
       ${executiveKpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "Participação dos cinco maiores EVs", topFiveShare > 80 ? "orange" : "blue", "strategicUnifiedTop5", "TOP 5")}
     </section>
 
@@ -6245,8 +6245,8 @@ function renderPortfolio() {
   const rows = portfolioRows(true, false);
 
   return `
-    ${renderWorksToolbar("portfolio", "Portfólio de Obras", "Carteira unificada de obras com um EV independente por registro", `
-      <span class="tag">${allRows.length} obras com EV vinculado</span>
+    ${renderWorksToolbar("portfolio", "Portfólio de Obras", "855 obras iniciais da DADOS EVS; novos cadastros entram depois da base oficial", `
+      <span class="tag">${allRows.length} obras oficiais</span>
       <button class="primary-action" type="button" data-action="open-work">+ Nova obra</button>
     `)}
 
@@ -6257,8 +6257,8 @@ function renderPortfolio() {
     <section class="panel portfolio-panel">
       <div class="panel-heading">
         <div>
-          <h2>Carteira de obras e EVs</h2>
-          <p class="panel-subtitle">Cada linha representa uma obra com seu próprio EV; a base histórica e os cadastros atuais ficam na mesma visão.</p>
+          <h2>Carteira oficial de obras e EVs</h2>
+          <p class="panel-subtitle">Cada linha corresponde a uma obra com EV vinculado: a carga inicial da DADOS EVS ou um cadastro novo.</p>
         </div>
       </div>
       ${renderPortfolioFilters(allRows)}
@@ -6414,7 +6414,7 @@ function renderPortfolioInvestmentPlanTable(rows) {
 
 function portfolioRows(applySearch = false, applyColumnFilters = true) {
   const milestones = ["EV aprovado", "Orçamento executivo", "Contratação", "Início de obra", "Entrega técnica"];
-  const works = budgetWorks().filter((work) => work?.ev && !work.ev._virtualEmptyEV);
+  const works = budgetWorks();
   const rows = works.map((work, index) => {
     const historicalRecord = work._historicalBudgetWork
       ? arrayOrFallback(state.evs).find((record) => record.id === work.historicalRecordId)
@@ -6761,6 +6761,8 @@ function evTypologyFromProjectName(value) {
 }
 
 function evUnifiedWorkForHistorical(record) {
+  const linkedById = record?.workId ? workById(record.workId) : null;
+  if (linkedById) return linkedById;
   const recordCode = evUnifiedCode(record.code);
   if (recordCode) {
     const byCode = state.works.find((work) =>
@@ -6786,7 +6788,7 @@ function evUnifiedRecords() {
     return { ...record, typology, sourceKind: "historical", workId: work?.id || "", sourceLabel: work ? "Histórico + cadastro" : "Histórico", searchAliases: work?.nome || "" };
   });
   const currentRows = state.works
-    .filter((work) => !matchedWorkIds.has(work.id))
+    .filter((work) => work?.ev && !work.ev._virtualEmptyEV && !matchedWorkIds.has(work.id))
     .map((work) => {
       const totals = workTotals(work);
       const values = {};
@@ -6805,7 +6807,7 @@ function evUnifiedRecords() {
         year: date ? String(date).slice(0, 4) : "Atual", typology: evTypologyFromProjectName(work.nome) || state.evTypologyOverrides?.[`current-${work.id}`] || evHistoricalTypologyForWork(work) || work.tipologiaObra || work.tipoUnidade || "Não informada",
         area: Number(work.areaEquivalente || work.areaConstruida || 0), total: totals.orcado + totals.aditivado,
         baseTotal: Math.max(0, totals.orcado - risk), disciplines: values, items,
-        sourceKind: "current", workId: work.id, sourceLabel: "Cadastro SLT 360", searchAliases: `${work.nome} ${work.chaveUnica || ""} ${work.codigoOriginal || ""}`,
+        sourceKind: "current", workId: work.id, sourceLabel: "Novo cadastro SLT 360", searchAliases: `${work.nome} ${work.chaveUnica || ""} ${work.codigoOriginal || ""}`,
       };
     });
   return [...historicalRows, ...currentRows];
@@ -6900,6 +6902,8 @@ function evSortableHeader(label, key, numeric = false) {
 function renderEVHistoricalIntelligence() {
   const source = evUnifiedRecords();
   if (!source.length) return "";
+  const officialCount = source.filter((record) => record.sourceKind === "historical").length;
+  const newCount = source.length - officialCount;
   const records = evHistoricalFilteredRecords();
   const benchmarkBase = evHistoricalFilteredRecords({ ignoreDiscipline: true });
   let benchmarks = evHistoricalBenchmarkRows(benchmarkBase);
@@ -6916,7 +6920,7 @@ function renderEVHistoricalIntelligence() {
   const selectableDisciplines = disciplines.filter((d) => !["taxa-risco", "sics"].includes(d.id));
   return `
     <section class="panel ev-history-panel">
-      <div class="panel-header ev-history-heading"><div><span class="eyebrow">Base única de inteligência · 2020 a 2026 + carteira atual</span><h2>Todos os EVs em uma única visão</h2><p class="panel-subtitle">${source.length} EVs unificados entre o histórico importado e os cadastros do SLT 360. Registros vinculados por código ou nome aparecem uma única vez.</p></div><span class="ev-history-badge">Base unificada</span></div>
+      <div class="panel-header ev-history-heading"><div><span class="eyebrow">Fonte única de inteligência · DADOS EVS + novos cadastros</span><h2>Todos os EVs oficiais em uma única visão</h2><p class="panel-subtitle">${source.length} EVs vinculados a obras: ${officialCount} da carga inicial DADOS EVS${newCount ? ` + ${newCount} novo(s) cadastro(s)` : ""}.</p></div><span class="ev-history-badge">Base oficial</span></div>
       <div class="ev-history-filters">
         <label class="field ev-history-search"><span>Buscar EV histórico</span><input data-ev-history-search value="${escapeAttribute(evHistoricalFilters.query)}" placeholder="Código ou nome do projeto..." /></label>
         <label class="field"><span>Ano</span><select data-ev-history-filter="year">${evHistoricalFilterOptions(source.map((r) => String(r.year)), evHistoricalFilters.year, "Todos os anos")}</select></label>
@@ -7231,7 +7235,7 @@ function loadUnifiedEVIntoINCC(recordId) {
 
 function renderEV() {
   return `
-    ${renderWorksToolbar("ev", "Base unificada de EVs", "Histórico, carteira atual, composição por disciplina e alertas estatísticos em uma única visão", `
+    ${renderWorksToolbar("ev", "Base oficial de EVs", "DADOS EVS, composição por disciplina e alertas estatísticos em uma única visão", `
       <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
       <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros</button>
       ${miroButton("Fluxo Miro")}
@@ -17904,6 +17908,7 @@ document.addEventListener("input", (event) => {
 
 function historicalBudgetWorks() {
   return arrayOrFallback(state.evs).map((record) => {
+    const linkedWork = record?.workId ? workById(record.workId) : null;
     const typology = record?.typology || "";
     const area = Number(record?.area || 0);
     const revisionMatch = String(record?.revision || "").match(/\d+/);
@@ -17913,50 +17918,46 @@ function historicalBudgetWorks() {
       valorOrcado: Number(valorOrcado || 0),
       status: "Orçado",
     }));
+    const historicalEV = {
+      id: record.id,
+      versaoAtual: revisionNumber,
+      status: "Completo",
+      lines,
+      versions: [{
+        numero: revisionNumber,
+        data: record?.date || "",
+        origem: "Base histórica",
+        valorTotal: Number(record?.total || 0),
+        custoM2: area ? Number(record?.total || 0) / area : 0,
+      }],
+      demandaIds: [],
+      sicIds: [],
+    };
     return {
-      id: `historical-budget-${record.id}`,
-      chaveUnica: record?.code || "",
-      codigoOriginal: record?.code || "",
-      nome: record?.project || "EV histórico",
-      tipoUnidade: "",
+      ...(linkedWork || {}),
+      id: linkedWork?.id || `historical-budget-${record.id}`,
+      chaveUnica: linkedWork?.chaveUnica || record?.code || "",
+      codigoOriginal: linkedWork?.codigoOriginal || record?.code || "",
+      nome: linkedWork?.nome || record?.project || "EV histórico",
+      tipoUnidade: linkedWork?.tipoUnidade || "",
       tipologiaObra: typology,
       areaConstruida: area,
       areaEquivalente: area,
-      uf: record?.uf || "",
-      regiao: record?.region || "",
+      uf: linkedWork?.uf || record?.uf || "",
+      regiao: linkedWork?.regiao || record?.region || "",
       status: "Histórico",
       _historicalBudgetWork: true,
       historicalRecordId: record.id,
-      ev: {
-        id: record.id,
-        versaoAtual: revisionNumber,
-        status: "Completo",
-        lines,
-        versions: [{
-          numero: revisionNumber,
-          data: record?.date || "",
-          origem: "Base histórica",
-          valorTotal: Number(record?.total || 0),
-          custoM2: area ? Number(record?.total || 0) / area : 0,
-        }],
-        demandaIds: [],
-        sicIds: [],
-      },
+      ev: linkedWork?.ev || historicalEV,
     };
   });
 }
 
 function budgetWorks() {
-  const ids = new Set();
-  for (const demand of state.demands || []) if (demand?.obraId) ids.add(String(demand.obraId));
-  for (const sic of state.sics || []) if (sic?.obraId) ids.add(String(sic.obraId));
-  for (const contract of state.contracts || []) if (contract?.obraId) ids.add(String(contract.obraId));
-  for (const revision of state.budgetRevisions || []) {
-    const id = revision?.obraId || revision?.workId;
-    if (id) ids.add(String(id));
-  }
-  const current = (state.works || []).filter((work) => !work?.ev?._virtualEmptyEV || ids.has(String(work?.id || "")));
-  return [...historicalBudgetWorks(), ...current];
+  const historical = historicalBudgetWorks();
+  const officialIds = new Set(historical.filter((work) => work._historicalBudgetWork && !String(work.id).startsWith("historical-budget-")).map((work) => String(work.id)));
+  const current = (state.works || []).filter((work) => work?.ev && !work.ev._virtualEmptyEV && !officialIds.has(String(work.id || "")));
+  return [...historical, ...current];
 }
 
 globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };

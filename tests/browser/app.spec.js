@@ -91,6 +91,10 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(currentRow.locator('td').nth(6)).toHaveText('Sudeste / SP');
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
  await expect(ambiguousPaRow.locator('td').nth(6)).toBeEmpty();
+ await page.locator('[data-view="ev"]').filter({visible:true}).first().click();
+ await expect(page.getByRole('heading',{name:'Base oficial de EVs',exact:true})).toBeVisible();
+ await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');
+ await expect(page.locator('.ev-history-heading')).toContainText('DADOS EVS');
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
