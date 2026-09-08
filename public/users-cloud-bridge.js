@@ -71,6 +71,7 @@ async function syncPanel(force=false){
   if(!cloudReady()||syncing) return;
   const panel=document.querySelector('.users-settings-panel'); if(!panel) return;
   normalizeUserForm(panel);
+  ensureBackupPanel(panel);
   const now=Date.now(); if(!force && now-lastSync<1500 && panel.dataset.cloudSynced==='1') return;
   syncing=true;
   try{
@@ -110,6 +111,114 @@ document.addEventListener('click',async event=>{
     const result=await globalThis.SLT_CLOUD.resetUserPassword(targetId); await syncPanel(true);
     showTemporaryPassword('Senha redefinida',result.email||email,result.temporary_password,result.audit_warning?'A senha foi redefinida, mas o registro complementar de auditoria não foi confirmado.':'' );
   }catch(error){ alert(error?.message||'Não foi possível redefinir a senha.'); }
+  finally{ button.disabled=false; }
+},true);
+
+function formatBackupDate(value){
+  try{return new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch{return String(value||'');}
+}
+function formatBackupBytes(value){
+  const n=Number(value)||0;
+  if(n<1024) return `${n} B`;
+  if(n<1024*1024) return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1024/1024).toFixed(1)} MB`;
+}
+function backupKindLabel(kind){ return kind==='daily'?'Automático':kind==='pre_restore'?'Pré-restauração':'Manual'; }
+function backupMessage(panel,text,error=false){ const node=panel?.querySelector('[data-cloud-backup-message]'); if(node){ node.textContent=text||''; node.dataset.state=error?'failed':'saved'; } }
+
+function ensureBackupPanel(panel){
+  if(!cloudReady()||!panel||panel.querySelector('[data-cloud-backup-panel]')) return;
+  const section=document.createElement('section');
+  section.dataset.cloudBackupPanel='1';
+  section.style.marginTop='28px';
+  section.style.paddingTop='24px';
+  section.style.borderTop='1px solid rgba(0,0,0,.12)';
+  section.innerHTML=`
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0 0 6px">Backup & Segurança</h3>
+        <p class="muted" style="margin:0">Snapshot automático a cada 24 horas, retenção de 14 dias. A restauração cria antes uma cópia de segurança do estado atual.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="primary-action" data-cloud-export-backup>Exportar backup completo (JSON)</button>
+        <button type="button" class="secondary-action" data-cloud-create-backup>Criar backup agora</button>
+        <button type="button" class="secondary-action" data-cloud-refresh-backups>Atualizar</button>
+      </div>
+    </div>
+    <p class="muted" data-cloud-backup-message style="min-height:1.3em"></p>
+    <div class="users-table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Tipo</th><th>Nome</th><th>Registros</th><th>Tamanho</th><th>Criado por</th><th>Ação</th></tr></thead>
+        <tbody data-cloud-backup-rows><tr><td colspan="7"><span class="muted">Carregando backups…</span></td></tr></tbody>
+      </table>
+    </div>`;
+  panel.append(section);
+  queueMicrotask(()=>refreshBackups(panel));
+}
+
+let backupSyncing=false;
+async function refreshBackups(panel=document.querySelector('.users-settings-panel')){
+  if(!cloudReady()||!panel||backupSyncing) return;
+  ensureBackupPanel(panel);
+  const tbody=panel.querySelector('[data-cloud-backup-rows]'); if(!tbody) return;
+  backupSyncing=true;
+  try{
+    const rows=await globalThis.SLT_CLOUD.backupList();
+    tbody.innerHTML=rows.map(item=>`<tr>
+      <td>${escapeHtml(formatBackupDate(item.created_at))}</td>
+      <td>${escapeHtml(backupKindLabel(item.kind))}</td>
+      <td>${escapeHtml(item.label||'')}</td>
+      <td>${escapeHtml(item.record_count)}</td>
+      <td>${escapeHtml(formatBackupBytes(item.size_bytes))}</td>
+      <td>${escapeHtml(item.created_by_name||'Sistema')}</td>
+      <td><button type="button" class="secondary-action" data-cloud-restore-backup="${escapeHtml(item.id)}" data-cloud-restore-date="${escapeHtml(formatBackupDate(item.created_at))}">Restaurar</button></td>
+    </tr>`).join('') || '<tr><td colspan="7"><span class="muted">Nenhum backup disponível.</span></td></tr>';
+    backupMessage(panel,'Backups conferidos.');
+  }catch(error){
+    tbody.innerHTML='<tr><td colspan="7"><span class="muted">Não foi possível carregar os backups.</span></td></tr>';
+    backupMessage(panel,error?.message||'Não foi possível carregar os backups.',true);
+  }finally{ backupSyncing=false; }
+}
+
+function downloadJson(data){
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`SLT360-backup-completo-${stamp}.json`; document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+document.addEventListener('click',async event=>{
+  if(!cloudReady()) return;
+  const panel=document.querySelector('.users-settings-panel');
+  const exportButton=event.target.closest?.('[data-cloud-export-backup]');
+  const createButton=event.target.closest?.('[data-cloud-create-backup]');
+  const refreshButton=event.target.closest?.('[data-cloud-refresh-backups]');
+  const restoreButton=event.target.closest?.('[data-cloud-restore-backup]');
+  const button=exportButton||createButton||refreshButton||restoreButton;
+  if(!button) return;
+  event.preventDefault(); event.stopImmediatePropagation(); button.disabled=true;
+  try{
+    if(exportButton){
+      backupMessage(panel,'Gerando o JSON diretamente da nuvem…');
+      const data=await globalThis.SLT_CLOUD.exportBackup(); downloadJson(data);
+      backupMessage(panel,'Backup JSON exportado. Guarde o arquivo em local seguro.');
+    }else if(createButton){
+      const label=prompt('Nome opcional para este backup:','Backup manual');
+      if(label===null) return;
+      backupMessage(panel,'Criando snapshot no Supabase…');
+      await globalThis.SLT_CLOUD.createBackup(label); await refreshBackups(panel);
+      backupMessage(panel,'Backup manual criado.');
+    }else if(refreshButton){
+      await refreshBackups(panel);
+    }else if(restoreButton){
+      const date=restoreButton.dataset.cloudRestoreDate||'';
+      const phrase=prompt(`Restaurar o estado de ${date}?\n\nAntes da restauração o SLT360 criará automaticamente um backup do estado atual.\n\nDigite RESTAURAR para confirmar:`,'');
+      if(phrase!=='RESTAURAR') return;
+      backupMessage(panel,'Criando backup de segurança e restaurando… Não feche esta página.');
+      await globalThis.SLT_CLOUD.restoreBackup(restoreButton.dataset.cloudRestoreBackup);
+    }
+  }catch(error){ backupMessage(panel,error?.message||'A operação de backup falhou.',true); alert(error?.message||'A operação de backup falhou.'); }
   finally{ button.disabled=false; }
 },true);
 
