@@ -29,22 +29,28 @@ jobs:
       - name: Configurar pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.19.0
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
 
       - name: Testar aplicação
-        run: pnpm test
+        run: pnpm lint && pnpm test
 
       - name: Gerar build de produção
         run: pnpm build
+
+      - name: Instalar navegador de teste
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verificar fluxos no navegador
+        run: pnpm test:browser
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5

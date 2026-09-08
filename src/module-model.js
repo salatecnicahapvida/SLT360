@@ -26,6 +26,13 @@ const oiFields = {ordemInterna:'internal_order',descricao:'description',montante
 
 export const MODULES = ['core','projects','budget','maintenance','clinical','finance'];
 export const ENTITIES = [
+  entity('budget_ev_typologies','budget','state.evTypologyOverrides',{}, {kind:'map'}),
+  entity('budget_ev_targets','budget','state.evReferenceTargets',{}, {kind:'map'}),
+  entity('budget_strategic_targets','budget','state.strategicTargetOverrides',{}, {kind:'map'}),
+  entity('budget_hidden_estimates','budget','state.deletedEVRecordIds',{}, {kind:'set'}),
+  entity('budget_approval_works','budget','state.sicApprovalWorks',{id:'id',descricao:'description'}),
+  entity('budget_approval_weeks','budget','state.sicApprovalWeeks',{id:'id',label:'label',start:date('starts_on'),end:date('ends_on')}),
+  entity('budget_approval_snapshots','budget','state.sicApprovalSnapshots',{id:'id',weekId:ref('week_id','budget_approval_weeks'),obraId:ref('work_id','budget_approval_works')}),
   entity('core_units','core','datasets.UNIT_REGISTRY_DATA.records',{'CENTRO':'unit_code','TIPO':'type','CNPJ':'tax_id','CEP':'postal_code','MUNICIPIO':'city','NOME UNIDADE':'name'},{readonly:true,key:'CENTRO'}),
   entity('core_suppliers','core','state.suppliers',{id:'id',nome:'name',cnpj:'tax_id',email:'email',telefone:'phone',status:'status'}),
   entity('core_sprints','core','state.sprints',{id:'id',nome:'name',dataInicio:date('starts_on'),dataFim:date('ends_on'),status:'status'}),
@@ -107,6 +114,8 @@ export function flattenPayload(payload,{writableOnly=false}={}) {
     const value=at(payload,e.path);
     if(e.kind==='metadata') { if(value) append(e,metadata(value),0,'source'); }
     else if(e.kind==='map') Object.entries(value||{}).forEach(([key,v],i)=>append(e,{value:v},i,key));
+    else if(e.kind==='set') [...new Set(value||[])].forEach((v,i)=>append(e,{value:v},i,String(v)));
+    else if(e.name==='budget_approval_snapshots') (value||[]).forEach((item,i)=>append(e,item,i,`${item.weekId}/${item.obraId}`));
     else (value||[]).forEach((item,i)=>{ if(accepts(e,item)) append(e,item,i,String(item[e.key||'id']??i)); });
   }
   const keys=new Set();
@@ -117,11 +126,23 @@ export function flattenPayload(payload,{writableOnly=false}={}) {
 }
 export function hydrateRecords(records) {
   const payload={state:{},datasets:{}};
-  const groups=new Map(ENTITIES.map(e=>[e.name,records.filter(r=>r.entity===e.name).sort((a,b)=>a.ordinal-b.ordinal||a.key.localeCompare(b.key))]));
+  const groups=new Map(ENTITIES.map(e=>[e.name,[]]));
+  for(const row of records) {
+    if(!groups.has(row.entity)) throw new Error(`Atualize o aplicativo: entidade desconhecida ${row.entity}`);
+    groups.get(row.entity).push(row);
+  }
+  for(const rows of groups.values())rows.sort((a,b)=>a.ordinal-b.ordinal||a.key.localeCompare(b.key));
+  const parents=new Map();
+  for(const [entity,rows] of groups)for(const row of rows) {
+    const key=entity+'\u0000'+row.parent_key;
+    if(!parents.has(key))parents.set(key,[]);
+    parents.get(key).push(row);
+  }
+  const assets=new Map(groups.get('clinical_assets').map(r=>[r.key,r.document]));
   function doc(e,row) {
     const value=clone(row.document);
     if(e.name==='clinical_orders' && value.assetId) {
-      const asset=groups.get('clinical_assets').find(r=>r.key===value.assetId)?.document;
+      const asset=assets.get(value.assetId);
       if(asset) {
         for(const key of assetFields) if(Object.hasOwn(asset,key)) value[key]=asset[key];
         value.assetName=asset.equipamento||'';
@@ -129,7 +150,7 @@ export function hydrateRecords(records) {
     }
     for(const child of childrenOf(e.name)) {
       if(!(row.child_fields||[]).includes(child.child)) continue;
-      const nested=groups.get(child.name).filter(r=>r.parent_key===row.key).map(r=>doc(child,r));
+      const nested=(parents.get(child.name+'\u0000'+row.key)||[]).map(r=>doc(child,r));
       value[child.child]=child.kind==='one' ? nested[0]??null : nested;
     }
     return value;
@@ -140,6 +161,7 @@ export function hydrateRecords(records) {
   }
   for(const e of ENTITIES.filter(e=>e.path && e.kind!=='metadata')) {
     if(e.kind==='map') set(payload,e.path,Object.fromEntries(groups.get(e.name).map(r=>[r.key,r.document.value])));
+    else if(e.kind==='set') set(payload,e.path,groups.get(e.name).map(r=>r.document.value));
     else {
       const related=ENTITIES.filter(x=>x.path===e.path);
       const merged=related.flatMap(x=>groups.get(x.name).map(r=>({e:x,r}))).sort((a,b)=>a.r.ordinal-b.r.ordinal||a.r.key.localeCompare(b.r.key));

@@ -1,123 +1,39 @@
-# Implantação do SLT360
+# Implantação e recuperação
 
-Estado em 31/08/2026: banco remoto instalado e carga inicial importada com autorização
-do responsável. Conferência confirmou 214 obras, 30 demandas de orçamento e 1.105
-registros de manutenção/clínica; checksum do documento idêntico ao arquivo de origem.
-As tabelas do piloto têm RLS habilitada e acesso anônimo negado. O site está publicado
-no GitHub Pages. A conta administrativa foi provisionada por solicitação do
-responsável, com troca obrigatória da senha provisória no primeiro acesso.
+Destinos: [GitHub](https://github.com/salatecnicahapvida/SLT360), [site](https://salatecnicahapvida.github.io/SLT360/), Supabase `mgpkgxcenxnqvvujlclh` (us-east-2). Não usa Netlify.
 
-## Destinos
+## Atualização de uma instalação existente
 
-- Código: https://github.com/salatecnicahapvida/SLT360 (repositório público).
-- Supabase: projeto `mgpkgxcenxnqvvujlclh`, região `us-east-2` (Ohio, EUA).
-- Hospedagem: GitHub Pages. Não utiliza Netlify.
+1. Conferir branch, diff, versão remota e testes. Executar `pnpm check` e `pnpm audit --prod`.
+2. Fazer snapshot privado antes da migração; não exportar dados para GitHub.
+3. Conferir o esquema real. A instalação histórica recebeu SQL pelo editor, então a lista de migrações remotas não contém todos os arquivos iniciais do repositório. **Não reaplicar as migrações iniciais.**
+4. Aplicar somente migrações novas e testadas. `20260908170325_unified_app.sql` é aditiva: inclui sete entidades, composição histórica protegida, bloqueios de consistência e restrição de execução anônima de helpers. `20260908172018_client_compatibility.sql` preserva a leitura por clientes antigos durante a publicação; o novo cliente anuncia seu catálogo no cabeçalho `x-client-info`. As permissões continuam verificadas no servidor.
+5. A base SIC anteriormente embutida é transferida privadamente para as três entidades `budget_approval_*`, preservando os IDs. A carga é separada do código e não deve substituir registros existentes. Não reimportar por cima de edições.
+6. Publicar pelo workflow Pages, disparado por push em `main`. O workflow executa lint, testes SQL/adaptador, build e navegador antes de enviar o artefato.
+7. Conferir status do Actions, HTTP do site, ausência do antigo `/sic-approval-dashboard.html` e login. Confirmar com uma conta autorizada os fluxos operacionais que dependem do ambiente real.
 
-Confirmar a adequação da região e a autorização para transferir a base operacional
-antes de importar dados. Os scripts privados de carga ficam fora do repositório.
+O Pages não aplica SQL nem publica a Edge Function. A função `slt-users` continua exigindo autenticação, perfil Admin ativo e troca de senha concluída. Sua origem autorizada é `https://salatecnicahapvida.github.io`.
 
-## Sequência de implantação
+## Instalação nova
 
-1. Confirmar que não existem tabelas SLT360 no projeto de destino. Se houver,
-   interromper e planejar a migração; não apagar ou sobrescrever.
-2. No SQL Editor do projeto correto, executar as migrações em ordem de nome.
-   A primeira cria tabelas, funções, políticas restritas e um bucket privado.
-   A segunda acrescenta a proteção de primeiro acesso. Cada script é transacional
-   e deve ser aplicado uma única vez; não executar novamente a carga inicial.
-3. Executar a carga inicial privada autorizada. O script usa INSERT simples com
-   id único; uma segunda importação falha sem substituir a base existente.
-4. Em Authentication, desativar novos cadastros públicos. Criar a conta administrativa
-   do responsável e confirmar o endereço. Usar uma senha provisória forte e
-   entregá-la em canal privado; nunca incluir credenciais no código ou migrações.
-   O responsável define sua senha pessoal na primeira entrada no aplicativo.
-5. Copiar o UUID dessa conta para um INSERT em `slt360_profiles`, com nome e
-   `perfil='Admin'`. Manter `must_change_password=true`, o valor padrão. O perfil
-   concede acesso à base inteira somente após a troca da senha no Auth. Não criar
-   contas apenas no Auth. Depois de aplicar a migração 005 e publicar a função
-   `slt-users`, use Configuração → Usuários e Equipe para cadastrar e habilitar
-   administradores, gestores e analistas. Consulte `USUARIOS-E-EQUIPE.md`.
-6. Enviar somente os arquivos deste repositório. Em Settings → Pages, escolher
-   GitHub Actions. A ativação exige permissões administrativas do repositório.
-7. Executar manualmente o fluxo `Publicar piloto SLT360`. O endereço esperado é
-   `https://salatecnicahapvida.github.io/SLT360/`; só tratá-lo como ativo após a publicação.
-8. Configurar o endereço publicado em Authentication → URL Configuration. Esta
-   versão oferece login por senha; recuperação por link ainda não foi implementada.
-9. Testar com conta real: login, leitura dos módulos, uma alteração controlada,
-   recarregamento, anexo e saída. Repetir teste de conflito com duas sessões.
-10. Conferir pelo acesso anônimo que não é possível ler tabelas nem baixar anexos.
-    Acompanhar os logs de autenticação/API durante os primeiros 15 minutos de uso.
+Aplicar as migrações iniciais em ordem em um projeto vazio. Configurar Auth sem cadastro público, criar a primeira conta e seu perfil e ativar a base modular conforme os scripts privados de importação. Não usar dados fictícios como carga operacional. Configurar URL de autenticação e publicar `slt-users` antes do frontend.
 
-## O que já foi validado localmente
+`prepare-module-import.mjs` e `verify-module-import.mjs` são ferramentas de operação, não etapas do build. Os arquivos de entrada e saída devem ficar em diretório privado externo. Migrações já aplicadas são histórico imutável; o gerador antigo que sobrescrevia a migração inicial foi removido.
 
-- Testes executam a migração exata em PostgreSQL local (PGlite), com os esquemas
-  mínimos de Auth e Storage simulados: bloqueio de anônimos, contas não autorizadas,
-  autoatribuição de perfil, gravação direta e acesso após revogação.
-- Gravação atômica incrementa revisão e registra ator no servidor; revisão antiga
-  falha sem sobrescrever o estado nem duplicar a auditoria.
-- Bucket privado e políticas de acesso/identidade verificadas no modelo local.
-- Fila de salvamento preserva cópias, ordena revisões e bloqueia após falha.
-- Primeiro acesso impede leitura, gravação e anexos até a alteração efetiva da
-  senha no Auth. Alterar metadados ou tentar editar o perfil não remove a exigência.
-  O formulário confere confirmação e senha de 12 a 72 caracteres (até 72 bytes),
-  incluindo maiúsculas, minúsculas e números; o Auth também aplica suas regras.
-- Interface com serviço local de teste: login, dados de entrada, criação de sprint,
-  confirmação, recarregamento mantendo a alteração e saída.
-- Build copia apenas código e recursos visuais; varredura impede indicadores
-  conhecidos de dados privados e senhas antigas. Não substitui revisão manual.
+## Recuperação
 
-Esses testes não substituem os testes no Supabase real. O upload/download de anexos
-e os gráficos devem ser verificados também no ambiente publicado.
+Os snapshots do aplicativo são privados. O automático ocorre na entrada de usuário, não por um agendador independente. O snapshot copia os registros e metadados; não contém os binários do Storage nem credenciais Auth. A rotina de restauração reaplica as entidades de negócio e cria uma cópia do estado anterior. Contas, permissões e arquivos exigem procedimento administrativo próprio.
 
-## Limitações e recuperação
+Gravações, captura de snapshot e restauração usam bloqueio transacional comum para evitar alterações intercaladas. Depois de uma restauração, outras sessões devem recarregar; suas revisões antigas não podem sobrescrever o estado restaurado.
 
-- Apenas piloto administrativo: todos os habilitados têm acesso amplo, inclusive
-  aos dados operacionais e financeiros. Os perfis antigos não foram migrados.
-- A base inicial corresponde aos arquivos extraídos, não a alterações feitas
-  posteriormente no armazenamento local de outros navegadores.
-- Salvamento modular envia somente registros alterados, com revisão individual.
-  A leitura inicial ainda monta o painel integrado completo; paginação e carregamento
-  de cada tela sob demanda são melhorias futuras para volumes maiores.
-- Ao ocorrer conflito ou falha, preservar anotações antes de recarregar. A versão
-  não mantém cópia local nem mescla alterações. Não continuar gravando às cegas.
-- Histórico legado exibido na tela foi preservado em tabela própria. A auditoria
-  confiável das novas gravações fica em `slt_core_change_log`, com antes/depois,
-  autor e revisão por registro, e não pode ser alterada pelo aplicativo.
-- Definir backup operacional externo antes do uso contínuo. A auditoria não substitui
-  um backup nem recupera os arquivos anexos. Exportar banco e anexos com ferramentas
-  administrativas para armazenamento privado; testar restauração em projeto separado.
-- Upload concluído seguido de falha de metadados pode deixar arquivo órfão privado.
-  Limpeza, exclusão e antivírus de anexos são tarefas administrativas futuras.
-- O fluxo legado de SIC mantém suas regras anteriores, inclusive lançamento agregado.
-  Validar com o responsável antes de uso financeiro definitivo.
+Se a nova interface apresentar falha, preserve o banco e investigue o erro antes de reverter. As tabelas adicionadas não devem ser apagadas para rollback. A versão anterior publicava um HTML SIC com dados embutidos: **não republicar esse artefato**. Um rollback precisa manter o bloqueio dessa página e compatibilidade com as entidades novas; preferir correção incremental.
 
-Se login, autorização, persistência ou anexos falharem na implantação, interromper
-o piloto. Suspender os perfis ativos no banco e manter a prévia local para consulta.
-Reverter apenas o site para uma versão compatível previamente validada; nunca
-publicar a versão antiga com dados embutidos. Não remover tabelas ou executar
-novamente a carga sobre dados novos. Investigar e preservar backup antes de restaurar.
+Dados salvos no `localStorage` de navegadores antigos não estão no repositório e não são recuperáveis pelo servidor. As chaves antigas não são apagadas por esta versão. Eventual conciliação dessas cópias deve ser privada e preservar os dados mais recentes.
 
-Referências: [publicação por Actions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages),
-[políticas RLS](https://supabase.com/docs/guides/database/postgres/row-level-security),
-[controle de arquivos](https://supabase.com/docs/guides/storage/security/access-control).
+## Limites verificados
 
-## Migração para módulos independentes
-
-1. Instalar `202608310003_modules.sql` e `202608310004_import_lock_budget.sql`. A API nova fica desativada e a versão anterior continua funcionando. A segunda migração evita esgotar o orçamento de bloqueios do plano gratuito durante a carga inicial, mantendo os bloqueios nas edições normais.
-2. Exportar privadamente `slt360_state.payload` e registrar `md5(payload::text)` e `revision` no banco. Não copiar dados ou o arquivo de preparação para o GitHub.
-3. Executar `node scripts/prepare-module-import.mjs <origem-privada.json> <diretorio-privado-fora-do-repositorio>`.
-4. Executar `node scripts/verify-module-import.mjs <diretorio-privado>`. O ensaio precisa preservar registros, vínculos, valores e tipos de todos os conjuntos.
-5. Carregar os lotes privados na tabela `slt_private.import_stage`. A tabela não é exposta ao aplicativo, nem ao acesso anônimo.
-6. Publicar a interface modular e imediatamente executar `slt_private.activate_modules(checksum_esperado, quantidade_esperada)` como administrador do banco. A função bloqueia a linha antiga, confere se a origem mudou, insere os registros em transação, valida as chaves estrangeiras e as contagens, registra o manifesto e revoga a API antiga.
-7. Se a origem tiver mudado durante a preparação, não forçar o checksum: refazer exportação, preparação e ensaio. A ativação falha sem substituir os dados.
-8. Conferir contagens, totais, políticas, leitura autenticada e bloqueio anônimo. Confirmar as funções de leitura/gravação e atualizar o navegador. Manter o snapshot original e a cópia privada até concluir o período de observação.
-
-Para rollback sem novas gravações: primeiro interromper acessos; verificar que `slt_core_change_log` está vazia; desativar `slt_private.release_state`, devolver ao papel `authenticated` a leitura de `slt360_state` e a execução de `slt360_save`, e republicar a versão anterior segura. Não apagar as tabelas novas. Se houver gravações posteriores à migração, exportá-las e reconciliá-las antes de qualquer retorno ao snapshot; restaurá-lo diretamente perderia trabalho.
-
-A fonte de consumo financeiro possui 46.935 lançamentos contabilizados nos agregados, mas disponibilizou somente os 500 maiores lançamentos detalhados. A migração preserva essa distinção e não inventa os detalhes ausentes. O cadastro mestre de equipamentos também não estava na carga; a tabela de ativos começa vazia e recebe equipamentos vinculados às novas OS clínicas.
-
-## Gestão de acessos por módulo
-
-A migração 005 cria cadastro de analistas, vínculos de responsáveis e auditoria de
-acessos. É aditiva aos módulos já ativos: não repetir a importação nem reativar o
-backup legado. Publicar a função slt-users antes da nova interface; depois verificar
-primeiro acesso, bloqueios de consulta e desativação conforme USUARIOS-E-EQUIPE.md.
+- Testes SQL locais usam PGlite com Auth/Storage mínimos simulados; não substituem testes do Storage real.
+- Os testes de navegador usam o build de produção e backend simulado, incluindo login, permissões, fila e recarga de SIC.
+- A leitura inicial ainda busca os módulos autorizados em conjunto. As funções remotas de carregamento inicial parcial não são usadas pelo frontend atual.
+- A carga financeira histórica distingue agregados completos dos detalhes disponíveis; não inventar lançamentos ausentes.
+- Consultar os advisors após mudanças de esquema. RPCs públicas de escrita com `SECURITY DEFINER` são intencionais e exigem validação de sessão, módulo e revisão no corpo.

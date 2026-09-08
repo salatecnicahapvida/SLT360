@@ -11670,3 +11670,112 @@ button.alert-item {
   .slt-calculator-method { grid-column: auto; }
   .slt-calculator > footer { flex-direction: column; }
 }
+
+/* Ajuste visual do cabeçalho SLT360 — 08/09/2026 */
+
+.app-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 200 !important;
+  grid-template-columns: max-content minmax(0, 1fr) max-content !important;
+  gap: 14px !important;
+  align-items: center !important;
+  overflow: visible !important;
+}
+
+.brand {
+  gap: 12px !important;
+}
+
+/* O logo já possui o azul correto no próprio arquivo.
+   Remove o segundo azul aplicado pelo CSS antigo. */
+.brand-logo--slt {
+  width: clamp(210px, 16vw, 245px) !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 22px !important;
+  background: transparent !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  box-shadow: 0 10px 24px rgba(0, 56, 109, 0.12) !important;
+}
+
+.brand-logo--hapvida {
+  width: clamp(104px, 8.5vw, 126px) !important;
+}
+
+/* Evita o corte do primeiro módulo causado por navegação centralizada
+   dentro de um container com overflow horizontal. */
+.top-nav {
+  justify-content: flex-start !important;
+  gap: 1px !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 0 !important;
+  white-space: nowrap !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.top-nav::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.top-nav__item {
+  min-height: 40px !important;
+  flex: 0 0 auto !important;
+  padding-inline: 7px !important;
+  font-size: 0.9rem !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1180px) {
+  .app-header {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .brand-logo--slt {
+    width: clamp(190px, 42vw, 240px) !important;
+  }
+
+  .brand-logo--hapvida {
+    width: clamp(100px, 22vw, 126px) !important;
+  }
+}
+
+/* Home: faixa compacta para escolha do módulo */
+.home-launchpad-section {
+  min-height: auto !important;
+  gap: 14px !important;
+  padding: 12px 18px 18px !important;
+}
+
+.home-launchpad-panel {
+  padding: 10px 16px !important;
+}
+
+.home-launchpad-panel > .eyebrow,
+.home-launchpad-panel > p,
+.home-launchpad-panel .home-launchpad-flow {
+  display: none !important;
+}
+
+.home-launchpad-panel h2 {
+  margin: 0 !important;
+  max-width: none !important;
+  font-size: clamp(2rem, 3.5vw, 2.65rem) !important;
+  line-height: 1.05 !important;
+}
+
+/* Current home and support layout */
+.haptec-launcher { min-height:58px;gap:8px;padding:6px 13px 6px 8px; }
+.haptec-launcher .haptec-robot.is-launcher { --robot-scale:0.68; }
+.haptec-launcher small { display:none; }
+.home-launchpad-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+@media(max-width:1100px){.home-launchpad-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:720px){.home-launchpad-grid{grid-template-columns:1fr;}}

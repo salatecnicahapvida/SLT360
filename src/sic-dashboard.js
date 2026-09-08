@@ -1,523 +1,22 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Controle de EVs — Aditivos &amp; Revisões v4</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<style>
-  :root {
-    --azul: #0d2b4e; --azul-medio: #1a4b8c; --azul-claro: #2e6bbf;
-    --azul-suave: #e8f0fb; --laranja: #e07020; --laranja-claro: #f5a945;
-    --verde: #1e8a4a; --vermelho: #c0392b; --amarelo: #f0b429;
-    --cinza-bg: #f4f6fa; --cinza-borda: #dde3ee; --branco: #ffffff;
-    --texto: #1a2233; --texto-suave: #5a6882;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--cinza-bg); color: var(--texto); font-size: 13px; }
+import { csvCell } from './csv.js';
+import * as XLSX from 'xlsx';
+import { arithmetic } from './arithmetic.js';
+// Native SIC approval component. Operational records come exclusively from Supabase.
+import styles from './sic-dashboard.css';
+import template from './sic-dashboard.html';
+export function mountSicDashboard(host,cloud){
+ if(host.shadowRoot) return;
+ const root=host.attachShadow({mode:'open'});
+ const css=document.createElement('style');css.textContent=styles;root.append(css);
+ const content=document.createElement('div');content.innerHTML=cloud.cleanHTML(template);root.append(content);
+ root.addEventListener('click',event=>{if(!cloud.canWrite() && event.target.closest('button,input,textarea,select')?.matches('[data-sicstatus],[data-sapsave],[data-save-sic],[data-sapedit],[data-editsic],#btnConfirmImport,#btnConfirmAddCurrent')) {event.preventDefault();event.stopImmediatePropagation();}},true);
 
-  header {
-    background: linear-gradient(135deg, var(--azul) 0%, var(--azul-medio) 100%);
-    color: white; padding: 18px 32px; display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 2px 12px rgba(13,43,78,0.4); flex-wrap: wrap; gap: 12px;
-  }
-  header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
-  header .subtitle { font-size: 12px; opacity: 0.75; margin-top: 3px; }
-  header .badge { background: var(--laranja); padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-
-  .container { width: 100%; max-width: none; margin: 0; padding: 18px 18px 48px; }
-
-  .top-row { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-  .btn-clear {
-    padding: 7px 14px; border: 1.5px solid var(--cinza-borda); border-radius: 8px;
-    background: white; font-size: 12px; cursor: pointer; color: var(--texto-suave); transition: all 0.15s;
-    font-weight: 600;
-  }
-  .btn-clear:hover { background: var(--cinza-bg); border-color: var(--azul-claro); color: var(--azul); }
-  .btn-primary {
-    padding: 7px 16px; border: 1.5px solid var(--azul); border-radius: 8px;
-    background: var(--azul); color: white; font-size: 12px; cursor: pointer; font-weight: 700;
-    transition: all 0.15s;
-  }
-  .btn-primary:hover { background: var(--azul-medio); }
-  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
-  .btn-add-current {
-    padding: 7px 16px; border: 1.5px solid var(--laranja); border-radius: 8px;
-    background: #fff7ef; color: #a64d0c; font-size: 12px; cursor: pointer; font-weight: 800;
-    transition: all .15s;
-  }
-  .btn-add-current:hover { background: #ffeddc; border-color: #c75d11; }
-  .btn-add-current:disabled { opacity: .45; cursor: not-allowed; }
-
-  .month-filter-bar {
-    background: var(--branco); border-radius: 12px; padding: 14px 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 20px;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  }
-  .month-filter-bar .mf-label {
-    font-size: 12px; font-weight: 700; color: var(--azul); text-transform: uppercase;
-    letter-spacing: 0.5px; white-space: nowrap; display: flex; align-items: center; gap: 6px;
-  }
-  .mf-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-  .month-chip {
-    padding: 4px 10px; border-radius: 16px; font-size: 11px; font-weight: 600;
-    background: var(--azul-suave); color: var(--azul); cursor: pointer;
-    border: 1.5px solid transparent; transition: all 0.15s; white-space: nowrap;
-  }
-  .month-chip .rng { opacity: .65; margin-left: 4px; }
-  .month-chip:hover { border-color: var(--azul-claro); }
-  .month-chip.active { background: var(--azul); color: white; border-color: var(--azul); }
-  .mf-info { font-size: 11px; color: var(--texto-suave); white-space: nowrap; }
-
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-  .kpi-card {
-    background: var(--branco); border-radius: 12px; padding: 20px 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-left: 5px solid var(--azul-claro);
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .kpi-card.laranja { border-left-color: var(--laranja); }
-  .kpi-card.verde { border-left-color: var(--verde); }
-  .kpi-card.vermelho { border-left-color: var(--vermelho); }
-  .kpi-label { font-size: 11px; color: var(--texto-suave); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
-  .kpi-value { font-size: 22px; font-weight: 800; color: var(--azul); }
-  .kpi-card.laranja .kpi-value { color: var(--laranja); }
-  .kpi-card.verde .kpi-value { color: var(--verde); }
-  .kpi-card.vermelho .kpi-value { color: var(--vermelho); }
-  .kpi-sub { font-size: 11px; color: var(--texto-suave); }
-
-  .section-title {
-    font-size: 15px; font-weight: 700; color: var(--azul);
-    border-bottom: 3px solid var(--azul-claro); padding-bottom: 8px; margin-bottom: 16px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .section-title span.ic { font-size: 18px; }
-
-  .table-card {
-    background: var(--branco); border-radius: 12px; padding: 20px 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 28px; overflow: hidden;
-  }
-
-  /* ---------- Visão executiva em cards ---------- */
-  .cards-shell {
-    background: #eef3f9; border: 1px solid #dbe4f1; border-radius: 14px; padding: 22px 24px 26px;
-    box-shadow: 0 4px 16px rgba(13,43,78,0.06); margin-bottom: 28px;
-  }
-  .obra-cards-grid {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px;
-  }
-  .obra-card {
-    position: relative; background: #fff; border: 1.5px solid #c7d4e6; border-radius: 16px;
-    overflow: hidden; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
-    box-shadow: 0 8px 22px rgba(13,43,78,.10); min-width: 0;
-  }
-  .obra-card::before {
-    content:""; position:absolute; inset:0 auto auto 0; width:100%; height:5px;
-    background: linear-gradient(90deg, var(--azul) 0%, var(--azul-claro) 100%); z-index:1;
-  }
-  .obra-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(13,43,78,.16); border-color: #9fb7da; }
-  .obra-card:focus-visible { outline: 3px solid rgba(46,107,191,.28); outline-offset: 3px; }
-  .obra-card-head { padding: 18px 16px 14px; background: linear-gradient(135deg, #f8fbff 0%, var(--azul-suave) 100%); border-bottom: 1.5px solid var(--cinza-borda); }
-  .obra-card-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-  .obra-card-title { font-size: 13.5px; line-height: 1.42; color: var(--azul); font-weight: 800; min-height: 38px; }
-  .obra-card-meta { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .obra-card-meta .mini-tag { font-size: 9.5px; line-height:1; color:var(--texto-suave); background:#fff; border:1px solid var(--cinza-borda); border-radius:10px; padding:4px 7px; font-weight:700; }
-  .obra-card-primary { display:grid; grid-template-columns: 1.25fr .75fr; gap:10px; padding:14px 16px 10px; }
-  .obra-card-evbase { margin:0 16px 10px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .evbase-item { background:#f7f9fc; border:1px solid var(--cinza-borda); border-radius:9px; padding:9px 10px; min-width:0; }
-  .evbase-item.percent { background:#fff8f1; border-color:#f2d6bd; }
-  .evbase-label { font-size:9px; color:var(--texto-suave); font-weight:800; text-transform:uppercase; letter-spacing:.35px; }
-  .evbase-value { margin-top:3px; font-size:12.5px; color:var(--azul); font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .evbase-item.percent .evbase-value { color:var(--laranja); font-size:14px; }
-  .metric-hero, .metric-box { background:var(--cinza-bg); border-radius:10px; padding:10px 11px; min-width:0; }
-  .metric-hero { border-left:4px solid var(--azul-claro); }
-  .metric-label { font-size:9.5px; color:var(--texto-suave); font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
-  .metric-value { margin-top:4px; font-size:14px; color:var(--azul); font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .metric-hero .metric-value { font-size:18px; }
-  .obra-card-sics { margin:0 16px 12px; border:1px solid #f2d6bd; background:#fff8f1; border-radius:10px; padding:10px 11px; display:grid; grid-template-columns: .8fr 1.2fr; gap:10px; }
-  .obra-card-sics .metric-value { color:var(--laranja); }
-  .obra-card-fin { padding:0 16px 14px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .fin-item { border-top:1px solid var(--cinza-borda); padding-top:9px; min-width:0; }
-  .fin-item.full { grid-column:1 / -1; background:#f7f9fc; border:0; border-radius:9px; padding:9px 10px; }
-  .fin-item .fin-label { font-size:9px; color:var(--texto-suave); font-weight:800; text-transform:uppercase; letter-spacing:.35px; }
-  .fin-item .fin-value { margin-top:3px; font-size:12.5px; color:var(--texto); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .fin-item.recursos { background:var(--azul); }
-  .fin-item.recursos .fin-label { color:rgba(255,255,255,.72); }
-  .fin-item.recursos .fin-value { color:#fff; font-size:14px; }
-  .obra-card-diff { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 16px; border-top:1px solid var(--cinza-borda); font-weight:800; }
-  .obra-card-diff .diff-label { font-size:10px; text-transform:uppercase; letter-spacing:.45px; color:var(--texto-suave); }
-  .obra-card-diff .diff-value { font-size:14px; }
-  .obra-card-diff.deficit { background:#fff3f1; }
-  .obra-card-diff.deficit .diff-value { color:var(--vermelho); }
-  .obra-card-diff.ok { background:#f1faf5; }
-  .obra-card-diff.ok .diff-value { color:var(--verde); }
-  .obra-card-diff.neutral { background:#f7f8fa; }
-  .obra-card-diff.neutral .diff-value { color:var(--texto-suave); }
-  .cards-empty { grid-column:1/-1; }
-
-  .filter-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-  .filter-bar input {
-    flex: 1; min-width: 220px; padding: 8px 14px; border: 1.5px solid var(--cinza-borda);
-    border-radius: 8px; font-size: 12px; color: var(--texto); outline: none; transition: border-color 0.15s;
-  }
-  .filter-bar input:focus { border-color: var(--azul-claro); }
-  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
-  .fchip {
-    padding: 5px 12px; border-radius: 16px; font-size: 11.5px; font-weight: 600;
-    background: var(--azul-suave); color: var(--azul); cursor: pointer;
-    border: 1.5px solid transparent; transition: all 0.15s; white-space: nowrap;
-  }
-  .fchip:hover { border-color: var(--azul-claro); }
-  .fchip.active { background: var(--azul); color: white; }
-  .toggle-pend {
-    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texto-suave);
-    font-weight: 600; white-space: nowrap;
-  }
-  .toggle-pend input { accent-color: var(--laranja); width: 15px; height: 15px; }
-  .filter-count { font-size: 11px; color: var(--texto-suave); white-space: nowrap; margin-left: auto; }
-
-  .table-wrapper { overflow-x: auto; max-height: 560px; overflow-y: auto; }
-  table { border-collapse: collapse; width: 100%; min-width: 980px; }
-  thead th {
-    background: var(--azul); color: white; padding: 9px 12px; text-align: right;
-    font-size: 11px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 2;
-  }
-  thead th:first-child { text-align: left; min-width: 260px; position: sticky; left: 0; z-index: 3; background: var(--azul); }
-  tbody tr.obra-row { cursor: pointer; }
-  tbody tr:nth-child(even) td { background: var(--azul-suave); }
-  tbody tr.obra-row:hover td { background: #d0dff7 !important; }
-  tbody td {
-    padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--cinza-borda);
-    font-size: 12px; white-space: nowrap;
-  }
-  tbody td:first-child {
-    text-align: left; font-weight: 600; color: var(--azul);
-    position: sticky; left: 0; z-index: 1; background: var(--branco);
-    border-right: 2px solid var(--cinza-borda); box-shadow: 2px 0 4px rgba(0,0,0,0.06);
-    white-space: normal;
-  }
-  tbody tr:nth-child(even) td:first-child { background: var(--azul-suave); }
-  tbody tr.obra-row:hover td:first-child { background: #d0dff7 !important; }
-  .td-oi { font-size: 10.5px; color: var(--texto-suave); font-weight: 500; margin-top: 2px; }
-  .td-class { font-size: 10.5px; color: var(--texto-suave); font-weight: 500; margin-top: 2px; }
-
-  .badge-ok { background: #d4f0e0; color: #1e6e3a; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-  .badge-atencao { background: #fff0c0; color: #8a6000; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-  .badge-critico { background: #fde0dd; color: #8a1c1c; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-  .badge-semoi { background: #e8e8e8; color: #555; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-  .badge-neutro { background: var(--azul-suave); color: var(--azul); padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-
-  .empty-state { text-align: center; padding: 60px 20px; color: var(--texto-suave); }
-  .empty-state .big { font-size: 16px; font-weight: 700; color: var(--azul); margin-bottom: 6px; }
-
-  /* ---------- Side Panel (mesmo padrão do dashboard Curva de Capex) ---------- */
-  .obra-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(13,43,78,0.45); z-index: 200;
-    animation: fadeIn 0.2s ease;
-  }
-  .obra-overlay.open { display: block; }
-  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-
-  .obra-panel {
-    position: fixed; right: -100%; top: 0; height: 100vh; width: 92vw;
-    background: var(--branco); z-index: 201; box-shadow: -8px 0 40px rgba(13,43,78,0.22);
-    transition: right 0.32s cubic-bezier(0.4,0,0.2,1);
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .obra-panel.open { right: 0; }
-  .obra-panel-header {
-    background: linear-gradient(135deg, var(--azul) 0%, var(--azul-medio) 100%);
-    color: white; padding: 16px 26px 18px; flex-shrink: 0; border-bottom: 3px solid var(--laranja);
-    position: relative;
-  }
-  .panel-back {
-    display: inline-flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.16);
-    border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 13px; font-weight: 700;
-    padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: background .15s; margin-bottom: 14px;
-  }
-  .panel-back:hover { background: rgba(255,255,255,0.3); }
-  .obra-panel-header .tipo-tag { font-size: 10.5px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.9px; margin-bottom: 5px; display: flex; align-items: center; gap: 5px; }
-  .obra-panel-header .obra-title { font-size: 17px; font-weight: 700; line-height: 1.4; max-width: 1000px; }
-  .obra-panel-body { overflow-y: auto; flex: 1; }
-  .panel-inner { max-width: 1080px; margin: 0 auto; }
-  .panel-section { padding: 20px 26px; border-bottom: 1px solid var(--cinza-borda); }
-  .panel-section-title {
-    font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.9px;
-    color: var(--azul-claro); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
-  }
-  .panel-kpis { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-  .panel-kpis.ev-kpis { grid-template-columns: repeat(4, minmax(0,1fr)); }
-  .panel-kpi { background: var(--cinza-bg); border-radius: 8px; padding: 10px 12px; border-left: 3px solid var(--azul-claro); }
-  .panel-kpi.laranja { border-left-color: var(--laranja); }
-  .panel-kpi.verde { border-left-color: var(--verde); }
-  .panel-kpi-label { font-size: 9.5px; color: var(--texto-suave); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
-  .panel-kpi-value { font-size: 13px; font-weight: 800; color: var(--azul); margin-top: 3px; line-height: 1.2; }
-  .panel-kpi.laranja .panel-kpi-value { color: var(--laranja); }
-  .panel-kpi.verde .panel-kpi-value { color: var(--verde); }
-  .panel-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
-  .panel-date-box { background: var(--azul-suave); border-radius: 8px; padding: 10px 13px; border-top: 3px solid var(--azul-claro); }
-  .panel-date-label { font-size: 9.5px; color: var(--texto-suave); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
-  .panel-date-value { font-size: 13.5px; font-weight: 700; color: var(--azul); margin-top: 3px; }
-
-  .history-wrap { overflow-x: auto; border: 1px solid var(--cinza-borda); border-radius: 8px; }
-  .history-table { min-width: 760px; width: 100%; border-collapse: collapse; }
-  .history-table th { background: var(--azul-suave); color: var(--azul); font-size: 10px; text-transform: uppercase; letter-spacing: .35px; padding: 8px 9px; text-align: right; position: static; }
-  .history-table th:first-child { text-align: left; min-width: 125px; position: static; background: var(--azul-suave); }
-  .history-table td { padding: 8px 9px; border-bottom: 1px solid var(--cinza-borda); font-size: 11px; text-align: right; white-space: nowrap; }
-  .history-table td:first-child { text-align: left; color: var(--azul); font-weight: 700; position: static; background: transparent; border-right: none; box-shadow: none; }
-  .history-table tr:last-child td { border-bottom: none; }
-  .history-table tr.selected-history td { background: #fff5e8; }
-  .history-delta { font-size: 10px; margin-left: 4px; font-weight: 700; }
-  .history-delta.pos { color: var(--verde); }
-  .history-delta.neg { color: var(--vermelho); }
-
-  .total-row { display: flex; gap: 8px; margin-top: 12px; padding: 10px 14px; background: var(--azul); border-radius: 8px; align-items: center; }
-  .total-row .t-label { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0; }
-  .total-row .t-val { font-size: 12px; color: white; font-weight: 700; margin-left: auto; }
-  .total-row .t-val.pos { color: #6ee89a; }
-  .total-row .t-val.neg { color: #ff8a7a; }
-
-  .warn-flag { font-size: 11px; color: #8a1c1c; background: #fde0dd; border-radius: 6px; padding: 8px 10px; margin-top: 10px; display: flex; gap: 6px; align-items: flex-start; }
-  .no-oi-note { font-size: 12px; color: #555; background: #eee; border-radius: 8px; padding: 12px 14px; }
-
-  .sic-item { padding: 12px 0; border-bottom: 1px solid var(--cinza-borda); }
-  .sic-item:last-child { border-bottom: none; }
-  .sic-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-  .sic-lecom { font-size: 10.5px; font-weight: 700; color: var(--azul-medio); background: var(--azul-suave); padding: 3px 8px; border-radius: 6px; }
-  .sic-week-tag { font-size: 9.5px; color: var(--texto-suave); margin-left: 6px; }
-  .sic-valor { font-size: 13.5px; font-weight: 800; color: var(--azul); white-space: nowrap; }
-  .sic-value-wrap { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
-  .sic-edit-btn { border:1px solid var(--cinza-borda); background:#fff; color:var(--azul-medio); border-radius:7px; padding:4px 8px; font-size:10.5px; font-weight:700; cursor:pointer; }
-  .sic-edit-btn:hover { border-color:var(--azul-claro); background:var(--azul-suave); }
-  .sic-value-edit-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
-  .sic-value-input { width:145px; border:1.5px solid var(--azul-claro); border-radius:7px; padding:6px 8px; font-size:12px; font-weight:700; color:var(--azul); background:#fff; outline:none; text-align:right; }
-  .sic-value-save { border:0; background:var(--verde); color:#fff; border-radius:7px; padding:6px 9px; font-size:10.5px; font-weight:800; cursor:pointer; }
-  .sic-value-cancel { border:1px solid var(--cinza-borda); background:#fff; color:var(--texto-suave); border-radius:7px; padding:5px 8px; font-size:10.5px; font-weight:700; cursor:pointer; }
-  .sic-desc { font-size: 12px; color: #334; line-height: 1.55; margin-top: 6px; }
-  .sic-desc.clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  .sic-more { font-size: 11px; color: var(--azul-claro); background: none; border: none; padding: 4px 0 0; text-decoration: underline; cursor: pointer; }
-  .sic-bottom { margin-top: 8px; display: flex; justify-content: flex-end; }
-  .approve-row { display: flex; gap: 18px; align-items: center; }
-  .approve-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 5px 8px; border-radius: 6px; transition: background .12s; }
-  .approve-check:hover { background: var(--cinza-bg); }
-  .approve-check input { width: 17px; height: 17px; cursor: pointer; }
-  .approve-check.ok { color: #1e6e3a; }
-  .approve-check.ok input { accent-color: var(--verde); }
-  .approve-check.no { color: #8a1c1c; }
-  .approve-check.no input { accent-color: var(--vermelho); }
-  .approve-check.thump { animation: thump .28s ease; }
-  @keyframes thump { 0%{transform:scale(1);} 40%{transform:scale(1.1);} 100%{transform:scale(1);} }
-
-  .badge-parcial { background: #ffe3c2; color: #8a4b00; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
-
-  .sic-desc-edit {
-    width: 100%; border: 1.5px dashed var(--cinza-borda); border-radius: 8px; background: var(--cinza-bg);
-    padding: 10px 12px; font-family: inherit; font-size: 12.5px; color: #334; line-height: 1.55;
-    resize: vertical; min-height: 64px; outline: none; transition: border-color .15s, background .15s;
-  }
-  .sic-desc-edit:focus { border-color: var(--azul-claro); background: #fff; border-style: solid; }
-  .sic-desc-hint { font-size: 10.5px; color: var(--texto-suave); margin-top: 4px; }
-  .sic-saved-tag { font-size: 10.5px; color: var(--verde); font-weight: 700; margin-left: 6px; opacity: 0; transition: opacity .3s; }
-  .sic-saved-tag.show { opacity: 1; }
-
-  /* ---------- Modal de importação ---------- */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(13,43,78,.5); display: none;
-    align-items: center; justify-content: center; z-index: 300; padding: 20px;
-  }
-  .modal-overlay.show { display: flex; }
-  .modal {
-    background: #fff; border-radius: 12px; max-width: 520px; width: 100%;
-    max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(13,43,78,.35);
-  }
-  .modal-head { padding: 18px 22px; border-bottom: 1px solid var(--cinza-borda); display: flex; justify-content: space-between; align-items: center; background: var(--azul); border-radius: 12px 12px 0 0; }
-  .modal-head h3 { font-size: 15px; margin: 0; color: white; }
-  .modal-close { background: none; border: none; font-size: 20px; color: white; line-height: 1; cursor: pointer; opacity: .8; }
-  .modal-close:hover { opacity: 1; }
-  .modal-body { padding: 20px 22px; }
-  .field { margin-bottom: 16px; }
-  .field label { display: block; font-size: 12px; font-weight: 700; color: var(--azul); margin-bottom: 6px; }
-  .field input[type=text], .field input[type=date] {
-    width: 100%; border: 1.5px solid var(--cinza-borda); border-radius: 8px;
-    padding: 9px 12px; font-size: 13px; background: var(--cinza-bg); outline: none;
-  }
-  .field input:focus { border-color: var(--azul-claro); background: #fff; }
-  .file-drop { border: 2px dashed var(--cinza-borda); border-radius: 10px; padding: 24px 16px; text-align: center; background: var(--cinza-bg); }
-  .file-drop.has-file { border-color: var(--verde); background: #f0faf4; }
-  .file-drop input[type=file] { display: none; }
-  .file-drop-label { font-size: 13px; color: var(--azul-claro); text-decoration: underline; cursor: pointer; }
-  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .preview-box { background: var(--azul-suave); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; color: var(--azul); margin-top: 4px; }
-  .preview-box.err { background: #fde0dd; color: #8a1c1c; }
-  .modal-foot { padding: 16px 22px; border-top: 1px solid var(--cinza-borda); display: flex; justify-content: flex-end; gap: 10px; }
-
-  .editable-money {
-    width: 100%; margin-top: 5px; padding: 7px 8px; border: 1.5px solid var(--cinza-borda);
-    border-radius: 6px; background: #fff; color: var(--azul); font-size: 13px; font-weight: 800;
-    text-align: right; outline: none;
-  }
-  .editable-money:focus { border-color: var(--azul-claro); box-shadow: 0 0 0 2px rgba(46,107,191,.10); }
-  .edit-note { font-size: 10px; color: var(--texto-suave); margin-top: 8px; }
-  .sap-actions { display:flex; justify-content:flex-end; gap:8px; margin-bottom:12px; }
-  .sap-edit-btn, .sap-save-btn, .sap-cancel-btn {
-    border-radius:7px; padding:7px 12px; font-size:11px; font-weight:700; cursor:pointer;
-    transition:all .15s; border:1.5px solid var(--cinza-borda); background:#fff;
-  }
-  .sap-edit-btn { color:var(--azul); border-color:var(--azul-claro); }
-  .sap-edit-btn:hover { background:var(--azul-suave); }
-  .sap-save-btn { color:#fff; background:var(--azul); border-color:var(--azul); }
-  .sap-save-btn:hover { background:var(--azul-medio); }
-  .sap-cancel-btn { color:var(--texto-suave); }
-  .sap-cancel-btn:hover { background:var(--cinza-bg); }
-  .sap-display-value { margin-top:3px; }
-
-  .event-list { display: flex; flex-direction: column; gap: 8px; }
-  .event-item { background: var(--cinza-bg); border-radius: 8px; padding: 9px 11px; border-left: 3px solid var(--azul-claro); }
-  .event-item.approval { border-left-color: var(--verde); }
-  .event-item.reversal { border-left-color: var(--vermelho); }
-  .event-item.sapedit { border-left-color: var(--laranja); }
-  .event-top { display:flex; justify-content:space-between; gap:10px; font-size:10.5px; color:var(--texto-suave); margin-bottom:3px; }
-  .event-text { font-size:12px; color:#334; line-height:1.45; }
-
-  .toast {
-    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
-    background: var(--azul); color: #fff; padding: 11px 20px; border-radius: 8px; font-size: 13px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.25); opacity: 0; transition: all .25s ease; pointer-events: none; z-index: 400;
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .toast.err { background: var(--vermelho); }
-  .toast.ok { background: var(--verde); }
-
-  footer.foot { max-width: 1440px; margin: 8px auto 0; padding: 14px 24px 0; border-top: 1px solid var(--cinza-borda); font-size: 11px; color: var(--texto-suave); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-
-  @media (max-width: 1180px) { .obra-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 900px) {
-    .kpi-grid { grid-template-columns: 1fr 1fr; }
-    .panel-kpis.ev-kpis { grid-template-columns: 1fr 1fr; }
-    .obra-panel { width: 100%; right: -100%; }
-    .obra-cards-grid { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 560px) {
-    .cards-shell { padding:16px 12px 18px; }
-    .obra-card-primary { grid-template-columns:1fr; }
-    .obra-card-evbase { grid-template-columns:1fr; }
-    .obra-card-fin { grid-template-columns:1fr; }
-    .fin-item.full { grid-column:auto; }
-  }
-</style>
-</head>
-<body>
-
-<header>
-  <div>
-    <h1>🧾 Controle de EVs — Aditivos &amp; Revisões</h1>
-    <div class="subtitle" id="header-sub">Carregando…</div>
-  </div>
-  <div class="badge">Sala Técnica</div>
-</header>
-
-<div class="container">
-  <div class="top-row">
-    <button class="btn-clear" id="btnExport">⭳ Exportar semana (CSV)</button>
-    <button class="btn-add-current" id="btnOpenAddCurrent">＋ Acrescentar à semana vigente</button>
-    <button class="btn-primary" id="btnOpenImport">+ Importar nova semana</button>
-  </div>
-
-  <div class="month-filter-bar">
-    <div class="mf-label">📅 Semana</div>
-    <div class="mf-chips" id="weekChips"></div>
-    <span class="mf-info" id="weekInfo"></span>
-  </div>
-
-  <div class="kpi-grid" id="kpiRow"></div>
-
-  <div class="cards-shell">
-    <div class="section-title"><span class="ic">▦</span> Obras da Semana — Visão Executiva</div>
-    <div class="filter-bar" id="filterBar"></div>
-    <div class="obra-cards-grid" id="obraCardsGrid"></div>
-  </div>
-
-  <footer class="foot">
-    <span id="footStamp"></span>
-    <span>Fonte: planilha de Controle de EVs — dados mantidos localmente neste dashboard.</span>
-  </footer>
-</div>
-
-<!-- Side Panel -->
-<div class="obra-overlay" id="obra-overlay" onclick="closePanel()"></div>
-<div class="obra-panel" id="obra-panel">
-  <div class="obra-panel-header">
-    <button class="panel-back" onclick="closePanel()">← Voltar</button>
-    <div class="tipo-tag" id="panel-tag"></div>
-    <div class="obra-title" id="panel-title"></div>
-  </div>
-  <div class="obra-panel-body"><div class="panel-inner" id="panel-body"></div></div>
-</div>
-
-<div class="modal-overlay" id="importOverlay">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>Importar nova semana</h3>
-      <button class="modal-close" id="btnCloseModal">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="field">
-        <label>Planilha da semana (.xlsx, mesmo modelo)</label>
-        <div class="file-drop" id="fileDrop">
-          <label class="file-drop-label" for="fileInput" id="fileDropLabel">Escolher arquivo…</label>
-          <input type="file" id="fileInput" accept=".xlsx,.xls">
-        </div>
-      </div>
-      <div class="field">
-        <label>Rótulo da semana</label>
-        <input type="text" id="weekLabel" placeholder="Ex: Semana 2">
-      </div>
-      <div class="row-2">
-        <div class="field"><label>Início</label><input type="date" id="weekStart"></div>
-        <div class="field"><label>Fim</label><input type="date" id="weekEnd"></div>
-      </div>
-      <div id="importPreview"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn-clear" id="btnCancelImport">Cancelar</button>
-      <button class="btn-primary" id="btnConfirmImport" disabled>Importar semana</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal — acrescentar à semana vigente -->
-<div class="modal-overlay" id="addCurrentOverlay">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>Acrescentar à semana vigente</h3>
-      <button class="modal-close" id="btnCloseAddCurrent">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="preview-box" id="currentWeekTarget" style="margin-bottom:16px"></div>
-      <div class="field">
-        <label>Planilha de acréscimos (.xlsx ou .xls)</label>
-        <div class="file-drop" id="addCurrentFileDrop">
-          <label class="file-drop-label" for="addCurrentFileInput" id="addCurrentFileLabel">Escolher arquivo…</label>
-          <input type="file" id="addCurrentFileInput" accept=".xlsx,.xls">
-        </div>
-      </div>
-      <div id="addCurrentPreview"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn-clear" id="btnCancelAddCurrent">Cancelar</button>
-      <button class="btn-primary" id="btnConfirmAddCurrent" disabled>Acrescentar à semana</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
 /* =========================================================
    SEED DATA — Semana 1 (17/08 a 21/08/2026)
    ========================================================= */
-const SEED_OBRAS = [{"id": "oi-50159049_50159348", "oiList": ["50159049", "50159348"], "oiRaw": "50159049 ; 50159348", "hasOI": true, "descricao": "4178. NOVO TEA JOÃO PESSOA RUI BARBOSA (2025)", "classificacao": "Carry Over | Suficiência de Rede", "ev": {"semAditivos": 1701008.17, "aditivosAprovados": 307668.24, "total": 2008676.41, "areaM2": 742.75, "valorM2": 2704.377529451363}, "sap": {"faturasAnosAnteriores": 0, "atribuidoAtual": 2161199.37, "comprometidoAtual": 2161198.8, "saldoAtual": 0.5700000002980232, "diffEV": 152522.9600000002}, "lastWeekId": "w1", "sics": [{"id": "oi-50159049_50159348::w1::0", "lecom": "1.363.034", "descricao": "O projeto previa apenas a instalação de um rack. Entretanto, a necessidade de inclusão de um segundo rack de 24U foi inicialmente tratada como uma omissão por parte do engenheiro responsável, que adotou como referência uma obra de maior porte, na qual os switches não estavam contemplados em conjunto com o cabeamento de TV, seguindo, portanto, o mesmo entendimento para esta obra. A metragem adicional de cabos decorreu da alteração da posição do balcão de atendimento em relação ao layout originalmente previsto em projeto dessa forma, foi necessário ampliar os trajetos de infraestrutura e cabeamento para atender à nova configuração implantada na obra.", "valor": 2899.08, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}, {"id": "oi-50157994", "oiList": ["50157994"], "oiRaw": "50157994", "hasOI": true, "descricao": "5129 - 0000. NOVO TEA SÃO LUÍS - REFORMA TEA 2° FASE - MA", "classificacao": "Obra Extra | Carry Over", "ev": {"semAditivos": 594087.84, "aditivosAprovados": 3475.78, "total": 597563.62, "areaM2": 300, "valorM2": 1991.8787333333332}, "sap": {"faturasAnosAnteriores": 789724.63, "atribuidoAtual": 52458.4, "comprometidoAtual": 52457.4, "saldoAtual": 1, "diffEV": 244619.41000000003}, "lastWeekId": "w1", "sics": [{"id": "oi-50157994::w1::0", "lecom": "1.372.637", "descricao": "Adequação dos vestiários masculino e feminino devido a problemas de drenagem nos chuveiros, que causam alagamentos, e à ausência de divisória entre o vaso sanitário e o chuveiro no vestiário masculino.", "valor": 2374.6, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}, {"id": "oi-50158460", "oiList": ["50158460"], "oiRaw": "50158460", "hasOI": true, "descricao": "3984. ADEQUAÇÃO VISA HS ALDEOTA .ENDOSCOPIA OBSERVAÇÃO IT - CE", "classificacao": "Carry Over | Regulatório", "ev": {"semAditivos": 1252347.55, "aditivosAprovados": 146012.34, "total": 1398359.8900000001, "areaM2": 342.16, "valorM2": 4086.8596270750527}, "sap": {"faturasAnosAnteriores": 1034969.42, "atribuidoAtual": 115645.59, "comprometidoAtual": 115645.59, "saldoAtual": 0, "diffEV": -247744.88000000012}, "lastWeekId": "w1", "sics": [{"id": "oi-50158460::w1::0", "lecom": "1.305.878", "descricao": "Inclusão de serviços estruturais em razão da inexistência de laje estrutural identificada durante a demolição, tornando necessária a execução de pilares e vigamentos metálicos para garantir a estabilidade e segurança da edificação.", "valor": 31097.51, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}, {"id": "oi-50158033_50159350_50159424", "oiList": ["50158033", "50159350", "50159424"], "oiRaw": "50158033 ; 50159350 ; 50159424", "hasOI": true, "descricao": "90831. LAB. IMA. ZONA CENTRAL ANGELICA - SP (SALAS GAMA - 8º PAVIMENTO)", "classificacao": "Carry Over | Suficiência de Rede", "ev": {"semAditivos": 11331882.63, "aditivosAprovados": 251697.12, "total": 11583579.75, "areaM2": 7512.4, "valorM2": 1541.9279790745968}, "sap": {"faturasAnosAnteriores": 1776533.2, "atribuidoAtual": 7003175.23, "comprometidoAtual": 6811174.41, "saldoAtual": 192000.8200000003, "diffEV": -2803871.3200000003}, "lastWeekId": "w1", "sics": [{"id": "oi-50158033_50159350_50159424::w1::0", "lecom": "1.352.526", "descricao": "Inclusão dos alimentadores dos novos quadros de climatização, não previstos no projeto original e incorporados em revisão posterior. Além de um novo QGBT para alimentar esses quadros.", "valor": 241511.57, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}, {"id": "oi-50158033_50159350_50159424::w1::1", "lecom": "1.370.504", "descricao": "Instalação de piso vinílico em ambientes sem intervenção no 10º pavimento, conforme alinhamento entre Coordenação de Projetos e Gerência de Obras.", "valor": 30097.6, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}, {"id": "oi-50158033_50159350_50159424::w1::2", "lecom": "1.371.459", "descricao": "Instalação de corrimão entre o 13º e o 14º pavimento, em atendimento à exigência da Vigilância Sanitária não contemplada no projeto original.", "valor": 4306.13, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}, {"id": "semoi-4392-adequacao-ppci-clinica-aracaju-se", "oiList": [], "oiRaw": "N/A", "hasOI": false, "descricao": "4392. ADEQUAÇÃO PPCI CLÍNICA ARACAJU - SE", "classificacao": "Regulatório Ambiental", "ev": {"semAditivos": 146775.7, "aditivosAprovados": 0, "total": 146775.7, "areaM2": 345.76, "valorM2": 424.501677464137}, "sap": null, "lastWeekId": "w1", "sics": [{"id": "semoi-4392-adequacao-ppci-clinica-aracaju-se::w1::0", "lecom": "1.358.846", "descricao": "O projeto de PPCI prevê a instalação de corrimãos nos corredores da unidade. Como o projeto não especificava o material, foi considerado inicialmente corrimão galvanizado. Entretanto, após alinhamento com o engenheiro responsável, verificou-se que a execução está sendo realizada em aço inox. Dessa forma, foi necessária a supressão do valor previsto para os corrimãos no escopo inicial. \nConforme solicitação do engenheiro da obra, após notificação do Corpo de Bombeiros de Sergipe, identificou-se a necessidade de substituição dos corrimãos das escadas, item não contemplado inicialmente no apontamento do projetista de PPCI. Considerando que os corrimãos existentes são do tipo simples e estão sendo substituídos por corrimãos em aço inox, foi necessária a adequação do escopo para atender às exigências da fiscalização.", "valor": 24072.49, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}, {"id": "oi-50159067", "oiList": ["50159067"], "oiRaw": "50159067", "hasOI": true, "descricao": "9067 NOVA COLETA ANÁPOLIS - GO", "classificacao": "Pacote Operacional | Suficiência de Rede", "ev": {"semAditivos": 356625, "aditivosAprovados": 32790.26, "total": 389415.26, "areaM2": 288.32, "valorM2": 1350.6356132075473}, "sap": {"faturasAnosAnteriores": 0, "atribuidoAtual": 388140.67, "comprometidoAtual": 388140.67, "saldoAtual": 0, "diffEV": -1274.5900000000256}, "lastWeekId": "w1", "sics": [{"id": "oi-50159067::w1::0", "lecom": "1385135", "descricao": "Sic referente ao serviço de comunicação visual da fachada, incluso letreiro e pelicula", "valor": 4627.57, "weekId": "w1", "status": "pendente", "statusUpdatedAt": null}]}];
-const SEED_WEEKS = [{"id": "w1", "label": "Semana 1", "start": "2026-08-17", "end": "2026-08-21", "importedAt": "2026-08-17T00:00:00.000Z"}];
-const SEED_SNAPSHOTS = [{"weekId": "w1", "obraId": "oi-50159049_50159348", "ev": {"semAditivos": 1701008.17, "aditivosAprovados": 307668.24, "total": 2008676.41, "areaM2": 742.75, "valorM2": 2704.377529451363}, "sap": {"faturasAnosAnteriores": 0, "atribuidoAtual": 2161199.37, "comprometidoAtual": 2161198.8, "saldoAtual": 0.5700000002980232, "diffEV": 152522.9600000002}, "capturedAt": "2026-08-17T00:00:00.000Z"}, {"weekId": "w1", "obraId": "oi-50157994", "ev": {"semAditivos": 594087.84, "aditivosAprovados": 3475.78, "total": 597563.62, "areaM2": 300, "valorM2": 1991.8787333333332}, "sap": {"faturasAnosAnteriores": 789724.63, "atribuidoAtual": 52458.4, "comprometidoAtual": 52457.4, "saldoAtual": 1, "diffEV": 244619.41000000003}, "capturedAt": "2026-08-17T00:00:00.000Z"}, {"weekId": "w1", "obraId": "oi-50158460", "ev": {"semAditivos": 1252347.55, "aditivosAprovados": 146012.34, "total": 1398359.8900000001, "areaM2": 342.16, "valorM2": 4086.8596270750527}, "sap": {"faturasAnosAnteriores": 1034969.42, "atribuidoAtual": 115645.59, "comprometidoAtual": 115645.59, "saldoAtual": 0, "diffEV": -247744.88000000012}, "capturedAt": "2026-08-17T00:00:00.000Z"}, {"weekId": "w1", "obraId": "oi-50158033_50159350_50159424", "ev": {"semAditivos": 11331882.63, "aditivosAprovados": 251697.12, "total": 11583579.75, "areaM2": 7512.4, "valorM2": 1541.9279790745968}, "sap": {"faturasAnosAnteriores": 1776533.2, "atribuidoAtual": 7003175.23, "comprometidoAtual": 6811174.41, "saldoAtual": 192000.8200000003, "diffEV": -2803871.3200000003}, "capturedAt": "2026-08-17T00:00:00.000Z"}, {"weekId": "w1", "obraId": "semoi-4392-adequacao-ppci-clinica-aracaju-se", "ev": {"semAditivos": 146775.7, "aditivosAprovados": 0, "total": 146775.7, "areaM2": 345.76, "valorM2": 424.501677464137}, "sap": null, "capturedAt": "2026-08-17T00:00:00.000Z"}, {"weekId": "w1", "obraId": "oi-50159067", "ev": {"semAditivos": 356625, "aditivosAprovados": 32790.26, "total": 389415.26, "areaM2": 288.32, "valorM2": 1350.6356132075473}, "sap": {"faturasAnosAnteriores": 0, "atribuidoAtual": 388140.67, "comprometidoAtual": 388140.67, "saldoAtual": 0, "diffEV": -1274.5900000000256}, "capturedAt": "2026-08-17T00:00:00.000Z"}];
+
+
+
 
 /* =========================================================
    HELPERS DE FORMATAÇÃO
@@ -558,39 +57,11 @@ function slugify(s){
    - Prioriza window.storage quando existir (compatibilidade com Claude)
    - Mantém cópia em localStorage para funcionamento em navegador comum
    ========================================================= */
-const STORE_KEYS = {obras:'controle-evs:obras', weeks:'controle-evs:weeks', snapshots:'controle-evs:snapshots'};
 
-async function storageGet(key){
-  // 1) tenta o storage assíncrono do ambiente original
-  try{
-    if(window.storage && typeof window.storage.get === 'function'){
-      const r = await window.storage.get(key);
-      if(r && r.value !== undefined && r.value !== null) return r.value;
-    }
-  }catch(e){ console.warn('window.storage indisponível para leitura:', e); }
-  // 2) fallback portátil
-  try{
-    const v = window.localStorage ? localStorage.getItem(key) : null;
-    return v;
-  }catch(e){ console.warn('localStorage indisponível para leitura:', e); return null; }
-}
 
-async function storageSet(key, value){
-  let saved = false;
-  try{
-    if(window.storage && typeof window.storage.set === 'function'){
-      await window.storage.set(key, value);
-      saved = true;
-    }
-  }catch(e){ console.warn('window.storage indisponível para gravação:', e); }
-  try{
-    if(window.localStorage){
-      localStorage.setItem(key, value);
-      saved = true;
-    }
-  }catch(e){ console.warn('localStorage indisponível para gravação:', e); }
-  return saved;
-}
+
+
+
 
 function ensureDataSchema(obras, weeks, snapshots){
   (obras||[]).forEach(o=>{
@@ -622,34 +93,13 @@ function ensureDataSchema(obras, weeks, snapshots){
   return {obras:obras||[], weeks:weeks||[], snapshots:snapshots||[]};
 }
 
-async function loadStore(){
-  let obras=null, weeks=null, snapshots=null;
-  try{ const v = await storageGet(STORE_KEYS.obras); obras = v ? JSON.parse(v) : null; }catch(e){ obras=null; }
-  try{ const v = await storageGet(STORE_KEYS.weeks); weeks = v ? JSON.parse(v) : null; }catch(e){ weeks=null; }
-  try{ const v = await storageGet(STORE_KEYS.snapshots); snapshots = v ? JSON.parse(v) : null; }catch(e){ snapshots=null; }
+async function loadStore(){ const data = cloud.load(); return ensureDataSchema(data.obras, data.weeks, data.snapshots); }
 
-  if(!obras || !weeks){
-    obras = JSON.parse(JSON.stringify(SEED_OBRAS));
-    weeks = JSON.parse(JSON.stringify(SEED_WEEKS));
-    snapshots = JSON.parse(JSON.stringify(SEED_SNAPSHOTS));
-  }
-  const normalized = ensureDataSchema(obras, weeks, snapshots);
-  await persistAll(normalized.obras, normalized.weeks, normalized.snapshots);
-  return normalized;
-}
-
-async function persistAll(obras, weeks, snapshots){
-  try{
-    const payloads = [
-      [STORE_KEYS.obras, JSON.stringify(obras)],
-      [STORE_KEYS.weeks, JSON.stringify(weeks)],
-      [STORE_KEYS.snapshots, JSON.stringify(snapshots)]
-    ];
-    const results = [];
-    for(const [k,v] of payloads) results.push(await storageSet(k,v));
-    return results.every(Boolean);
-  }catch(e){ console.error('Falha ao salvar dados', e); return false; }
-}
+async function persistAll(obras,weeks,snapshots){
+  if(!cloud.canWrite()) { showToast('Seu acesso permite apenas consulta.','err'); return false; }
+  try { await cloud.save({obras,weeks,snapshots}); return true; }
+  catch { showToast('Não salvo no banco. Recarregue antes de continuar.','err'); return false; }
+ }
 
 /* =========================================================
    ESTADO DA APLICAÇÃO
@@ -797,25 +247,31 @@ function currentWeekMeta(){
    RENDER
    ========================================================= */
 function render(){
+  lockReadOnlyControls();
   renderHeaderSub();
   renderWeekChips();
   renderKPIs();
   renderFilterBar();
   renderObraTable();
-  document.getElementById('footStamp').textContent =
+  root.getElementById('footStamp').textContent =
     `${state.obras.length} obra(s) cadastradas · ${state.weeks.length} semana(s) no histórico`;
+}
+
+function lockReadOnlyControls(){
+ if(cloud.canWrite())return;
+ root.querySelectorAll('[data-approve],[data-disapprove],[data-descedit],[data-sicvalueedit],[data-sicvaluesave],[data-sicvalueinput],[data-sapstart],[data-sapsave],[data-sapedit],#btnOpenImport,#btnOpenAddCurrent,#btnConfirmImport,#btnConfirmAddCurrent').forEach(el=>{el.disabled=true;el.title='Seu acesso permite apenas consulta.';});
 }
 
 function renderHeaderSub(){
   const wm = currentWeekMeta();
   const scope = wm ? `${wm.label} (${fmtDate(wm.start)}–${fmtDate(wm.end)})` : 'todas as semanas';
   const pend = state.obras.reduce((n,o)=>n+sicsForObraInSelectedWeek(o).filter(s=>s.status==='pendente').length,0);
-  document.getElementById('header-sub').textContent =
+  root.getElementById('header-sub').textContent =
     `Estudos de Viabilidade, Aditivos e Revisões — ${scope} · ${pend} SIC(s) aguardando aprovação`;
 }
 
 function renderWeekChips(){
-  const el = document.getElementById('weekChips');
+  const el = root.getElementById('weekChips');
   const weeksSorted = [...state.weeks].sort((a,b)=>a.start.localeCompare(b.start));
   let html = '';
   weeksSorted.forEach(w=>{
@@ -823,15 +279,15 @@ function renderWeekChips(){
     html += `<button class="month-chip ${active?'active':''}" data-week="${esc(w.id)}">${esc(w.label)}<span class="rng">${fmtDate(w.start)}–${fmtDate(w.end)}</span></button>`;
   });
   html += `<button class="month-chip ${state.selectedWeekId==='all'?'active':''}" data-week="all">Todas as semanas</button>`;
-  el.innerHTML = html;
-  document.getElementById('weekInfo').textContent = `${weeksSorted.length} semana(s) importada(s)`;
+  el.innerHTML = cloud.cleanHTML(html);
+  root.getElementById('weekInfo').textContent = `${weeksSorted.length} semana(s) importada(s)`;
   el.querySelectorAll('.month-chip').forEach(btn=>{
     btn.addEventListener('click', ()=>{ state.selectedWeekId = btn.dataset.week; render(); });
   });
 }
 
 function renderKPIs(){
-  const el = document.getElementById('kpiRow');
+  const el = root.getElementById('kpiRow');
   const inScope = state.selectedWeekId==='all' ? state.obras : state.obras.filter(o=>snapshotForObraWeek(o,state.selectedWeekId));
   let novasQtd=0, novasValor=0;
   inScope.forEach(o=>{ sicsForObraInSelectedWeek(o).forEach(s=>{ novasQtd++; novasValor += (s.valor||0); }); });
@@ -850,7 +306,7 @@ function renderKPIs(){
   const evLabel = wm ? `EV total — ${esc(wm.label)}` : 'EV total da carteira';
   const scopeSub = wm ? `${inScope.length} obra(s) no snapshot da semana` : `${inScope.length} obra(s) — estado atual`;
 
-  el.innerHTML = `
+  el.innerHTML = cloud.cleanHTML(`
     <div class="kpi-card laranja">
       <p class="kpi-label">${kpiLabel}</p>
       <div class="kpi-value">${fmtBRL(novasValor)}</div>
@@ -871,21 +327,21 @@ function renderKPIs(){
       <div class="kpi-value">${semOICount}</div>
       <p class="kpi-sub">${wm?'na semana selecionada':'aguardando criação de ordem interna'}</p>
     </div>
-  `;
+  `);
 }
 
 function renderFilterBar(){
-  const el = document.getElementById('filterBar');
+  const el = root.getElementById('filterBar');
   const classes = allClassificacoes();
-  el.innerHTML = `
+  el.innerHTML = cloud.cleanHTML(`
     <input type="text" id="searchInput" placeholder="🔍  Buscar por obra, OI ou classificação…" value="${esc(state.search)}">
     <div class="chip-group" id="classChips">
       ${classes.map(c=>`<button class="fchip ${state.classFilter.has(c)?'active':''}" data-cls="${esc(c)}">${esc(c)}</button>`).join('')}
     </div>
     <label class="toggle-pend"><input type="checkbox" id="onlyPendingChk" ${state.onlyPending?'checked':''}> Só com SICs pendentes</label>
     <button class="btn-clear" id="clearFilters">✕ Limpar filtros</button>
-  `;
-  document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; renderObraTable(); });
+  `);
+  root.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; renderObraTable(); });
   el.querySelectorAll('#classChips .fchip').forEach(chip=>{
     chip.addEventListener('click', ()=>{
       const c = chip.dataset.cls;
@@ -893,8 +349,8 @@ function renderFilterBar(){
       renderFilterBar(); renderObraTable();
     });
   });
-  document.getElementById('onlyPendingChk').addEventListener('change', e=>{ state.onlyPending = e.target.checked; renderObraTable(); });
-  document.getElementById('clearFilters').addEventListener('click', ()=>{
+  root.getElementById('onlyPendingChk').addEventListener('change', e=>{ state.onlyPending = e.target.checked; renderObraTable(); });
+  root.getElementById('clearFilters').addEventListener('click', ()=>{
     state.search=''; state.classFilter.clear(); state.onlyPending=false; renderFilterBar(); renderObraTable();
   });
 }
@@ -924,11 +380,11 @@ function recursosTotaisDaObra(sap){
 }
 
 function renderObraTable(){
-  const grid = document.getElementById('obraCardsGrid');
+  const grid = root.getElementById('obraCardsGrid');
   const list = filteredObras();
   if(!grid) return;
   if(list.length===0){
-    grid.innerHTML = `<div class="cards-empty"><div class="empty-state"><p class="big">Nenhuma obra encontrada</p><p>Ajuste os filtros ou selecione outra semana.</p></div></div>`;
+    grid.innerHTML = cloud.cleanHTML(`<div class="cards-empty"><div class="empty-state"><p class="big">Nenhuma obra encontrada</p><p>Ajuste os filtros ou selecione outra semana.</p></div></div>`);
     return;
   }
   const sorted = [...list].sort((a,b)=>{
@@ -939,7 +395,7 @@ function renderObraTable(){
     return ((bv.ev&&bv.ev.total)||0)-((av.ev&&av.ev.total)||0);
   });
 
-  grid.innerHTML = sorted.map(o=>{
+  grid.innerHTML = cloud.cleanHTML(sorted.map(o=>{
     const sics = sicsForObraInSelectedWeek(o);
     const sicValor = round2(sics.reduce((sum,x)=>sum+(x.valor||0),0));
     const view = panelDataForSelection(o);
@@ -1020,7 +476,7 @@ function renderObraTable(){
         <span class="diff-value">${diff===null ? '—' : fmtBRL(diff)}</span>
       </div>
     </article>`;
-  }).join('');
+  }).join(''));
 
   grid.querySelectorAll('.obra-card').forEach(card=>{
     card.addEventListener('click', ()=> openPanel(card.dataset.obra));
@@ -1036,16 +492,16 @@ function openPanel(obraId){
   if(!o) return;
   state.openPanelObraId = obraId;
   state.sapEditObraId = null;
-  document.getElementById('panel-tag').textContent = o.classificacao || '';
-  document.getElementById('panel-title').textContent = o.descricao;
-  document.getElementById('panel-body').innerHTML = renderPanelBody(o);
+  root.getElementById('panel-tag').textContent = o.classificacao || '';
+  root.getElementById('panel-title').textContent = o.descricao;
+  root.getElementById('panel-body').innerHTML = cloud.cleanHTML(renderPanelBody(o));
   attachPanelEvents(o);
-  document.getElementById('obra-overlay').classList.add('open');
-  document.getElementById('obra-panel').classList.add('open');
+  root.getElementById('obra-overlay').classList.add('open');
+  root.getElementById('obra-panel').classList.add('open');
 }
 function closePanel(){
-  document.getElementById('obra-overlay').classList.remove('open');
-  document.getElementById('obra-panel').classList.remove('open');
+  root.getElementById('obra-overlay').classList.remove('open');
+  root.getElementById('obra-panel').classList.remove('open');
   state.openPanelObraId = null;
   state.sapEditObraId = null;
 }
@@ -1233,35 +689,36 @@ function renderSicItem(o, s){
 }
 
 function attachPanelEvents(o){
-  document.querySelectorAll('[data-sicvalueedit]').forEach(btn=>{
+  lockReadOnlyControls();
+  root.querySelectorAll('[data-sicvalueedit]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       state.sicEditId=btn.dataset.sicid;
-      document.getElementById('panel-body').innerHTML=renderPanelBody(o);
+      root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(o));
       attachPanelEvents(o);
-      const inp=document.querySelector('[data-sicvalueinput]');
+      const inp=root.querySelector('[data-sicvalueinput]');
       if(inp){ inp.focus(); inp.select(); }
     });
   });
-  document.querySelectorAll('[data-sicvaluecancel]').forEach(btn=>{
+  root.querySelectorAll('[data-sicvaluecancel]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       state.sicEditId=null;
-      document.getElementById('panel-body').innerHTML=renderPanelBody(o);
+      root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(o));
       attachPanelEvents(o);
     });
   });
-  document.querySelectorAll('[data-sicvaluesave]').forEach(btn=>{
+  root.querySelectorAll('[data-sicvaluesave]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const inp=document.querySelector(`[data-sicvalueinput][data-sicid="${CSS.escape(btn.dataset.sicid)}"]`);
+      const inp=root.querySelector(`[data-sicvalueinput][data-sicid="${CSS.escape(btn.dataset.sicid)}"]`);
       if(inp) await saveSicValue(btn.dataset.obraid,btn.dataset.sicid,inp.value,o);
     });
   });
-  document.querySelectorAll('[data-sicvalueinput]').forEach(inp=>{
+  root.querySelectorAll('[data-sicvalueinput]').forEach(inp=>{
     inp.addEventListener('keydown', async e=>{
       if(e.key==='Enter'){ e.preventDefault(); await saveSicValue(inp.dataset.obraid,inp.dataset.sicid,inp.value,o); }
-      if(e.key==='Escape'){ e.preventDefault(); state.sicEditId=null; document.getElementById('panel-body').innerHTML=renderPanelBody(o); attachPanelEvents(o); }
+      if(e.key==='Escape'){ e.preventDefault(); state.sicEditId=null; root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(o)); attachPanelEvents(o); }
     });
   });
-  document.querySelectorAll('[data-descedit]').forEach(ta=>{
+  root.querySelectorAll('[data-descedit]').forEach(ta=>{
     ta.style.height = 'auto';
     ta.style.height = (ta.scrollHeight+2)+'px';
     ta.addEventListener('input', ()=>{ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+2)+'px'; });
@@ -1269,39 +726,39 @@ function attachPanelEvents(o){
       await saveSicDescricao(ta.dataset.obraid, ta.dataset.sicid, ta.value, ta.dataset.sicid);
     });
   });
-  document.querySelectorAll('[data-approve]').forEach(chk=>{
+  root.querySelectorAll('[data-approve]').forEach(chk=>{
     chk.addEventListener('change', async ()=>{
       await setSicStatus(chk.dataset.obraid, chk.dataset.sicid, chk.checked ? 'aprovado' : 'pendente', o);
     });
   });
-  document.querySelectorAll('[data-disapprove]').forEach(chk=>{
+  root.querySelectorAll('[data-disapprove]').forEach(chk=>{
     chk.addEventListener('change', async ()=>{
       await setSicStatus(chk.dataset.obraid, chk.dataset.sicid, chk.checked ? 'reprovado' : 'pendente', o);
     });
   });
-  document.querySelectorAll('[data-sapstart]').forEach(btn=>{
+  root.querySelectorAll('[data-sapstart]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       state.sapEditObraId = btn.dataset.obraid;
-      document.getElementById('panel-body').innerHTML = renderPanelBody(o);
+      root.getElementById('panel-body').innerHTML = cloud.cleanHTML(renderPanelBody(o));
       attachPanelEvents(o);
-      const first = document.querySelector('[data-sapedit="atribuidoAtual"]');
+      const first = root.querySelector('[data-sapedit="atribuidoAtual"]');
       if(first) first.focus();
     });
   });
-  document.querySelectorAll('[data-sapcancel]').forEach(btn=>{
+  root.querySelectorAll('[data-sapcancel]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       state.sapEditObraId = null;
-      document.getElementById('panel-body').innerHTML = renderPanelBody(o);
+      root.getElementById('panel-body').innerHTML = cloud.cleanHTML(renderPanelBody(o));
       attachPanelEvents(o);
     });
   });
-  document.querySelectorAll('[data-sapsave]').forEach(btn=>{
+  root.querySelectorAll('[data-sapsave]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{ await saveSapEdits(btn.dataset.obraid); });
   });
-  document.querySelectorAll('[data-sapedit]').forEach(inp=>{
+  root.querySelectorAll('[data-sapedit]').forEach(inp=>{
     inp.addEventListener('keydown', e=>{
-      if(e.key==='Enter'){ e.preventDefault(); const saveBtn=document.querySelector('[data-sapsave]'); if(saveBtn) saveBtn.click(); }
-      if(e.key==='Escape'){ e.preventDefault(); const cancelBtn=document.querySelector('[data-sapcancel]'); if(cancelBtn) cancelBtn.click(); }
+      if(e.key==='Enter'){ e.preventDefault(); const saveBtn=root.querySelector('[data-sapsave]'); if(saveBtn) saveBtn.click(); }
+      if(e.key==='Escape'){ e.preventDefault(); const cancelBtn=root.querySelector('[data-sapcancel]'); if(cancelBtn) cancelBtn.click(); }
     });
   });
 }
@@ -1320,15 +777,15 @@ async function saveSicDescricao(obraId, sicId, novoTexto, sicIdForTag){
     showToast('Não foi possível salvar o texto — tente novamente.', 'err');
     return;
   }
-  const tag = Array.from(document.querySelectorAll('[data-saved-sic]')).find(el=>el.dataset.savedSic===sicIdForTag);
+  const tag = Array.from(root.querySelectorAll('[data-saved-sic]')).find(el=>el.dataset.savedSic===sicIdForTag);
   if(tag){ tag.classList.add('show'); setTimeout(()=>tag.classList.remove('show'), 1800); }
 }
 
 async function saveSapEdits(obraId){
   const obra = state.obras.find(x=>x.id===obraId);
   if(!obra || !obra.sap) return;
-  const atribInput = document.querySelector('[data-sapedit="atribuidoAtual"]');
-  const compInput = document.querySelector('[data-sapedit="comprometidoAtual"]');
+  const atribInput = root.querySelector('[data-sapedit="atribuidoAtual"]');
+  const compInput = root.querySelector('[data-sapedit="comprometidoAtual"]');
   if(!atribInput || !compInput) return;
 
   const newAtrib = parseMoneyInput(atribInput.value);
@@ -1344,7 +801,7 @@ async function saveSapEdits(obraId){
   const changedComp = Math.abs(prevComp-newComp)>=0.005;
   if(!changedAtrib && !changedComp){
     state.sapEditObraId = null;
-    document.getElementById('panel-body').innerHTML=renderPanelBody(obra);
+    root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(obra));
     attachPanelEvents(obra);
     return;
   }
@@ -1372,7 +829,7 @@ async function saveSapEdits(obraId){
   }
 
   state.sapEditObraId = null;
-  document.getElementById('panel-body').innerHTML=renderPanelBody(obra);
+  root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(obra));
   attachPanelEvents(obra);
   renderKPIs(); renderObraTable(); renderHeaderSub();
   showToast('Verba SAP atualizada.', 'ok');
@@ -1389,7 +846,7 @@ async function saveSicValue(obraId, sicId, rawValue, obraRef){
   const oldValue=round2(Number(sic.valor)||0);
   if(Math.abs(newValue-oldValue)<0.001){
     state.sicEditId=null;
-    document.getElementById('panel-body').innerHTML=renderPanelBody(obraRef); attachPanelEvents(obraRef);
+    root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(obraRef)); attachPanelEvents(obraRef);
     return;
   }
 
@@ -1416,7 +873,7 @@ async function saveSicValue(obraId, sicId, rawValue, obraRef){
     showToast('Não foi possível salvar a revisão do valor.','err'); return;
   }
   state.sicEditId=null;
-  document.getElementById('panel-body').innerHTML=renderPanelBody(obraRef); attachPanelEvents(obraRef);
+  root.getElementById('panel-body').innerHTML=cloud.cleanHTML(renderPanelBody(obraRef)); attachPanelEvents(obraRef);
   renderKPIs(); renderObraTable(); renderHeaderSub();
   showToast(sic.appliedToEV?'Valor revisado e cálculos atualizados.':'Valor da SIC/Revisão atualizado.','ok');
 }
@@ -1455,7 +912,7 @@ async function setSicStatus(obraId, sicId, newStatus, obraRef){
   }else if(prevStatus!==newStatus){
     showToast(newStatus==='aprovado'?'SIC aprovada e incorporada ao EV.':newStatus==='reprovado'?'SIC marcada como não aprovada.':'Status atualizado.', 'ok');
   }
-  document.getElementById('panel-body').innerHTML = renderPanelBody(obraRef);
+  root.getElementById('panel-body').innerHTML = cloud.cleanHTML(renderPanelBody(obraRef));
   attachPanelEvents(obraRef);
   renderKPIs(); renderObraTable(); renderHeaderSub();
 }
@@ -1465,7 +922,7 @@ async function setSicStatus(obraId, sicId, newStatus, obraRef){
    ========================================================= */
 let toastTimer=null;
 function showToast(msg, kind){
-  const t = document.getElementById('toast');
+  const t = root.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show' + (kind==='err'?' err':kind==='ok'?' ok':'');
   clearTimeout(toastTimer);
@@ -1484,10 +941,7 @@ function exportCurrentViewCSV(){
     const view=panelDataForSelection(o); const ev=view.ev||o.ev; const sap=view.sap;
     rows.push([o.oiRaw, o.descricao, o.classificacao, ev.total, ev.valorM2, sap? sap.saldoAtual : 'N/A', sics.length, sics.reduce((s,x)=>s+(x.valor||0),0), statuses]);
   });
-  const csv = rows.map(r=>r.map(v=>{
-    const s = String(v===undefined||v===null?'':v).replace(/"/g,'""');
-    return /[,";\n]/.test(s) ? `"${s}"` : s;
-  }).join(';')).join('\n');
+  const csv = rows.map(r=>r.map(csvCell).join(';')).join('\n');
   const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1503,18 +957,18 @@ function exportCurrentViewCSV(){
 let importedRows = null;
 
 function openImportModal(){
-  document.getElementById('importOverlay').classList.add('show');
-  document.getElementById('fileInput').value='';
-  document.getElementById('fileDropLabel').textContent='Escolher arquivo…';
-  document.getElementById('fileDrop').classList.remove('has-file');
-  document.getElementById('weekLabel').value = `Semana ${state.weeks.length+1}`;
-  document.getElementById('weekStart').value='';
-  document.getElementById('weekEnd').value='';
-  document.getElementById('importPreview').innerHTML='';
-  document.getElementById('btnConfirmImport').disabled = true;
+  root.getElementById('importOverlay').classList.add('show');
+  root.getElementById('fileInput').value='';
+  root.getElementById('fileDropLabel').textContent='Escolher arquivo…';
+  root.getElementById('fileDrop').classList.remove('has-file');
+  root.getElementById('weekLabel').value = `Semana ${state.weeks.length+1}`;
+  root.getElementById('weekStart').value='';
+  root.getElementById('weekEnd').value='';
+  root.getElementById('importPreview').innerHTML=cloud.cleanHTML('');
+  root.getElementById('btnConfirmImport').disabled = true;
   importedRows = null;
 }
-function closeImportModal(){ document.getElementById('importOverlay').classList.remove('show'); }
+function closeImportModal(){ root.getElementById('importOverlay').classList.remove('show'); }
 
 function parseBRL(str){
   if(str===null||str===undefined) return null;
@@ -1555,7 +1009,7 @@ function parseCellNumber(v){
   const s=String(v).trim();
   if(s.startsWith('=') && /^[=+\-*/().\d\s]+$/.test(s)){
     try{
-      const n=Function('"use strict";return ('+s.slice(1)+')')();
+      const n=arithmetic(s);
       return Number.isFinite(n)?n:null;
     }catch(e){}
   }
@@ -1722,18 +1176,11 @@ function importFingerprint(rows){
 }
 
 
-const BUNDLED_INCREMENT_20260821 = [{"oiRaw":"50158234","hasOI":true,"oiList":["50158234"],"descricao":"0000. NOVO HOSPITAL RIO DE JANEIRO","classificacao":"Projetos 2026 | Verticalização","ev":{"semAditivos":91208156.17,"aditivosAprovados":821546.08,"total":92029702.25,"areaM2":27717.33,"valorM2":3320.29},"sap":{"faturasAnosAnteriores":3887458.9,"atribuidoAtual":69912200,"comprometidoAtual":37131130.87,"saldoAtual":32781069.13,"diffEV":-18230043.349999994},"sics":[{"lecom":"1.330.132","descricao":"SIC referente à escavação do Subsolo 3 para execução das estacas, aquisição de argila para garantir a trabalhabilidade durante a execução e recuperação da drenagem após a escavação.","valor":340266.23},{"lecom":"1.335.900","descricao":"SIC referente ao fechamento da escada da espera principal. Inicialmente, a escada não foi contemplada no escopo, pois o projeto estrutural ainda não havia sido disponibilizado. Após o recebimento do projeto, foi solicitada a inclusão do escopo para execução da estrutura, bem como do respectivo guarda-corpo.","valor":225339.39},{"lecom":"1.342.619","descricao":"SIC referente à antecipação do escopo da estrutura metálica da laje do refeitório e da nutrição, solicitada com o objetivo de evitar interferências e transtornos durante a execução da segunda fase da obra.","valor":268215.03},{"lecom":"1.345.220","descricao":"SIC referente à antecipação da execução dos sanitários da segunda fase nos pavimentos híbridos, com o objetivo de evitar possíveis intervenções em áreas em funcionamento durante a execução da segunda fase da obra.","valor":343340.64},{"lecom":"1.364.419","descricao":"SIC referente à atualização do escopo conforme revisão do projeto. Inicialmente, estava previsto o reaproveitamento dos chillers existentes na unidade, porém, após vistoria da manutenção, constatou-se que não suportariam o retrofit. Dessa forma, foram reaproveitados os chillers do Hospital Santa Marta, que seriam descartados. A alimentação, as bombas e os cavaletes foram considerados novos no escopo.","valor":751035.87},{"lecom":"1.364.502","descricao":"SIC referente à supressão da estrutura metálica da rampa de acesso ao heliponto do escopo da empreiteira Técbra. Inicialmente, o serviço foi previsto em m², devido à ausência do projeto estrutural. Após o recebimento do projeto, verificou-se que o valor previsto não seria suficiente para a execução. Dessa forma, foi solicitada a retirada do serviço do escopo da Técbra e sua inclusão no escopo da empresa de estrutura metálica Apex.","valor":-39600.68},{"lecom":"Revisão 01","descricao":"Revisão de escopo: Foi solicitado a retirada da infraestrutura de água quente do escopo do empreiteiro pois foi contratado uma empresa para a execução desse sistema, o custo total se encontra do EV. Além disso, também foi feito a retirada dos serviços referentes a restauração do heliponto do escopo da empreiteira, pois foi contratado uma empresa apenas para a recuperação do heliponto. Esses custos entraram dentro do escopo do aditivo 10, que contempla as SIC 1.364.419, 1.364.502 e 1.345.220. Também foi incluso, conforme solicitado, a instalação dos ventiladores e exaustores.","valor":-692443.16}]}];
-const BUNDLED_INCREMENT_ID_20260821 = 'acrescimo-semana01-2026-08-21-manha';
 
-const URGENT_INCREMENT_20260821_2 = [{
-  oiRaw:'50157999',hasOI:true,oiList:['50157999'],
-  descricao:'4100. TORRE NOVA_AMPLIAÇÃO HOSPITAL PARAUAPEBAS - PA',
-  classificacao:'Carry Over | Suficiência de Rede',
-  ev:{semAditivos:31457660.92,aditivosAprovados:1527565.90,total:32985226.82,areaM2:5226.58,valorM2:5754.33},
-  sap:{faturasAnosAnteriores:14096321.77,atribuidoAtual:17400000.00,comprometidoAtual:16460380.03,saldoAtual:939619.97,diffEV:-1488905.05},
-  sics:[{lecom:'1.348.446',descricao:'Será necessário realizar a revisão dos projetos de instalações do 2° pavimento devido a mudança de ambientes, antes era apto e agora é rampa cirurgica',valor:106984.70}]
-}];
-const URGENT_INCREMENT_ID_20260821_2 = 'acrescimo-semana01-2026-08-21-1348-correcao';
+
+
+
+
 
 function latestWeek(){
   return [...state.weeks].sort((a,b)=>(a.start||'').localeCompare(b.start||'')).pop() || null;
@@ -1829,100 +1276,45 @@ async function addRowsToWeek(rows, week, options={}){
   return {addedSics,skippedSics,addedObras,touchedObras};
 }
 
-async function applyBundledMorningIncrement(){
-  const week=state.weeks.find(w=>w.start==='2026-08-17'&&w.end==='2026-08-21') ||
-             state.weeks.find(w=>String(w.label||'').toLowerCase()==='semana 1');
-  if(!week) return null;
-  week.incrementBundles=Array.isArray(week.incrementBundles)?week.incrementBundles:[];
-  if(week.incrementBundles.includes(BUNDLED_INCREMENT_ID_20260821)) return null;
-  const result=await addRowsToWeek(BUNDLED_INCREMENT_20260821,week,{
-    bundleId:BUNDLED_INCREMENT_ID_20260821,
-    sourceLabel:'acréscimo manhã 21/08/2026',
-    silentHistory:false
-  });
-  await persistAll(state.obras,state.weeks,state.snapshots);
-  return result;
-}
 
-async function applyUrgentIncrement2(){
-  const week=state.weeks.find(w=>w.start==='2026-08-17'&&w.end==='2026-08-21') ||
-             state.weeks.find(w=>String(w.label||'').toLowerCase()==='semana 1');
-  if(!week) return null;
-  week.incrementBundles=Array.isArray(week.incrementBundles)?week.incrementBundles:[];
-  if(week.incrementBundles.includes(URGENT_INCREMENT_ID_20260821_2)) return null;
 
-  const row=URGENT_INCREMENT_20260821_2[0];
-  let obra=findExistingObra(row);
-  if(obra){
-    mergeObraIdentity(obra,row);
-    obra.oiRaw=row.oiRaw; obra.hasOI=true; obra.oiList=[...row.oiList];
-    obra.descricao=row.descricao; obra.classificacao=row.classificacao;
-    obra.ev=JSON.parse(JSON.stringify(row.ev));
-    obra.sap=JSON.parse(JSON.stringify(row.sap));
-    recalcSAP(obra.sap,obra.ev);
-    obra.lastWeekId=week.id;
-    // Remove a versão incorreta desta mesma SIC, caso tenha sido criada pela importação anterior.
-    obra.sics=(obra.sics||[]).filter(s=>!(s.weekId===week.id && normalizeText(s.lecom)==='1 348 446'));
-  }else{
-    obra={
-      id:obraIdFor(row),oiList:[...row.oiList],oiRaw:row.oiRaw,hasOI:true,
-      oiAliases:[...row.oiList],descricao:row.descricao,descricaoAliases:[row.descricao],
-      classificacao:row.classificacao,ev:JSON.parse(JSON.stringify(row.ev)),sap:JSON.parse(JSON.stringify(row.sap)),
-      lastWeekId:week.id,sics:[],history:[]
-    };
-    state.obras.push(obra);
-  }
-  const sic=row.sics[0];
-  const fp=sicFingerprint(sic);
-  obra.sics.push({
-    id:`sic-${simpleHash(obra.id+'|'+week.id+'|'+fp+'|urgent2')}`,
-    lecom:sic.lecom,descricao:sic.descricao,valor:sic.valor,weekId:week.id,fingerprint:fp,
-    status:'pendente',statusUpdatedAt:null,appliedToEV:false,evAppliedAmount:0,appliedAt:null
-  });
-  state.snapshots=state.snapshots.filter(x=>!(x.weekId===week.id&&x.obraId===obra.id));
-  const nowIso=new Date().toISOString();
-  state.snapshots.push({weekId:week.id,obraId:obra.id,ev:JSON.parse(JSON.stringify(obra.ev)),sap:JSON.parse(JSON.stringify(obra.sap)),capturedAt:nowIso,updatedAt:nowIso});
-  addHistoryEvent(obra,'incremental_import','Acréscimo corrigido na Semana 1: SIC/Revisão 1.348.446 incorporada à semana vigente.',{weekId:week.id,weekLabel:week.label});
-  week.incrementBundles.push(URGENT_INCREMENT_ID_20260821_2);
-  await persistAll(state.obras,state.weeks,state.snapshots);
-  return {addedSics:1,addedObras:0};
-}
+
 
 let addCurrentRows=null;
 function openAddCurrentModal(){
   const week=latestWeek();
   if(!week){ showToast('Nenhuma semana vigente encontrada. Importe uma semana primeiro.','err'); return; }
-  document.getElementById('addCurrentOverlay').classList.add('show');
-  document.getElementById('addCurrentFileInput').value='';
-  document.getElementById('addCurrentFileLabel').textContent='Escolher arquivo…';
-  document.getElementById('addCurrentFileDrop').classList.remove('has-file');
-  document.getElementById('addCurrentPreview').innerHTML='';
-  document.getElementById('btnConfirmAddCurrent').disabled=true;
+  root.getElementById('addCurrentOverlay').classList.add('show');
+  root.getElementById('addCurrentFileInput').value='';
+  root.getElementById('addCurrentFileLabel').textContent='Escolher arquivo…';
+  root.getElementById('addCurrentFileDrop').classList.remove('has-file');
+  root.getElementById('addCurrentPreview').innerHTML=cloud.cleanHTML('');
+  root.getElementById('btnConfirmAddCurrent').disabled=true;
   addCurrentRows=null;
-  document.getElementById('currentWeekTarget').innerHTML=
-    `<strong>Destino:</strong> ${esc(week.label)} · ${fmtDate(week.start)}–${fmtDate(week.end)}<br>
-     <span style="font-size:11px;opacity:.8">As novas SICs/Revisões serão acrescentadas a esta mesma semana. Nenhuma nova semana será criada.</span>`;
+  root.getElementById('currentWeekTarget').innerHTML=
+    cloud.cleanHTML(`<strong>Destino:</strong> ${esc(week.label)} · ${fmtDate(week.start)}–${fmtDate(week.end)}<br>
+     <span style="font-size:11px;opacity:.8">As novas SICs/Revisões serão acrescentadas a esta mesma semana. Nenhuma nova semana será criada.</span>`);
 }
 function closeAddCurrentModal(){
-  document.getElementById('addCurrentOverlay').classList.remove('show');
+  root.getElementById('addCurrentOverlay').classList.remove('show');
   addCurrentRows=null;
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.getElementById('btnOpenImport').addEventListener('click', openImportModal);
-  document.getElementById('btnOpenAddCurrent').addEventListener('click', openAddCurrentModal);
-  document.getElementById('btnCloseAddCurrent').addEventListener('click', closeAddCurrentModal);
-  document.getElementById('btnCancelAddCurrent').addEventListener('click', closeAddCurrentModal);
-  document.getElementById('addCurrentOverlay').addEventListener('click', e=>{ if(e.target.id==='addCurrentOverlay') closeAddCurrentModal(); });
+(()=>{
+  root.getElementById('btnOpenImport').addEventListener('click', openImportModal);
+  root.getElementById('btnOpenAddCurrent').addEventListener('click', openAddCurrentModal);
+  root.getElementById('btnCloseAddCurrent').addEventListener('click', closeAddCurrentModal);
+  root.getElementById('btnCancelAddCurrent').addEventListener('click', closeAddCurrentModal);
+  root.getElementById('addCurrentOverlay').addEventListener('click', e=>{ if(e.target.id==='addCurrentOverlay') closeAddCurrentModal(); });
 
-  document.getElementById('addCurrentFileInput').addEventListener('change', e=>{
+  root.getElementById('addCurrentFileInput').addEventListener('change', e=>{
     const file=e.target.files[0];
-    const previewEl=document.getElementById('addCurrentPreview');
-    const confirmBtn=document.getElementById('btnConfirmAddCurrent');
+    const previewEl=root.getElementById('addCurrentPreview');
+    const confirmBtn=root.getElementById('btnConfirmAddCurrent');
     if(!file) return;
-    document.getElementById('addCurrentFileLabel').textContent=file.name;
-    document.getElementById('addCurrentFileDrop').classList.add('has-file');
-    previewEl.innerHTML='<div class="preview-box">Lendo acréscimos…</div>';
+    root.getElementById('addCurrentFileLabel').textContent=file.name;
+    root.getElementById('addCurrentFileDrop').classList.add('has-file');
+    previewEl.innerHTML=cloud.cleanHTML('<div class="preview-box">Lendo acréscimos…</div>');
     confirmBtn.disabled=true;
     const reader=new FileReader();
     reader.onload=evt=>{
@@ -1931,29 +1323,29 @@ document.addEventListener('DOMContentLoaded', ()=>{
         const wb=XLSX.read(data,{type:'array'});
         const parsed=parseWorkbookRows(wb);
         if(!parsed.length){
-          previewEl.innerHTML='<div class="preview-box err">Nenhuma obra/SIC foi encontrada no arquivo.</div>';
+          previewEl.innerHTML=cloud.cleanHTML('<div class="preview-box err">Nenhuma obra/SIC foi encontrada no arquivo.</div>');
           addCurrentRows=null; return;
         }
         addCurrentRows=parsed;
         const totalSics=parsed.reduce((n,o)=>n+(o.sics||[]).length,0);
         const totalValor=parsed.reduce((n,o)=>n+(o.sics||[]).reduce((s,x)=>s+(Number(x.valor)||0),0),0);
-        previewEl.innerHTML=`<div class="preview-box"><strong>${parsed.length}</strong> obra(s) identificada(s) · <strong>${totalSics}</strong> SIC(s)/Revisão(ões) no arquivo · saldo líquido ${fmtBRL(totalValor)}.<br><span style="font-size:11px;opacity:.8">Itens já existentes na semana serão ignorados automaticamente.</span></div>`;
+        previewEl.innerHTML=cloud.cleanHTML(`<div class="preview-box"><strong>${parsed.length}</strong> obra(s) identificada(s) · <strong>${totalSics}</strong> SIC(s)/Revisão(ões) no arquivo · saldo líquido ${fmtBRL(totalValor)}.<br><span style="font-size:11px;opacity:.8">Itens já existentes na semana serão ignorados automaticamente.</span></div>`);
         confirmBtn.disabled=false;
       }catch(err){
         console.error(err);
-        previewEl.innerHTML=`<div class="preview-box err">Não foi possível ler o arquivo: ${esc(err.message||'erro desconhecido')}.</div>`;
+        previewEl.innerHTML=cloud.cleanHTML(`<div class="preview-box err">Não foi possível ler o arquivo: ${esc(err.message||'erro desconhecido')}.</div>`);
         addCurrentRows=null;
       }
     };
-    reader.onerror=()=>{ previewEl.innerHTML='<div class="preview-box err">Falha ao carregar o arquivo.</div>'; };
+    reader.onerror=()=>{ previewEl.innerHTML=cloud.cleanHTML('<div class="preview-box err">Falha ao carregar o arquivo.</div>'); };
     reader.readAsArrayBuffer(file);
   });
 
-  document.getElementById('btnConfirmAddCurrent').addEventListener('click',async()=>{
+  root.getElementById('btnConfirmAddCurrent').addEventListener('click',async()=>{
     if(!addCurrentRows||!addCurrentRows.length) return;
     const week=latestWeek();
     if(!week){ showToast('Nenhuma semana vigente encontrada.','err'); return; }
-    const btn=document.getElementById('btnConfirmAddCurrent');
+    const btn=root.getElementById('btnConfirmAddCurrent');
     btn.disabled=true; btn.textContent='Acrescentando…';
     try{
       const result=await addRowsToWeek(addCurrentRows,week,{sourceLabel:'importação manual'});
@@ -1972,19 +1364,19 @@ document.addEventListener('DOMContentLoaded', ()=>{
       btn.disabled=false;
     }
   });
-  document.getElementById('btnExport').addEventListener('click', exportCurrentViewCSV);
-  document.getElementById('btnCloseModal').addEventListener('click', closeImportModal);
-  document.getElementById('btnCancelImport').addEventListener('click', closeImportModal);
-  document.getElementById('importOverlay').addEventListener('click', (e)=>{ if(e.target.id==='importOverlay') closeImportModal(); });
+  root.getElementById('btnExport').addEventListener('click', exportCurrentViewCSV);
+  root.getElementById('btnCloseModal').addEventListener('click', closeImportModal);
+  root.getElementById('btnCancelImport').addEventListener('click', closeImportModal);
+  root.getElementById('importOverlay').addEventListener('click', (e)=>{ if(e.target.id==='importOverlay') closeImportModal(); });
 
-  document.getElementById('fileInput').addEventListener('change', (e)=>{
+  root.getElementById('fileInput').addEventListener('change', (e)=>{
     const file = e.target.files[0];
-    const previewEl = document.getElementById('importPreview');
-    const confirmBtn = document.getElementById('btnConfirmImport');
+    const previewEl = root.getElementById('importPreview');
+    const confirmBtn = root.getElementById('btnConfirmImport');
     if(!file){ return; }
-    document.getElementById('fileDropLabel').textContent = file.name;
-    document.getElementById('fileDrop').classList.add('has-file');
-    previewEl.innerHTML = `<div class="preview-box">Lendo planilha…</div>`;
+    root.getElementById('fileDropLabel').textContent = file.name;
+    root.getElementById('fileDrop').classList.add('has-file');
+    previewEl.innerHTML = cloud.cleanHTML(`<div class="preview-box">Lendo planilha…</div>`);
     confirmBtn.disabled = true;
 
     const reader = new FileReader();
@@ -1994,29 +1386,29 @@ document.addEventListener('DOMContentLoaded', ()=>{
         const wb = XLSX.read(data, {type:'array'});
         const parsed = parseWorkbookRows(wb);
         if(parsed.length===0){
-          previewEl.innerHTML = `<div class="preview-box err">Nenhuma linha de obra foi encontrada. Confira se o arquivo segue o mesmo modelo (cabeçalhos nas linhas 1–2, dados a partir da linha 3).</div>`;
+          previewEl.innerHTML = cloud.cleanHTML(`<div class="preview-box err">Nenhuma linha de obra foi encontrada. Confira se o arquivo segue o mesmo modelo (cabeçalhos nas linhas 1–2, dados a partir da linha 3).</div>`);
           importedRows = null; return;
         }
         importedRows = parsed;
         const totalSics = parsed.reduce((s,o)=>s+o.sics.length,0);
         const totalValor = parsed.reduce((s,o)=>s+o.sics.reduce((ss,x)=>ss+(x.valor||0),0),0);
-        previewEl.innerHTML = `<div class="preview-box"><strong>${parsed.length}</strong> obra(s) lida(s) · <strong>${totalSics}</strong> SIC(s) novas · valor total ${fmtBRL(totalValor)}</div>`;
+        previewEl.innerHTML = cloud.cleanHTML(`<div class="preview-box"><strong>${parsed.length}</strong> obra(s) lida(s) · <strong>${totalSics}</strong> SIC(s) novas · valor total ${fmtBRL(totalValor)}</div>`);
         confirmBtn.disabled = false;
       }catch(err){
         console.error(err);
-        previewEl.innerHTML = `<div class="preview-box err">Não foi possível ler o arquivo: ${esc(err.message||'')}. Verifique se é um .xlsx válido.</div>`;
+        previewEl.innerHTML = cloud.cleanHTML(`<div class="preview-box err">Não foi possível ler o arquivo: ${esc(err.message||'')}. Verifique se é um .xlsx válido.</div>`);
         importedRows = null;
       }
     };
-    reader.onerror = ()=>{ previewEl.innerHTML = `<div class="preview-box err">Falha ao carregar o arquivo.</div>`; };
+    reader.onerror = ()=>{ previewEl.innerHTML = cloud.cleanHTML(`<div class="preview-box err">Falha ao carregar o arquivo.</div>`); };
     reader.readAsArrayBuffer(file);
   });
 
-  document.getElementById('btnConfirmImport').addEventListener('click', async ()=>{
+  root.getElementById('btnConfirmImport').addEventListener('click', async ()=>{
     if(!importedRows || importedRows.length===0) return;
-    const label = document.getElementById('weekLabel').value.trim() || `Semana ${state.weeks.length+1}`;
-    const start = document.getElementById('weekStart').value;
-    const end = document.getElementById('weekEnd').value;
+    const label = root.getElementById('weekLabel').value.trim() || `Semana ${state.weeks.length+1}`;
+    const start = root.getElementById('weekStart').value;
+    const end = root.getElementById('weekEnd').value;
     if(!start || !end){ showToast('Informe o início e o fim da semana.', 'err'); return; }
     if(end < start){ showToast('A data final não pode ser anterior à data inicial.', 'err'); return; }
 
@@ -2031,7 +1423,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
 
     const weekId = 'w'+(state.weeks.length+1)+'-'+Date.now();
-    const confirmBtn = document.getElementById('btnConfirmImport');
+    const confirmBtn = root.getElementById('btnConfirmImport');
     confirmBtn.disabled = true; confirmBtn.textContent = 'Importando…';
 
     const nowIso = new Date().toISOString();
@@ -2088,15 +1480,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
     const ok = await persistAll(state.obras, state.weeks, state.snapshots);
     confirmBtn.textContent = 'Importar semana';
-    if(!ok){ showToast('Não foi possível salvar a importação — verifique as permissões do navegador.', 'err'); confirmBtn.disabled = false; return; }
+    if(!ok){ showToast('Não foi possível salvar a importação — verifique as conexão e o acesso ao banco.', 'err'); confirmBtn.disabled = false; return; }
     state.selectedWeekId = weekId;
     closeImportModal();
     render();
     const dupMsg = skippedSics ? ` · ${skippedSics} SIC(s) duplicada(s) ignorada(s)` : '';
     showToast(`${label} importada: ${addedSics} SIC(s) nova(s)${dupMsg}.`, 'ok');
   });
-});
-
+})();
 /* =========================================================
    BOOTSTRAP
    ========================================================= */
@@ -2104,16 +1495,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
   try{
     const {obras, weeks, snapshots} = await loadStore();
     state.obras = obras; state.weeks = weeks; state.snapshots = snapshots;
-    await applyBundledMorningIncrement();
-    await applyUrgentIncrement2();
+
+
     const weeksSorted = [...state.weeks].sort((a,b)=>a.start.localeCompare(b.start));
     state.selectedWeekId = weeksSorted.length? weeksSorted[weeksSorted.length-1].id : 'all';
     render();
   }catch(err){
     console.error(err);
-    document.getElementById('header-sub').textContent = 'Não foi possível carregar os dados.';
+    root.getElementById('header-sub').textContent = 'Não foi possível carregar os dados.';
   }
 })();
-</script>
-</body>
-</html>
+
+}

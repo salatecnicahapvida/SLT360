@@ -39,6 +39,7 @@ function createPersistentAuthStorage() {
 }
 
 const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  global: { headers: { 'x-client-info': 'unified-1' } },
   auth: {
     storage: createPersistentAuthStorage(),
     persistSession: true,
@@ -152,7 +153,7 @@ async function startInternal() {
   }
 
   showRestoring('Carregando e validando os dados da nuvem…');
-  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto')]);
+  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto'), import('echarts/theme/v5.js')]);
   const [profileResponse, moduleResponse] = await Promise.all([
     client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', authUser.id).maybeSingle(),
     client.rpc('slt_module_load'),
@@ -239,12 +240,18 @@ async function startInternal() {
     analysts: directory.data || [],
     team,
     cleanHTML,
+    canRead: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core'),
     canWrite: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core', true),
     readyForWrites: () => cloudWritesEnabled,
     async adminUsers() {
       const r = await client.rpc('slt_admin_users');
       if (r.error) throw r.error;
       return r.data;
+    },
+    async historicalEVItems(ev_id) {
+      const r = await client.rpc('slt_budget_historical_ev_items', {ev_id});
+      if (r.error) throw r.error;
+      return r.data || [];
     },
     async updateUser(target_id, details, expected_revision) {
       const r = await client.rpc('slt_admin_update_user', { target_id, details, expected_revision });
@@ -301,6 +308,11 @@ async function startInternal() {
     save: snapshot => {
       if (!cloudWritesEnabled) return;
       queue.save(snapshot);
+    },
+    async saveAndWait(snapshot) {
+      if (!cloudWritesEnabled) throw new Error('A edição ainda não foi liberada.');
+      queue.save(snapshot);
+      await queue.flush();
     },
     acceptInitialState: snapshot => {
       queue.acceptInitialState(snapshot);

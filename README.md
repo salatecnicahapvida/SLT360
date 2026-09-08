@@ -1,45 +1,44 @@
 # SLT360 — Sala Técnica
 
-Sistema da Sala Técnica preparado para GitHub Pages e Supabase, sem Netlify.
-Esta versão exige login individual e permissões de módulo habilitadas no banco.
-Não contém bases operacionais, senhas de demonstração nem chaves secretas.
+Aplicativo de Orçamento, EV, SIC, Manutenção, Engenharia Clínica e Controle de Verbas. Interface estática no GitHub Pages; autenticação, dados e arquivos no Supabase.
 
-## Executar e verificar
+## Desenvolvimento
 
-Requisitos: Node.js 24 e pnpm. Execute `pnpm install --frozen-lockfile`,
-`pnpm test` e `pnpm build`. Sirva a pasta `dist` por HTTP para abrir o aplicativo.
-O login só funciona depois da instalação do banco e da criação dos acessos.
+Node.js 24 e pnpm 11.19.0.
 
-- `src/config.js`: URL e chave **publishable** do projeto Supabase; não são segredo.
-- `supabase/migrations/202608310001_pilot.sql`: estrutura e políticas do piloto.
-- `supabase/migrations/202608310003_modules.sql`: banco relacional por módulo, vínculos, RLS e auditoria.
-- `docs/ADR-001-BANCO-MODULAR.md`: decisão de arquitetura, segurança e consequências.
-- `docs/USUARIOS-E-EQUIPE.md`: cadastro, vínculo de analistas e permissões.
-- `docs/IMPLANTACAO.md`: instalação, validação, limites e recuperação.
-- `.github/workflows/pages.yml`: testes e publicação manual no GitHub Pages.
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+pnpm dev
+```
 
-Os dados históricos e arquivos originais ficam fora deste repositório e fora de `dist`.
-Nunca adicionar exportações, planilhas operacionais, senhas, tokens administrativos,
-chaves `secret`/`service_role` ou o arquivo privado de carga inicial ao GitHub.
+`pnpm check` executa análise estática, testes de banco/adaptador, build e testes de navegador. Em Linux, instale o navegador com `pnpm exec playwright install --with-deps chromium`. Os testes usam dados sintéticos e interceptam o Supabase; não alteram a produção. No Windows, usam o Edge instalado.
 
-## Comportamento
+`pnpm dev` serve a última saída de `pnpm build` em http://127.0.0.1:4173. O aplicativo normal exige uma conta real. Criação/redefinição de usuários usa a origem autorizada na Edge Function.
 
-Administradores, gestores e analistas leem e salvam conforme suas permissões por módulo.
-Uma conta criada no Supabase Auth, sozinha, não recebe acesso ao sistema.
-Gravações usam revisão esperada por registro: alterações independentes podem ocorrer
-em paralelo; duas alterações no mesmo registro exigem recarregamento. Um lote relacionado
-é salvo em uma única transação. Não existe mesclagem automática do mesmo registro.
-O indicador "Salvo no banco" só aparece após confirmação do servidor.
+## Fonte única
 
-Projetos, Orçamento, Manutenção, Engenharia Clínica e Controle de Verbas possuem
-tabelas independentes. Cadastros compartilhados ficam no núcleo. Datas, valores,
-fases e vínculos são tipados e indexados; atributos legados adicionais ficam em uma
-extensão controlada até serem promovidos a campos oficiais.
+- `src/app.js`: telas e regras de negócio vigentes.
+- `src/boot.js`: login, sessão, inicialização e API Supabase.
+- `src/module-model.js`: catálogo relacional e conversão entre registros e estado.
+- `src/module-store.js`: diferenças por registro, fila, revisões e confirmação de gravação.
+- `src/sic-dashboard.js`: acompanhamento de SIC/SAP integrado, sem iframe nem base pública.
+- `src/users-admin.js` e `src/backups-ui.js`: gestão de contas e backups.
+- `src/dates.js`, `src/csv.js`, `src/arithmetic.js`: regras compartilhadas e testáveis.
+- `public/`: HTML inicial, estilos e imagens; nunca dados operacionais.
 
-Anexos novos usam um bucket privado com limite de 10 MB por arquivo. Anexos que
-existiam apenas no IndexedDB de outro navegador não fazem parte do arquivo original
-e precisam ser enviados novamente. Não há recuperação automática desses arquivos.
+O build compila diretamente `src/boot.js` e seus imports. Não há cópia standalone nem reescrita de funções durante o build. Edite `src/`; `dist/` é gerado.
 
-Os ajustes visuais solicitados foram preservados: títulos dos cartões sem o sufixo
-"360" e assistente Haptec em tamanho menor. O painel SIC utiliza a lista do aplicativo;
-o HTML antigo com dados incorporados não é publicado.
+As permissões vêm do banco. Admin administra o sistema; Gestor e Analista recebem consulta/edição por módulo. Projetos permanece no banco e no código, mas está indisponível na navegação atual.
+
+## Publicação e dados
+
+Push em `main` executa testes e publica `dist/` no GitHub Pages. Migrações de banco e Edge Functions são etapas separadas: consulte [implantação](docs/IMPLANTACAO.md).
+
+Uma gravação só é confirmada depois que o servidor retorna todas as revisões. Falha ou conflito bloqueia a fila; não há mesclagem automática. Anexos usam Storage privado, até 10 MB.
+
+Snapshots automáticos são solicitados ao entrar, quando não há um das últimas 24 horas. O painel apresenta 14 dias de histórico. A restauração cobre registros de negócio; arquivos binários, contas e permissões têm recuperação separada.
+
+Nunca adicionar exportações, planilhas operacionais, senhas ou chaves administrativas ao repositório. A configuração em `src/config.js` contém somente a URL e a chave pública do projeto.
+
+Veja [auditoria e mudanças](docs/AUDITORIA-20260908.md), [mapa do banco](docs/MAPA-DO-BANCO.md) e [usuários](docs/USUARIOS-E-EQUIPE.md).

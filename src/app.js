@@ -1,15 +1,20 @@
+import { csvCell } from './csv.js';
+import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
-const STORAGE_KEY = "slt360-state-v6-historico";
+import { renderBackupsPanel, mountBackups } from './backups-ui.js';
+import { mountSicDashboard } from './sic-dashboard.js';
+const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
 
 const MIRO_FLOW_URL = "https://miro.com/app/board/uXjVKxg3MFc=/";
 const AUTH_SESSION_KEY = "slt360-auth-session-v1";
 const HAPTEC_POSITION_KEY = "slt360-haptec-position-v1";
 const ATTACHMENT_DB_NAME = "slt360-attachments-v1";
 const ATTACHMENT_STORE_NAME = "files";
-const TODAY_ISO = todayISO();
+
 const INVESTMENT_PLAN_YEAR = "2026";
 
 const viewAliases = {
+  worksHome: "worksOperational",
   worksPortfolio: "portfolio",
   worksHistory: "portfolio",
   worksIntelligence: "worksManagement",
@@ -51,20 +56,28 @@ const strategicCostTargets = [
   },
 ];
 
-const hapcapexReference = {
-  capexInicial: 286137351,
-  contingenciamentos: 52331203,
-  aportesExtras: 3347836.71,
-  capexAtual: 237153984.71,
-  previstoHistorico: {
-    JAN: 17045693.261,
-    FEV: 20316465.204913463,
-    MAR: 21406238.50691346,
-    ABR: 23752282.418254368,
-    MAI: 21756900.62125437,
-    JUN: 20597676.51212937,
-  },
-};
+function strategicTargetLabel(target) {
+  if (target.targetMin) return `${money(target.targetMin)} a ${money(target.targetMax)}/m²`;
+  return `até ${money(target.targetMax)}/m²`;
+}
+
+function effectiveStrategicCostTargets() {
+  return strategicCostTargets.map((target) => {
+    const override = state?.strategicTargetOverrides?.[target.id] || {};
+    const effective = {
+      ...target,
+      targetMin: Number(override.targetMin) || Number(target.targetMin) || 0,
+      targetMax: Number(override.targetMax) || Number(target.targetMax) || 0,
+    };
+    return { ...effective, targetLabel: strategicTargetLabel(effective) };
+  });
+}
+
+function strategicTargetById(id) {
+  return effectiveStrategicCostTargets().find((target) => target.id === id) || null;
+}
+
+const hapcapexReference = (globalThis.HAPCAPEX_REFERENCE || {capexInicial:0, contingenciamentos:0, aportesExtras:0, capexAtual:0, previstoHistorico:{}});
 
 const columns = [
   { id: "fazer", label: "Fazer" },
@@ -84,18 +97,16 @@ const worksViewIds = [
   "portfolio",
   "ev",
   "sics",
-  "worksSettings",
 ];
 
 const worksNavItems = [
-  { view: "worksHome", label: "Início" },
-  { view: "portfolio", label: "Portfólio" },
+
+  { view: "portfolio", label: "Portfólio de Obras" },
   { view: "worksOperational", label: "Operacional" },
   { view: "worksManagement", label: "Gerencial" },
   { view: "worksStrategic", label: "Estratégica" },
   { view: "ev", label: "EV" },
   { view: "sics", label: "SICs" },
-  { view: "worksSettings", label: "Configurações" },
 ];
 
 const projectColumns = [
@@ -232,33 +243,7 @@ const moduleHeaders = {
   },
 };
 
-const roleDefinitions = {
-  Admin: {
-    label: "Admin",
-    description: "Acesso completo, cadastros globais, configurações e controle financeiro.",
-    blockedViews: [],
-  },
-  Gestão: {
-    label: "Gestão",
-    description: "Acesso gerencial às visões executivas, obras, SICs e controle de verbas.",
-    blockedViews: [],
-  },
-  Analista: {
-    label: "Analista",
-    description: "Acesso operacional ao Orçamento 360, EVs, sprints e SICs sem Controle de Verbas.",
-    blockedViews: ["budget", "settings", "worksSettings", "maintenanceSettings", "clinicalSettings", "analytics", "suppliers"],
-  },
-  "Analista de Orçamento": {
-    label: "Analista de Orçamento",
-    description: "Acesso restrito ao módulo Orçamento 360, incluindo portfólio, operacional, EVs e SICs.",
-    blockedViews: ["budget", "settings", "worksSettings", "maintenanceSettings", "clinicalSettings", "analytics", "suppliers"],
-  },
-  "Analista de Projetos": {
-    label: "Analista de Projetos",
-    description: "Acesso restrito ao módulo Projetos 360, incluindo portfólio, plano e Kanban de projetos.",
-    blockedViews: ["budget", "settings", "worksSettings", "maintenanceSettings", "clinicalSettings", "analytics", "suppliers"],
-  },
-};
+const roleDefinitions = {Admin:{label:"Admin",description:"Administração do sistema"},Gestor:{label:"Gestor",description:"Acesso conforme permissões por módulo"},Analista:{label:"Analista",description:"Acesso conforme permissões por módulo"}};
 
 const userAccessModules = [
   {
@@ -368,12 +353,13 @@ const disciplineAliases = {
 };
 
 const defaultState = {
-  version: 7,
+  version: 8,
   works: [], demands: [], sics: [], contracts: [], suppliers: [],
-  users: [], activeRole: 'Admin', deletedDemands: [], deletedMaintenanceDemands: [],
+  users: [], activeRole: "Admin", deletedDemands: [], deletedMaintenanceDemands: [],
   sprints: [], history: [], funds: [], fundMovements: [], budgetRevisions: [],
-  maintenanceDemands: [], projectDemands: [], capexManualOiRows: [],
-  projectStatusOverrides: {}
+  maintenanceDemands: [], projectDemands: [], capexManualOiRows: [], clinicalAssets: [],
+  workRevisions: [], evs: [], projectStatusOverrides: {}, evTypologyOverrides: {},
+  evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: []
 };
 
 const importedState = globalThis.TRACO_IMPORTED_STATE || {};
@@ -449,8 +435,13 @@ let operationalFilters = {
   punctuality: "",
 };
 let managementStatusFilter = "all";
+let strategicHistoricalQuery = "";
+let strategicHistoricalFilters = { year: "", region: "", status: "" };
 let evShowNotApplicable = false;
 let evAssistantQuery = "";
+let evHistoricalFilters = { query: "", year: "", typology: "", discipline: "", technician: "" };
+let evHistoricalSort = { key: "", direction: "" };
+let sltINCCCalculator = { value: 0, basePeriod: "2023-12" };
 let sicViewMode = "report";
 let sicSearchQuery = "";
 let dashboardReportsFilter = "active";
@@ -518,6 +509,12 @@ let investmentPlanFilters = {
   dateFrom: "",
   dateTo: "",
 };
+let strategicEVDecisionFilters = {
+  query: "",
+  status: "",
+  targetId: "",
+  year: "",
+};
 let projectPlanFilters = {
   query: "",
   etapa: "",
@@ -557,8 +554,29 @@ let portfolioFilters = {
 const app = document.querySelector("#app");
 const modalRoot = document.querySelector("#modalRoot");
 const toast = document.querySelector("#toast");
+const sortableTableObserver = typeof MutationObserver !== "undefined" ? new MutationObserver(() => enhanceSortableTables()) : null;
+sortableTableObserver?.observe(modalRoot, { childList: true, subtree: true });
 
-function loadState() { return normalizeState(baseState); }
+function loadState() {
+  const loaded = normalizeState(baseState);
+    loaded.works = arrayOrFallback(loaded.works).map((work) => {
+      if (work?.ev) return work;
+      return {
+        ...work,
+        ev: {
+          id: `EV-${work?.id || ""}`,
+          status: "Sem EV",
+          versaoAtual: 0,
+          lines: [],
+          versions: [],
+          demandaIds: [],
+          sicIds: [],
+          _virtualEmptyEV: true,
+        },
+      };
+    });
+    return loaded;
+}
 
 function normalizeState(saved) {
   const base = clone(baseState);
@@ -594,6 +612,8 @@ function normalizeState(saved) {
     capexManualOiRows: arrayOrFallback(saved.capexManualOiRows, base.capexManualOiRows),
     projectDemands: arrayOrFallback(saved.projectDemands, base.projectDemands),
     projectStatusOverrides: saved.projectStatusOverrides && typeof saved.projectStatusOverrides === "object" ? saved.projectStatusOverrides : {},
+    evReferenceTargets: saved.evReferenceTargets && typeof saved.evReferenceTargets === "object" ? saved.evReferenceTargets : {},
+    strategicTargetOverrides: saved.strategicTargetOverrides && typeof saved.strategicTargetOverrides === "object" ? saved.strategicTargetOverrides : {},
     history: arrayOrFallback(saved.history, base.history),
   };
 }
@@ -688,34 +708,62 @@ function clone(value) {
 }
 
 function saveState() {
+  if (!globalThis.SLT_CLOUD.canWrite(viewModule(currentView))) { showToast("Seu acesso permite apenas consulta nesta área."); return; }
   return globalThis.SLT_CLOUD.save(persistedStatePayload());
 }
 
 function persistedStatePayload() {
-  const keys = [
-    'works','demands','sics','contracts','suppliers','funds','fundMovements',
-    'budgetRevisions','deletedDemands','deletedMaintenanceDemands','sprints','history',
-    'capexManualOiRows','projectDemands','maintenanceDemands'
-  ];
-  const payload = Object.fromEntries(keys.map((key) => [key, arrayOrFallback(state[key])]));
-  payload.projectStatusOverrides = state.projectStatusOverrides || {};
-  return payload;
+  const works = arrayOrFallback(state.works).map((work) => {
+      if (!work?.ev?._virtualEmptyEV) return work;
+      const ev = work.ev;
+      const hasBudgetData =
+        Number(ev.versaoAtual || 0) > 0 ||
+        (ev.lines || []).length > 0 ||
+        (ev.versions || []).length > 0 ||
+        (ev.demandaIds || []).length > 0 ||
+        (ev.sicIds || []).length > 0 ||
+        (ev.status && !["Sem EV", "Rascunho"].includes(ev.status));
+      const cleanWork = { ...work };
+      if (!hasBudgetData) {
+        delete cleanWork.ev;
+        return cleanWork;
+      }
+      cleanWork.ev = { ...ev };
+      delete cleanWork.ev._virtualEmptyEV;
+      if (cleanWork.ev.status === "Sem EV") cleanWork.ev.status = "Rascunho";
+      return cleanWork;
+    });
+    return {
+      works,
+      demands: arrayOrFallback(state.demands),
+      sics: arrayOrFallback(state.sics),
+      contracts: arrayOrFallback(state.contracts),
+      suppliers: arrayOrFallback(state.suppliers),
+      funds: arrayOrFallback(state.funds),
+      fundMovements: arrayOrFallback(state.fundMovements),
+      budgetRevisions: arrayOrFallback(state.budgetRevisions),
+      deletedDemands: arrayOrFallback(state.deletedDemands),
+      deletedMaintenanceDemands: arrayOrFallback(state.deletedMaintenanceDemands),
+      sprints: arrayOrFallback(state.sprints),
+      history: arrayOrFallback(state.history),
+      capexManualOiRows: arrayOrFallback(state.capexManualOiRows),
+      projectDemands: arrayOrFallback(state.projectDemands),
+      maintenanceDemands: arrayOrFallback(state.maintenanceDemands),
+      clinicalAssets: arrayOrFallback(state.clinicalAssets),
+      workRevisions: arrayOrFallback(state.workRevisions),
+      evs: arrayOrFallback(state.evs),
+      projectStatusOverrides: state.projectStatusOverrides || {},
+      evTypologyOverrides: state.evTypologyOverrides || {},
+      evReferenceTargets: state.evReferenceTargets || {},
+      strategicTargetOverrides: state.strategicTargetOverrides || {},
+      deletedEVRecordIds: arrayOrFallback(state.deletedEVRecordIds),
+    sicApprovalWorks: arrayOrFallback(state.sicApprovalWorks),
+    sicApprovalWeeks: arrayOrFallback(state.sicApprovalWeeks),
+    sicApprovalSnapshots: arrayOrFallback(state.sicApprovalSnapshots),
+    };
 }
 
-function activeUsers() {
-  return arrayOrFallback(state.users).filter((user) => normalizeSearchText(user.status || "Ativo") !== "inativo");
-}
-
-function userById(id) {
-  return activeUsers().find((user) => user.id === id);
-}
-
-function normalizeUserProfile(perfil) {
-  if (perfil === "Gestor") return "Gestão";
-  return roleDefinitions[perfil] ? perfil : "Analista";
-}
-
-function defaultPasswordForProfile() { return ''; }
+function normalizeUserProfile(perfil) { return ["Admin", "Gestor", "Analista"].includes(perfil) ? perfil : "Analista"; }
 
 function defaultAccessModulesForProfile(perfil) {
   const profile = normalizeUserProfile(perfil);
@@ -727,8 +775,8 @@ function defaultAccessModulesForProfile(perfil) {
 
 function normalizeAccessModules(modules, perfil) {
   const valid = new Set(userAccessModules.map((module) => module.id));
-  const source = Array.isArray(modules) ? modules : [];
-  return [...new Set(source.map(String).filter((module) => valid.has(module)))];
+    const source = Array.isArray(modules) ? modules : [];
+    return [...new Set(source.map(String).filter((module) => valid.has(module)))];
 }
 
 function accessViewsForModules(modules = []) {
@@ -742,75 +790,41 @@ function accessViewsForModules(modules = []) {
 
 function normalizeUserCredentials(user = {}) {
   const perfil = normalizeUserProfile(user.perfil);
-  const accessModules = normalizeAccessModules(user.accessModules || user.modulos || user.modules, perfil);
-  return {
-    id: user.id,
-    nome: user.nome,
-    email: user.email,
-    perfil,
-    status: user.status || 'Ativo',
-    accessModules,
-    accessViews: accessViewsForModules(accessModules),
-    mustChangePassword: false,
-    senhaProvisoria: false,
-  };
+    const accessModules = normalizeAccessModules(user.accessModules || user.modulos || user.modules, perfil);
+    return {
+      id: user.id,
+      nome: user.nome,
+      email: user.email,
+      perfil,
+      status: user.status || "Ativo",
+      accessModules,
+      accessViews: accessViewsForModules(accessModules),
+      mustChangePassword: false,
+      senhaProvisoria: false,
+    };
 }
 
-function loadAuthSession() { return { userId: globalThis.SLT_CLOUD.profile.id }; }
-function saveAuthSession() { /* Sessão gerenciada exclusivamente pelo Supabase Auth. */ }
-function currentUser() { return globalThis.SLT_CLOUD.profile; }
-function isAuthenticated() { return Boolean(currentUser()); }
-function loginUser() { return false; }
-
-function userByEmail(email) {
-  const normalizedEmail = normalizeSearchText(email);
-  if (!normalizedEmail) return null;
-  return activeUsers().find((user) => normalizeSearchText(user.email) === normalizedEmail) || null;
+function loadAuthSession() {
+  return { userId: globalThis.SLT_CLOUD.profile.id };
 }
 
-function validateUserPassword() { return false; }
-function loginWithCredentials() { return false; }
-function logoutUser() { globalThis.SLT_CLOUD.logout(); }
+function currentUser() {
+  return globalThis.SLT_CLOUD.profile;
+}
+
+function isAuthenticated() {
+  return Boolean(currentUser());
+}
+
+function logoutUser() {
+  globalThis.SLT_CLOUD.logout();
+}
 
 function authenticatedRole() {
   return normalizeUserProfile(currentUser()?.perfil || state.activeRole || "Gestão");
 }
 
-function roleModuleAccessConfig(role = authenticatedRole()) {
-  const base = {
-    projects: true,
-    works: true,
-    maintenance: true,
-    clinical: true,
-    budget: true,
-    settings: true,
-  };
-  if (role === "Analista de Orçamento") {
-    return { ...base, projects: false, maintenance: false, clinical: false, budget: false, settings: false };
-  }
-  if (role === "Analista de Projetos") {
-    return { ...base, works: false, maintenance: false, clinical: false, budget: false, settings: false };
-  }
-  if (role === "Analista") {
-    return { ...base, budget: false, settings: false };
-  }
-  return base;
-}
-
-function moduleAccessConfig(role = authenticatedRole(), user = currentUser()) {
-  const modules = normalizeAccessModules(user?.accessModules, role);
-  if (user) {
-    return userAccessModules.reduce((config, option) => {
-      config[option.id] = modules.includes(option.id);
-      return config;
-    }, {});
-  }
-  return roleModuleAccessConfig(role);
-}
-
-function canAccessModule(module, role = authenticatedRole(), user = currentUser()) {
-  return moduleAccessConfig(role, user)[module] === true;
-}
+function canAccessModule(module) { return module === "home" || globalThis.SLT_CLOUD.canRead(module); }
 
 function viewModule(view) {
   const normalized = viewAliases[view] || view;
@@ -821,15 +835,6 @@ function viewModule(view) {
   if (normalized === "budget") return "budget";
   if (["settings", "team", "analytics", "suppliers"].includes(normalized)) return "settings";
   return "home";
-}
-
-function compactMaintenanceDemandsForStorage(demands = []) {
-  const normalizedBase = normalizeMaintenanceDemands(arrayOrFallback(baseState.maintenanceDemands), state.sprints || baseState.sprints || []);
-  const baseMap = new Map(normalizedBase.map((item) => [maintenanceDemandKey(item), JSON.stringify(item)]));
-  return arrayOrFallback(demands).filter((item) => {
-    const key = maintenanceDemandKey(item);
-    return !baseMap.has(key) || baseMap.get(key) !== JSON.stringify(item);
-  });
 }
 
 function money(value) {
@@ -858,6 +863,15 @@ function moneyCompact(value) {
   return money(amount);
 }
 
+function metricCompact(value, unit = "") {
+  const amount = Number(value) || 0;
+  const abs = Math.abs(amount);
+  if (abs >= 1000000000) return `${number(amount / 1000000000, 1)} bi${unit}`;
+  if (abs >= 1000000) return `${number(amount / 1000000, 1)} mi${unit}`;
+  if (abs >= 1000) return `${number(amount / 1000, 1)} mil${unit}`;
+  return `${number(amount, unit ? 1 : 0)}${unit}`;
+}
+
 function number(value, digits = 0) {
   return new Intl.NumberFormat("pt-BR", {
     maximumFractionDigits: digits,
@@ -871,9 +885,7 @@ function dateText(value) {
   return `${day}/${month}/${year}`;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+function todayISO() { return businessDate(); }
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -1206,7 +1218,7 @@ function syncCompletedDemandWithEV(work, demand) {
 }
 
 function workTotals(work, options = {}) {
-  const includeRisk = options.includeRisk === true;
+  const includeRisk = options.includeRisk === true || work?._historicalBudgetWork === true;
   const includeInitialBudgetFallback = options.includeInitialBudgetFallback === true;
   const lines = work?.ev?.lines || [];
   const totals = lines.reduce(
@@ -1244,25 +1256,25 @@ function workBudgetValue(work, options = {}) {
 
 function strategicCostTargetForWork(work) {
   const manualTargetId = String(work?.metaCustoM2TargetId || work?.metaCustoM2 || "").trim();
-  const manualTarget = strategicCostTargets.find((target) => target.id === manualTargetId);
+  const manualTarget = strategicTargetById(manualTargetId);
   if (manualTarget) return manualTarget;
 
   const type = normalizeSearchText(work.tipoUnidade);
   const text = normalizeSearchText(`${work.nome} ${work.tipoUnidade} ${work.tipologiaObra} ${work.classificacaoObra}`);
 
   if (type.includes("pronto atendimento")) {
-    return strategicCostTargets.find((target) => target.id === "pronto-atendimento");
+    return strategicTargetById("pronto-atendimento");
   }
 
   if (type.includes("hospital")) {
     const highComplexitySignals = ["novo hospital", "nova unidade", "hemodinam", "leitos", "uti", "centro cirurg", "maternidade", "alta complexidade"];
     const isHighComplexity = highComplexitySignals.some((signal) => text.includes(signal));
-    return strategicCostTargets.find((target) => target.id === (isHighComplexity ? "hospital-alta" : "hospital-media"));
+    return strategicTargetById(isHighComplexity ? "hospital-alta" : "hospital-media");
   }
 
   const compactCareTypes = ["clinica", "diagnostico", "laboratorio", "lab", "tea", "coleta", "medprev"];
   if (compactCareTypes.some((signal) => type.includes(signal) || text.includes(signal))) {
-    return strategicCostTargets.find((target) => target.id === "clinicas-diagnosticos-labs-teas");
+    return strategicTargetById("clinicas-diagnosticos-labs-teas");
   }
 
   return null;
@@ -1271,7 +1283,7 @@ function strategicCostTargetForWork(work) {
 function strategicCostTargetOptions(selected = "") {
   return [`<option value="" ${!selected ? "selected" : ""}>Classificação automática pelo sistema</option>`]
     .concat(
-      strategicCostTargets.map(
+      effectiveStrategicCostTargets().map(
         (target) => `<option value="${target.id}" ${selected === target.id ? "selected" : ""}>${target.label} (${target.targetLabel})</option>`
       )
     )
@@ -1313,7 +1325,8 @@ function isStrategicCostReadingValid(reading) {
 }
 
 function commissionObrasRecords() {
-  return arrayOrFallback(state.commissionObras?.records);
+  const updatedRecords = globalThis.GENERAL_WORKS_DATA?.records;
+  return Array.isArray(updatedRecords) && updatedRecords.length ? updatedRecords : arrayOrFallback(state.commissionObras?.records);
 }
 
 function isCommissionObraReadingValid(record) {
@@ -1328,57 +1341,69 @@ function strategicCostTargetForCommissionRecord(record) {
   const type = normalizeSearchText(`${record?.tipoObra || ""} ${record?.tipoObras || ""} ${record?.tipoObra2 || ""} ${record?.nivelObra || ""}`);
   const text = normalizeSearchText(`${record?.nomeObra || ""} ${record?.classificacaoObra || ""} ${record?.nivelObra || ""} ${record?.tipoObra || ""}`);
 
-  if (type.includes("pronto atendimento") || text.includes("pronto atendimento") || /\bpa\b/.test(text)) {
-    return strategicCostTargets.find((target) => target.id === "pronto-atendimento");
-  }
-
   if (type.includes("hospital") || type.includes("hospitais") || text.includes("hospital") || /\bhs\b/.test(text)) {
     const highComplexitySignals = ["novo hospital", "nova unidade", "hemodinam", "leitos", "uti", "centro cirurg", "maternidade", "alta complexidade"];
     const isHighComplexity = highComplexitySignals.some((signal) => text.includes(signal) || type.includes(signal));
-    return strategicCostTargets.find((target) => target.id === (isHighComplexity ? "hospital-alta" : "hospital-media"));
+    return strategicTargetById(isHighComplexity ? "hospital-alta" : "hospital-media");
+  }
+
+  if (type.includes("pronto atendimento") || text.includes("pronto atendimento") || /\bpa\b/.test(text)) {
+    return strategicTargetById("pronto-atendimento");
   }
 
   const compactCareTypes = ["clinica", "diagnostico", "laboratorio", "lab", "tea", "coleta", "medprev", "ambulator"];
   if (compactCareTypes.some((signal) => type.includes(signal) || text.includes(signal))) {
-    return strategicCostTargets.find((target) => target.id === "clinicas-diagnosticos-labs-teas");
+    return strategicTargetById("clinicas-diagnosticos-labs-teas");
   }
 
   return null;
 }
 
-function commissionBenchmarkByTarget() {
-  const grouped = new Map();
-  validCommissionObrasRecords().forEach((record) => {
-    const target = strategicCostTargetForCommissionRecord(record);
-    if (!target) return;
-    if (!grouped.has(target.id)) {
-      grouped.set(target.id, {
-        target,
-        records: [],
-        area: 0,
-        valorSalaTecnica: 0,
-        valorNegociado: 0,
-        gapSalaTecnicaVsNegociado: 0,
-        precoM2Values: [],
-      });
-    }
-    const row = grouped.get(target.id);
-    row.records.push(record);
-    row.area += Number(record.areaM2) || 0;
-    row.valorSalaTecnica += Number(record.valorSalaTecnica) || 0;
-    row.valorNegociado += Number(record.valorNegociado) || 0;
-    row.gapSalaTecnicaVsNegociado += Number(record.gapSalaTecnicaVsNegociado) || 0;
-    row.precoM2Values.push(Number(record.precoM2) || 0);
-  });
+function strategicCostTargetForUnifiedRecord(record) {
+  const type = normalizeSearchText(record?.typology || "");
+  const text = normalizeSearchText(`${record?.project || ""} ${record?.typology || ""}`);
+  if (type.includes("pronto atendimento") || text.includes("pronto atendimento") || /\bpa\b/.test(text)) {
+    return strategicTargetById("pronto-atendimento");
+  }
+  const compactCareTypes = ["clinica", "diagnostico", "laboratorio", "lab", "tea", "coleta", "medprev", "ambulator"];
+  if (compactCareTypes.some((signal) => type.includes(signal) || text.includes(signal))) {
+    return strategicTargetById("clinicas-diagnosticos-labs-teas");
+  }
+  if (type.includes("hospital") || text.includes("hospital") || /\bhs\b/.test(text) || text.includes("hapfor")) {
+    const highComplexitySignals = ["novo hospital", "novo hs", "nova unidade", "nova torre", "hemodinam", "leitos", "uti", "centro cirurg", "maternidade", "alta complexidade"];
+    const isHighComplexity = highComplexitySignals.some((signal) => text.includes(signal));
+    return strategicTargetById(isHighComplexity ? "hospital-alta" : "hospital-media");
+  }
+  return null;
+}
 
-  grouped.forEach((row) => {
-    row.count = row.records.length;
-    row.precoM2Ponderado = row.area ? row.valorNegociado / row.area : 0;
-    row.precoM2Mediana = median(row.precoM2Values);
-    row.savingTecnico = row.valorSalaTecnica - row.valorNegociado;
-  });
+function strategicEVDecision(row, totalValue) {
+  const costM2 = Number(row.record.area) > 0 ? row.valor / Number(row.record.area) : 0;
+  const target = strategicCostTargetForUnifiedRecord(row.record);
+  const benchmark = Number(target?.targetMax) || 0;
+  const deviation = costM2 && benchmark ? ((costM2 / benchmark) - 1) * 100 : 0;
+  const share = (row.valor / Math.max(totalValue, 1)) * 100;
+  let reading = "Dentro da meta";
+  let tone = "green";
+  let status = "within";
+  if (!target) { reading = "Classificar meta do EV"; tone = "gray"; status = "unclassified"; }
+  else if (!costM2) { reading = "Sem área para validar R$/m²"; tone = "gray"; status = "unclassified"; }
+  else if (costM2 > target.targetMax) { reading = `Acima da meta em ${number(Math.abs(deviation), 0)}%`; tone = "red"; status = "above"; }
+  else if (target.targetMin && costM2 < target.targetMin) { reading = `Abaixo da faixa em ${number(((target.targetMin / costM2) - 1) * 100, 0)}%`; tone = "orange"; status = "below"; }
+  else if (Math.abs(deviation) >= 15) { reading = `Margem de ${number(Math.abs(deviation), 0)}% até o limite`; tone = "blue"; }
+  else if (share >= 5) { reading = `Alta concentração: ${number(share, 1)}% da base`; tone = "blue"; }
+  return { ...row, costM2, target, deviation, share, reading, tone, status };
+}
 
-  return grouped;
+function matchesStrategicEVDecisionFilters(row) {
+  const filters = strategicEVDecisionFilters;
+  const terms = normalizeSearchText(filters.query).split(/\s+/).filter(Boolean);
+  const searchable = normalizeSearchText(`${row.record.project} ${row.record.code} ${row.record.typology} ${row.record.technician || ""} ${row.record.year}`);
+  const statusMatches = !filters.status || row.status === filters.status || (filters.status === "outside" && ["above", "below"].includes(row.status));
+  return statusMatches
+    && (!filters.targetId || row.target?.id === filters.targetId)
+    && (!filters.year || String(row.record.year) === filters.year)
+    && (!terms.length || terms.every((term) => searchable.includes(term)));
 }
 
 function commissionBenchmarkSummary() {
@@ -1400,8 +1425,7 @@ function commissionBenchmarkSummary() {
 }
 
 function strategicCostTargetRows() {
-  const historicalBenchmarks = commissionBenchmarkByTarget();
-  const grouped = strategicCostTargets.map((target) => ({
+  const grouped = effectiveStrategicCostTargets().map((target) => ({
     ...target,
     works: [],
     readings: [],
@@ -1421,19 +1445,44 @@ function strategicCostTargetRows() {
     historicalPrecoM2Ponderado: 0,
     historicalPrecoM2Mediana: 0,
     status: "Sem leitura",
+    sourceHistoricalOnly: true,
   }));
 
-  state.works.forEach((work) => {
-    const reading = strategicCostReadingForWork(work);
-    if (!reading.target) return;
-    const row = grouped.find((item) => item.id === reading.target.id);
+  validCommissionObrasRecords().forEach((record) => {
+    const target = strategicCostTargetForCommissionRecord(record);
+    if (!target) return;
+    const value = Number(record.valorNegociado) || 0;
+    const area = Number(record.areaM2) || 0;
+    const costM2 = area ? value / area : 0;
+    const aboveTarget = costM2 > target.targetMax;
+    const belowRange = Boolean(target.targetMin && costM2 < target.targetMin);
+    const work = {
+      id: record.id,
+      nome: record.nomeObra,
+      tipoUnidade: record.tipoObra || record.tipologiaObra,
+      classificacaoObra: record.classificacaoObra,
+      cidade: record.cidade,
+      uf: record.uf,
+      regiao: record.regiao,
+    };
+    const reading = {
+      work,
+      record,
+      target,
+      value,
+      area,
+      costM2,
+      measured: true,
+      aboveTarget,
+      belowRange,
+      status: aboveTarget ? "Acima da meta" : belowRange ? "Abaixo da faixa" : "Dentro da meta",
+    };
+    const row = grouped.find((item) => item.id === target.id);
     if (!row) return;
     row.works.push(work);
     row.readings.push(reading);
-    if (reading.measured) {
-      row.capex += reading.value;
-      row.area += reading.area;
-    }
+    row.capex += value;
+    row.area += area;
   });
 
   grouped.forEach((row) => {
@@ -1445,16 +1494,13 @@ function strategicCostTargetRows() {
     row.costM2 = row.area ? row.capex / row.area : 0;
     row.adherence = row.measuredCount ? (row.withinCount / row.measuredCount) * 100 : 0;
     row.status = !row.measuredCount ? "Sem leitura" : row.costM2 > row.targetMax ? "Acima da meta" : row.targetMin && row.costM2 < row.targetMin ? "Abaixo da faixa" : "Dentro da meta";
-    const historical = historicalBenchmarks.get(row.id);
-    if (historical) {
-      row.historicalCount = historical.count;
-      row.historicalArea = historical.area;
-      row.historicalSalaTecnica = historical.valorSalaTecnica;
-      row.historicalNegociado = historical.valorNegociado;
-      row.historicalSavingTecnico = historical.savingTecnico;
-      row.historicalPrecoM2Ponderado = historical.precoM2Ponderado;
-      row.historicalPrecoM2Mediana = historical.precoM2Mediana;
-    }
+    row.historicalCount = row.measuredCount;
+    row.historicalArea = row.area;
+    row.historicalSalaTecnica = row.readings.reduce((sum, reading) => sum + (Number(reading.record.valorSalaTecnica) || 0), 0);
+    row.historicalNegociado = row.capex;
+    row.historicalSavingTecnico = row.historicalSalaTecnica - row.historicalNegociado;
+    row.historicalPrecoM2Ponderado = row.costM2;
+    row.historicalPrecoM2Mediana = median(row.readings.map((reading) => reading.costM2));
   });
 
   return grouped;
@@ -1483,8 +1529,8 @@ function strategicCostTargetStatusTone(status) {
 }
 
 function worksAboveStrategicCostTarget() {
-  return state.works
-    .map(strategicCostReadingForWork)
+  return strategicCostTargetRows()
+    .flatMap((row) => row.readings)
     .filter((reading) => reading.aboveTarget)
     .sort((a, b) => b.costM2 - a.costM2);
 }
@@ -1497,22 +1543,15 @@ function workHasEVValuesForConclusion(work) {
 }
 
 function worksWithCriticalBalance() {
-  return state.works.filter((work) => {
+  return budgetWorks().filter((work) => {
     const values = workTotals(work);
     const approvedBudget = values.orcado + values.aditivado;
     return approvedBudget > 0 && values.saldo / approvedBudget < 0.18;
   });
 }
 
-function compactNames(items, mapper, limit = 4) {
-  if (!items.length) return "";
-  const names = items.slice(0, limit).map(mapper);
-  const remaining = items.length - names.length;
-  return `${names.join(", ")}${remaining > 0 ? ` e mais ${remaining}` : ""}`;
-}
-
 function allTotals(options = {}) {
-  return state.works.reduce(
+  return budgetWorks().reduce(
     (total, work) => {
       const values = workTotals(work, options);
       total.orcado += values.orcado;
@@ -1534,15 +1573,8 @@ function overdueDemands() {
     (demand) =>
       !["concluido", "cancelado"].includes(demand.coluna) &&
       demand.dataPrevistaEntrega &&
-      demand.dataPrevistaEntrega < TODAY_ISO
+      demand.dataPrevistaEntrega < todayISO()
   );
-}
-
-function isHistoricalWork(work) {
-  const status = normalizeSearchText(
-    [work?.situacao, work?.status, work?.statusObra, work?.stage, work?.archivedAt ? "arquivada" : ""].filter(Boolean).join(" ")
-  );
-  return ["concluida", "concluido", "cancelada", "cancelado", "arquivada", "arquivado"].some((item) => status.includes(item));
 }
 
 function workContractsValue(work) {
@@ -1637,7 +1669,7 @@ function dashboardDemandRows() {
       responsible: item.analistaResponsavel || "",
       value: maintenanceValue(item),
       active,
-      overdue: active && (isMaintenanceLate(item) || Boolean(item.dataPrevistaEntrega && item.dataPrevistaEntrega < TODAY_ISO)),
+      overdue: active && (isMaintenanceLate(item) || Boolean(item.dataPrevistaEntrega && item.dataPrevistaEntrega < todayISO())),
       waitingFunds: normalizeSearchText(status).includes("verba"),
       validation: normalizeSearchText(status).includes("validacao"),
       waitingInfo: normalizeSearchText(status).includes("aguardando") && !normalizeSearchText(status).includes("verba"),
@@ -1659,20 +1691,6 @@ function dashboardDemandIndicators() {
     validation: active.filter((row) => row.validation),
     waitingFunds: active.filter((row) => row.waitingFunds),
     unassigned: active.filter((row) => row.unassigned),
-  };
-}
-
-function dashboardSummaryV6() {
-  const indicators = dashboardDemandIndicators();
-  const activeWorks = (state.works || []).filter((work) => !isHistoricalWork(work));
-  const historicalWorks = (state.works || []).filter(isHistoricalWork);
-  const investment = (state.works || []).reduce((sum, work) => sum + bestHistoricalWorkValue(work), 0);
-  return {
-    indicators,
-    activeWorks,
-    historicalWorks,
-    investment,
-    availableBalance: positiveFundsBalanceTotal(),
   };
 }
 
@@ -1801,10 +1819,7 @@ function addHistory({ entidade, entidadeId, campo, valorAnterior, valorNovo }) {
   });
 }
 
-function csvCell(value) {
-  const text = String(value ?? "").replace(/\r?\n/g, " ").trim();
-  return `"${text.replace(/"/g, '""')}"`;
-}
+
 
 function downloadCsv(filename, headers, rows) {
   const content = [headers, ...rows].map((row) => row.map(csvCell).join(";")).join("\r\n");
@@ -1849,7 +1864,7 @@ function exportWorksOperationalReport() {
     ];
   });
   downloadCsv(
-    `SLT360-obras-kanban-${TODAY_ISO}.csv`,
+    `SLT360-obras-kanban-${todayISO()}.csv`,
     ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analista", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor EV", "Observação"],
     rows
   );
@@ -1890,7 +1905,7 @@ function exportMaintenanceOperationalReport() {
     item.observacoes || "",
   ]);
   downloadCsv(
-    `SLT360-${labels.isClinical ? "engenharia-clinica" : "manutencao"}-kanban-${TODAY_ISO}.csv`,
+    `SLT360-${labels.isClinical ? "engenharia-clinica" : "manutencao"}-kanban-${todayISO()}.csv`,
     ["ID", "OS", "Código origem", "Título", "Unidade", "UF", "CNPJ", "Centro de custo", "Tipo demanda", "Tipo despesa", "Tipologia", "Sprint", "Fase", "Analista", "Prioridade", "Início", "Entrega prevista", "Fim", "Lead time", "Tempo na fase", "Valor proposta", "Valor Sala Técnica", "Valor negociado CAPEX", "Equipamento", "Patrimônio/série", "Fabricante", "Modelo", "Planejamento", "Observações"],
     rows
   );
@@ -1901,66 +1916,14 @@ function activeRole() {
   return authenticatedRole();
 }
 
-function canAccessView(view) {
-  if (view === "dashboard") return true;
-  const normalized = viewAliases[view] || view;
-  const user = currentUser();
-  const module = viewModule(view);
-  if (module !== "home" && !canAccessModule(module)) return false;
-  if (user?.accessViews?.length && module !== "home") return user.accessViews.includes(normalized);
-  return true;
-}
+function canAccessView(view) { const module = viewModule(viewAliases[view] || view); return module !== "projects" && canAccessModule(module); }
 
-const editActions = new Set([
-  'add-discipline-row','add-sic-draft-row','approve-sic','approve-sic-demand',
-  'create-budget-from-project','edit-work','move-demand','open-contract','open-delete-demand',
-  'open-demand','open-global-demand','open-global-demand-type','open-maintenance-demand',
-  'open-project-demand','open-sprint','open-work','post-sic-to-ev','reject-sic-demand',
-  'remove-discipline-row','remove-sic-draft-row','set-ev-line-na','start-budget-from-plan',
-  'start-demand-wizard','submit-demand-form','submit-demand-step','update-project-status',
-  'validate-budget-transfer'
-]);
-function currentViewWritable() { return globalThis.SLT_CLOUD.canWrite(viewModule(currentView)); }
-function mutationAllowed(action) {
-  if (['create-budget-from-project','start-budget-from-plan','post-sic-to-ev'].includes(action)) return globalThis.SLT_CLOUD.canWrite('works');
-  if (action === 'open-sprint') return currentUser()?.perfil === 'Admin';
-  return currentViewWritable();
+function canMutateUI(action) {
+  const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets"].includes(action);
+  if (!writeAction) return true;
+  const module = /sprint|supplier/.test(action) ? "settings" : viewModule(currentView);
+  return globalThis.SLT_CLOUD.canWrite(module);
 }
-function applyReadOnlyControls() {
-  document.querySelectorAll('[data-action]').forEach((node) => {
-    if (!editActions.has(node.dataset.action)) return;
-    const blocked = !mutationAllowed(node.dataset.action);
-    if ('disabled' in node) node.disabled = blocked;
-    if (blocked && !node.hasAttribute('data-permission-disabled')) node.setAttribute('data-permission-disabled','');
-    if (!blocked && node.hasAttribute('data-permission-disabled')) node.removeAttribute('data-permission-disabled');
-  });
-  if (!currentViewWritable()) {
-    document.querySelectorAll('#app form:not(#haptecForm), #modalRoot form').forEach((form) => {
-      form.querySelectorAll('input,select,textarea,button[type=submit]').forEach((node) => { if (!node.disabled) node.disabled = true; });
-    });
-    document.querySelectorAll('[data-action^="update-"],[data-action="assign-analyst"]').forEach((node) => { if ('disabled' in node && !node.disabled) node.disabled = true; });
-  }
-}
-document.addEventListener('click', (event) => {
-  const node = event.target.closest('[data-action]');
-  if (node && editActions.has(node.dataset.action) && !mutationAllowed(node.dataset.action)) {
-    event.preventDefault(); event.stopImmediatePropagation(); showToast('Seu acesso a este módulo permite somente consulta.');
-  }
-}, true);
-document.addEventListener('submit', (event) => {
-  if (['haptecForm','teamAccountForm','cloudLogin','firstAccessForm'].includes(event.target.id)) return;
-  if (!currentViewWritable()) { event.preventDefault(); event.stopImmediatePropagation(); showToast('Você não tem permissão para salvar neste módulo.'); }
-}, true);
-document.addEventListener('change', (event) => {
-  const action = event.target.dataset.action || '';
-  if ((action.startsWith('update-') || action === 'assign-analyst') && !currentViewWritable()) {
-    event.preventDefault(); event.stopImmediatePropagation(); render();
-  }
-}, true);
-for (const type of ['dragstart','drop']) document.addEventListener(type, (event) => {
-  if (!currentViewWritable()) { event.preventDefault(); event.stopImmediatePropagation(); }
-}, true);
-new MutationObserver(applyReadOnlyControls).observe(modalRoot, { childList: true, subtree: true });
 
 function applyRolePermissions() {
   const role = activeRole();
@@ -1981,8 +1944,10 @@ function applyRolePermissions() {
   const headerNewDemand = document.querySelector('.header-actions [data-action="open-demand"], .header-actions [data-action="open-global-demand"]');
   const isHome = currentView === "dashboard" || !user || requiresPasswordChange;
   if (headerSearch) headerSearch.hidden = isHome;
-  if (headerNewDemand) headerNewDemand.hidden = isHome || !currentViewWritable();
-  applyReadOnlyControls();
+  if (headerNewDemand) headerNewDemand.hidden = isHome;
+  document.querySelectorAll('[data-action]').forEach(button => {
+    if (!canMutateUI(button.dataset.action)) { button.disabled = true; button.title = 'Seu acesso permite apenas consulta.'; }
+  });
   const logoutButton = document.querySelector('[data-action="logout"]');
   if (logoutButton) logoutButton.hidden = !user;
 }
@@ -2009,49 +1974,111 @@ function setView(view) {
 }
 
 function render() {
-  if (!isAuthenticated()) {
-    app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderLoginScreen());
-    applyRolePermissions();
-    return;
-  }
-  const authenticatedUser = currentUser();
-  if (authenticatedUser?.mustChangePassword || authenticatedUser?.senhaProvisoria) {
-    app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderFirstAccessPasswordScreen(authenticatedUser));
-    applyRolePermissions();
-    return;
-  }
   if (!canAccessView(currentView)) currentView = "dashboard";
   const views = {
-    dashboard: renderDashboard, team: renderTeam,
-    projectsHome: renderProjectsHome, projectsPortfolio: renderProjectsPortfolio,
-    projectsPlan: renderProjectsPortfolio, projectsOperational: renderProjectsOperational,
-    projectsManagement: renderProjectsManagement, projectsStrategic: renderProjectsStrategic,
-    worksHome: renderWorksHome, worksOperational: renderWorksOperational,
-    worksManagement: renderWorksManagement, worksStrategic: renderWorksStrategic,
-    worksSettings: renderWorksSettings, kanban: renderWorksOperational,
-    portfolio: renderPortfolio, investmentPlan: renderProjectsPortfolio, ev: renderEV,
-    maintenance: renderMaintenance, maintenanceOperational: renderMaintenanceOperational,
-    maintenanceReports: renderMaintenanceReports, maintenanceTimeline: renderMaintenanceTimeline,
-    maintenanceExecutive: renderMaintenanceExecutive, maintenanceSettings: renderMaintenanceSettings,
-    clinical: renderClinical, clinicalOperational: renderClinicalOperational,
-    clinicalReports: renderClinicalReports, clinicalTimeline: renderClinicalTimeline,
-    clinicalExecutive: renderClinicalExecutive, clinicalSettings: renderClinicalSettings,
-    budget: renderBudgetControl, reports: renderReports, sics: renderSics,
-    analytics: renderAnalytics, suppliers: renderSuppliers, settings: renderSettings,
+    dashboard: renderDashboard,
+    team: renderTeam,
+    projectsHome: renderProjectsHome,
+    projectsPortfolio: renderProjectsPortfolio,
+    projectsPlan: renderProjectsPortfolio,
+    projectsOperational: renderProjectsOperational,
+    projectsManagement: renderProjectsManagement,
+    projectsStrategic: renderProjectsStrategic,
+    worksHome: renderWorksHome,
+    worksOperational: renderWorksOperational,
+    worksManagement: renderWorksManagement,
+    worksStrategic: renderWorksStrategic,
+    worksSettings: renderWorksSettings,
+    kanban: renderWorksOperational,
+    portfolio: renderPortfolio,
+    investmentPlan: renderProjectsPortfolio,
+    ev: renderEV,
+    maintenance: renderMaintenance,
+    maintenanceOperational: renderMaintenanceOperational,
+    maintenanceReports: renderMaintenanceReports,
+    maintenanceTimeline: renderMaintenanceTimeline,
+    maintenanceExecutive: renderMaintenanceExecutive,
+    maintenanceSettings: renderMaintenanceSettings,
+    clinical: renderClinical,
+    clinicalOperational: renderClinicalOperational,
+    clinicalReports: renderClinicalReports,
+    clinicalTimeline: renderClinicalTimeline,
+    clinicalExecutive: renderClinicalExecutive,
+    clinicalSettings: renderClinicalSettings,
+    budget: renderBudgetControl,
+    reports: renderReports,
+    sics: renderSics,
+    analytics: renderAnalytics,
+    suppliers: renderSuppliers,
+    settings: renderSettings,
   };
-  const readOnly = currentView !== "dashboard" && !currentViewWritable()
-    ? '<div class="read-only-notice" role="status">Somente consulta · seu perfil não pode alterar os dados deste módulo.</div>'
-    : '';
-  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${readOnly}${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
+  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
   applyRolePermissions();
+  enhanceSortableTables();
   scheduleDashboardCharts();
+}
+
+function enhanceSortableTables() {
+  document.querySelectorAll("table.data-table").forEach((table, tableIndex) => {
+    table.dataset.sortableTable = table.dataset.sortableTable || `table-${tableIndex}`;
+    table.querySelectorAll("tbody tr").forEach((row, rowIndex) => {
+      if (!row.dataset.originalSortIndex) row.dataset.originalSortIndex = String(rowIndex);
+    });
+    table.querySelectorAll("thead th").forEach((header, columnIndex) => {
+      if (header.querySelector('[data-action="sort-ev-history"], [data-action="sort-generic-table"]')) return;
+      const label = header.textContent.trim();
+      if (!label || normalizeSearchText(label) === "acao") return;
+      header.classList.add("generic-sortable-th");
+      header.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<button type="button" data-action="sort-generic-table" data-column-index="${columnIndex}" title="Clique: maior para menor; segundo clique: menor para maior; terceiro clique: ordem original"><span>${escapeAttribute(label)}</span><i>↕</i></button>`);
+    });
+  });
+}
+
+function genericTableSortValue(cell) {
+  const raw = String(cell?.dataset.sortValue || cell?.innerText || cell?.textContent || "").trim();
+  const compact = raw.replace(/\s+/g, " ");
+  const numericCandidate = compact.replace(/R\$\s?/gi, "").replace(/\s?(m²|mi|mil|bi|%|sics?|obras?)\b/gi, "").trim();
+  if (/^-?[\d.]+(?:,\d+)?$/.test(numericCandidate)) {
+    let multiplier = 1;
+    if (/\bmil\b/i.test(compact)) multiplier = 1e3;
+    if (/\bmi\b/i.test(compact)) multiplier = 1e6;
+    if (/\bbi\b/i.test(compact)) multiplier = 1e9;
+    return { type: "number", value: Number(numericCandidate.replace(/\./g, "").replace(",", ".")) * multiplier };
+  }
+  const isoDate = compact.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return { type: "number", value: Number(`${isoDate[1]}${isoDate[2]}${isoDate[3]}`) };
+  return { type: "text", value: normalizeSearchText(compact) };
+}
+
+function sortGenericTable(button) {
+  const table = button.closest("table");
+  if (!table) return;
+  const columnIndex = Number(button.dataset.columnIndex);
+  const sameColumn = Number(table.dataset.sortColumn) === columnIndex;
+  const current = sameColumn ? table.dataset.sortDirection || "" : "";
+  const direction = current === "" ? "desc" : current === "desc" ? "asc" : "";
+  table.dataset.sortColumn = direction ? String(columnIndex) : "";
+  table.dataset.sortDirection = direction;
+  table.querySelectorAll('[data-action="sort-generic-table"] i').forEach((icon) => { icon.textContent = "↕"; });
+  button.querySelector("i").textContent = direction === "desc" ? "↓" : direction === "asc" ? "↑" : "↕";
+  table.querySelectorAll("tbody").forEach((body) => {
+    const rows = [...body.querySelectorAll(":scope > tr")];
+    rows.sort((left, right) => {
+      if (!direction) return Number(left.dataset.originalSortIndex) - Number(right.dataset.originalSortIndex);
+      const a = genericTableSortValue(left.children[columnIndex]);
+      const b = genericTableSortValue(right.children[columnIndex]);
+      const comparison = a.type === "number" && b.type === "number" ? a.value - b.value : String(a.value).localeCompare(String(b.value), "pt-BR");
+      return (direction === "desc" ? -1 : 1) * comparison || Number(left.dataset.originalSortIndex) - Number(right.dataset.originalSortIndex);
+    });
+    rows.forEach((row) => body.appendChild(row));
+  });
 }
 
 function scheduleDashboardCharts() {
   const callback = () => {
     renderTransferDashboardCharts();
     renderHapcapexDashboardCharts();
-    hydrateSicApprovalDashboardFrame();
+    mountSicApprovalView();
   };
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(callback);
@@ -2060,7 +2087,22 @@ function scheduleDashboardCharts() {
   setTimeout(callback, 0);
 }
 
-function hydrateSicApprovalDashboardFrame() { /* Painel integrado usa a base autenticada. */ }
+function mountSicApprovalView() {
+  const host = document.querySelector('#sicApprovalDashboard');
+  if (!host) return;
+  mountSicDashboard(host, {
+    cleanHTML: globalThis.SLT_CLOUD.cleanHTML,
+    canWrite: () => globalThis.SLT_CLOUD.canWrite('works'),
+    load: () => ({obras: structuredClone(state.sicApprovalWorks || []), weeks: structuredClone(state.sicApprovalWeeks || []), snapshots: structuredClone(state.sicApprovalSnapshots || [])}),
+    async save({obras, weeks, snapshots}) {
+      if (!globalThis.SLT_CLOUD.canWrite('works')) throw new Error('Seu acesso permite apenas consulta.');
+      state.sicApprovalWorks = structuredClone(obras);
+      state.sicApprovalWeeks = structuredClone(weeks);
+      state.sicApprovalSnapshots = structuredClone(snapshots);
+      await globalThis.SLT_CLOUD.saveAndWait(persistedStatePayload());
+    },
+  });
+}
 
 function renderToolbar(title, subtitle, actions = "", module = null) {
   const moduleIntro = module?.label === title ? module.eyebrow : module?.label;
@@ -2193,7 +2235,7 @@ function haptecModuleSummary() {
 }
 
 function haptecTopEVWork() {
-  return state.works
+  return budgetWorks()
     .map((work) => ({ work, value: workBudgetValue(work) }))
     .filter((item) => item.value > 0)
     .sort((a, b) => b.value - a.value)[0];
@@ -2215,11 +2257,11 @@ function haptecTopEVAnswer() {
 function haptecPortfolioDataAnswer() {
   const totals = allTotals();
   const capex = totals.orcado + totals.aditivado;
-  const completed = state.works.filter((work) => work.ev.status === "Completo").length;
-  const pending = state.works.length - completed;
+  const completed = budgetWorks().filter((work) => work.ev.status === "Completo").length;
+  const pending = budgetWorks().length - completed;
   const top = haptecTopEVWork();
   return [
-    `O portfólio tem ${state.works.length} obra(s).`,
+    `O portfólio tem ${budgetWorks().length} obra(s).`,
     `CAPEX/EV consolidado: ${money(capex)}.`,
     `${completed} EV(s) completo(s), ${pending} pendente(s).`,
     top ? `Maior EV: ${top.work.nome}, com ${money(top.value)}.` : "Ainda sem EV valorizado."
@@ -2337,9 +2379,9 @@ function haptecWorksKanbanAnswer(text) {
 }
 
 function haptecEVDataAnswer(text) {
-  const works = state.works || [];
+  const works = budgetWorks() || [];
   const completed = works.filter((work) => work.ev.status === "Completo");
-  const pending = works.filter((work) => work.ev.status !== "Completo");
+  const pending = works.filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo");
   const total = works.reduce((sum, work) => sum + workBudgetValue(work), 0);
   const top = haptecTopEVWork();
 
@@ -2349,8 +2391,90 @@ function haptecEVDataAnswer(text) {
   return haptecTopEVAnswer();
 }
 
+function haptecDisciplineIdsFromQuestion(text) {
+  const aliases = [
+    ["marcenaria", ["marcenaria"]],
+    ["climatizacao", ["equipamentos-de-climatizacao", "instalacoes-de-climatizacao-e-exaustao"]],
+    ["inox", ["artefatos-inox"]],
+    ["comunicacao visual", ["comunicacao-visual-externa-e-interna"]],
+    ["dados e voz", ["dados-e-voz-seguranca-patrimonial-chamada-hospitalar"]],
+    ["seguranca patrimonial", ["dados-e-voz-seguranca-patrimonial-chamada-hospitalar"]],
+    ["chamada hospitalar", ["dados-e-voz-seguranca-patrimonial-chamada-hospitalar"]],
+    ["quadros eletricos", ["quadros-eletricos"]],
+    ["projetos", ["projetos-tecnicos", "projetos-legalizacao"]],
+    ["gerador", ["gerador-subestacao-transformador-cubiculos"]],
+    ["elevador", ["elevadores-plataforma-elevatoria"]],
+    ["gases medicinais", ["reguas-medicinais", "instalacoes-de-gases-medicinais"]],
+    ["reguas medicinais", ["reguas-medicinais"]],
+    ["taxa de risco", ["taxa-risco"]],
+    ["blindagem", ["blindagem"]],
+    ["fachada", ["fachadas"]],
+    ["estrutura", ["estruturas"]],
+  ];
+  for (const [term, ids] of aliases) if (text.includes(term)) return ids;
+  const direct = disciplines.find((item) => text.includes(normalizeSearchText(item.nome)));
+  return direct ? [direct.id] : [];
+}
+
+function haptecEVRecordFromQuestion(text) {
+  const stop = new Set(["projeto", "hospital", "clinica", "adequacao", "novo", "nova", "obra", "tec", "medprev", "pronto", "atendimento"]);
+  const candidates = evUnifiedRecords().map((record) => {
+    const code = evUnifiedCode(record.code);
+    const tokens = [...new Set(evUnifiedName(record.project).split(" ").filter((token) => token.length >= 4 && !stop.has(token)))];
+    let score = tokens.reduce((sum, token) => sum + (text.includes(token) ? Math.min(token.length, 8) : 0), 0);
+    const codeMatch = Boolean(code && new RegExp(`\\b${code}\\b`).test(text));
+    if (codeMatch) score += 30;
+    return { record, score, codeMatch, matches: tokens.filter((token) => text.includes(token)).length };
+  }).filter((item) => item.score > 0 && (item.matches > 0 || item.codeMatch)).sort((a, b) => b.score - a.score || Number(b.record.total || 0) - Number(a.record.total || 0));
+  return candidates[0]?.record || null;
+}
+
+function haptecCombinedBenchmark(records, disciplineIds) {
+  const shares = records.filter((record) => Number(record.baseTotal) > 0)
+    .map((record) => disciplineIds.reduce((sum, id) => sum + Number(record.disciplines?.[id] || 0), 0) / Number(record.baseTotal) * 100)
+    .filter((value) => value > 0 && Number.isFinite(value));
+  const mean = shares.length ? shares.reduce((sum, value) => sum + value, 0) / shares.length : 0;
+  const variance = shares.length ? shares.reduce((sum, value) => sum + (value - mean) ** 2, 0) / shares.length : 0;
+  return { count: shares.length, mean, median: evPercentile(shares, .5), p25: evPercentile(shares, .25), p75: evPercentile(shares, .75), stdDev: Math.sqrt(variance) };
+}
+
+function haptecEVIntelligenceAnswer(text) {
+  const disciplineIds = haptecDisciplineIdsFromQuestion(text);
+  const record = haptecEVRecordFromQuestion(text);
+  if (!record) return "";
+  if (!disciplineIds.length) {
+    if (!haptecHasAny(text, ["composicao", "disciplinas", "maiores", "principais", "detalhe"])) return "";
+    const rows = Object.entries(record.disciplines || {}).filter(([, value]) => Number(value) > 0).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 6);
+    return `Composição principal do EV ${record.project} (${record.year}):\n${rows.map(([id, value], index) => `${index + 1}. ${disciplineById(id).nome}: ${money(value)} (${number(Number(value) / Math.max(Number(record.total), 1) * 100, 2)}%)`).join("\n")}\nTotal do EV: ${money(record.total)}.`;
+  }
+  const value = disciplineIds.reduce((sum, id) => sum + Number(record.disciplines?.[id] || 0), 0);
+  const share = Number(record.total) ? value / Number(record.total) * 100 : 0;
+  const comparable = evHistoricalSourceRecords().filter((item) => item.typology === record.typology);
+  const benchmark = haptecCombinedBenchmark(comparable.length >= 20 ? comparable : evHistoricalSourceRecords(), disciplineIds);
+  const zScore = benchmark.stdDev ? (share - benchmark.mean) / benchmark.stdDev : 0;
+  const label = disciplineIds.length > 1 ? disciplineIds.map((id) => disciplineById(id).nome).join(" + ") : disciplineById(disciplineIds[0]).nome;
+  const assessment = Math.abs(zScore) >= 2 ? `Atenção: está ${number(Math.abs(zScore), 1)}σ ${zScore > 0 ? "acima" : "abaixo"} da média histórica; recomendo averiguar o escopo e as quantidades.` : "A participação está dentro do comportamento histórico esperado.";
+  return `${label} no EV ${record.project}:\nValor: ${money(value)}.\nParticipação no EV total: ${number(share, 2)}%.\nReferência ${record.typology}: média ${number(benchmark.mean, 2)}%, mediana ${number(benchmark.median, 2)}% e faixa central de ${number(benchmark.p25, 2)}% a ${number(benchmark.p75, 2)}% (${benchmark.count} EVs).\n${assessment}`;
+}
+
+function haptecNewEVCopilotAnswer(text) {
+  const typologies = [...new Set(evHistoricalSourceRecords().map((record) => record.typology))];
+  const typology = typologies.find((item) => text.includes(normalizeSearchText(item))) || (text.includes("hospital") ? "Hospital" : text.includes("tea") ? "TEA" : text.includes("clinica") ? "Clínica e Medicina Preventiva" : "");
+  const records = typology ? evHistoricalSourceRecords().filter((record) => record.typology === typology) : evHistoricalSourceRecords();
+  const rows = evHistoricalBenchmarkRows(records).filter((row) => row.count >= 8).slice(0, 6);
+  return `Copiloto para novo EV${typology ? ` de ${typology}` : ""}:\nBase utilizada: ${records.length} EVs históricos.\nComposições de referência:\n${rows.map((row, index) => `${index + 1}. ${row.discipline.nome}: mediana ${number(row.median, 1)}% | faixa central ${number(row.p25, 1)}%–${number(row.p75, 1)}% | ${row.count} EVs`).join("\n")}\nComo conduzir: preencha primeiro área e escopo; compare as disciplinas críticas; investigue desvios acima de 2σ; valide omissões com valor zero; e só então confirme risco e total do EV. Posso analisar cada disciplina enquanto você preenche.`;
+}
+
+function haptecINCCAnswer(text) {
+  const record = haptecEVRecordFromQuestion(text);
+  if (!record) return `A Calculadora SLT usa o INCC-M oficial da FGV, com atualização composta até ${sltINCCData.latestLabel}. Abra Orçamento 360 > EV > Calculadoras SLT e informe o valor e o ano-base.`;
+  if (Number(record.year) >= 2026) return `O EV ${record.project} é de ${record.year}, mesma competência anual da referência atual (${sltINCCData.latestLabel}). Para uma atualização precisa dentro de 2026, informe também o mês-base.`;
+  const reading = sltINCCReading(record.total, record.year);
+  return `Atualização INCC-M do EV ${record.project}:\nValor original (${record.year}): ${money(record.total)}.\nFator composto até ${sltINCCData.latestLabel}: ${number(reading.factor, 4)}× (${number(reading.percentage, 2)}%).\nCorreção estimada: ${money(reading.correction)}.\nValor atualizado: ${money(reading.updated)}.\nFonte: FGV IBRE. Estimativa gerencial; valide a cláusula contratual aplicável.`;
+}
+
 function haptecPortfolioQuestionAnswer(text) {
-  const works = state.works || [];
+  const works = budgetWorks() || [];
   if (haptecHasAny(text, ["regiao", "regional"])) {
     return `Portfólio por região:\n${haptecRowsText(haptecCountBy(works, (work) => work.regiao), (value) => `${value} obra(s)`)}.`;
   }
@@ -2451,6 +2575,10 @@ function haptecQuestionSuggestions() {
     "Qual analista tem mais cards em Orçamento?",
     "Qual obra tem mais cards ativos?",
     "Qual a obra com o maior valor de EV hoje?",
+    "Qual o percentual de marcenaria no EV Atibaia?",
+    "Mostre a composição do EV 4343.",
+    "Ajude a conduzir um novo EV de Hospital.",
+    "Atualize o EV 4343 pelo INCC.",
     "Quantos EVs estão pendentes?",
     "Qual o valor total de EV consolidado?",
     "Quantas SICs estão pendentes?",
@@ -2483,6 +2611,10 @@ function haptecAnswerBody(question = "") {
   }
   if (!text || text.includes("explicar tela") || text.includes("ajuda")) return haptecViewHelp();
   if (haptecHasAny(text, ["perguntas", "o que voce sabe", "o que você sabe", "exemplos", "treinado"])) return haptecQuestionBankAnswer();
+  if (text.includes("incc")) return haptecINCCAnswer(text);
+  if (haptecHasAny(text, ["novo ev", "nova ev", "conduzir ev", "montar ev", "copiloto ev", "ajude no ev"])) return haptecNewEVCopilotAnswer(text);
+  const evIntelligence = haptecEVIntelligenceAnswer(text);
+  if (evIntelligence) return evIntelligence;
   if ((text.includes("maior") || text.includes("mais alto")) && (text.includes("ev") || text.includes("valor"))) return haptecTopEVAnswer();
   if (text.includes("manut")) return haptecMaintenanceQuestionAnswer(text);
   if (maintenanceViewIds.includes(currentView) && operationalQuestion && !text.includes("obra")) return haptecMaintenanceQuestionAnswer(text);
@@ -2543,7 +2675,7 @@ function haptecSystemNotice(message, face = "smiling_ready", shouldOpen = false)
 
 function refreshHaptecAssistant() {
   const assistant = document.querySelector(".haptec-assistant");
-  if (assistant) assistant.outerHTML = renderHaptecAssistant();
+  if (assistant) assistant.outerHTML = globalThis.SLT_CLOUD.cleanHTML(renderHaptecAssistant());
 }
 
 function haptecFaceForSystemMessage(message = "") {
@@ -2867,7 +2999,7 @@ function projectStatusKey(row) {
   if (normalizedStatus.includes("cancel") || normalizedStatus.includes("paralis")) return "paralisado";
   if (row.terminoReal || normalizedStatus.includes("entregue") || normalizedStatus.includes("conclu")) return "salaTecnica";
   if (statusInfo.label === "Projeto atrasado") return "atrasado";
-  if (row.inicioPlanejado && row.inicioPlanejado <= TODAY_ISO) return "emProjetos";
+  if (row.inicioPlanejado && row.inicioPlanejado <= todayISO()) return "emProjetos";
   if (normalizedStage.includes("sala tecnica") || normalizedStage.includes("orcamento")) return "salaTecnica";
   return "planejado";
 }
@@ -2940,7 +3072,9 @@ function projectCustomDemandRows() {
 }
 
 function projectOperationalRows(applyFilters = true) {
-  let rows = [...projectPlanRows(false).filter((row) => row.isProject), ...projectCustomDemandRows()];
+  // O Kanban operacional começa vazio para a fase de testes e passa a exibir
+  // somente cards criados explicitamente no módulo de Projetos.
+  let rows = [...projectCustomDemandRows()];
   if (!applyFilters) return rows;
   const terms = normalizeSearchText([searchTerm, projectOperationalFilters.query].filter(Boolean).join(" ")).split(/\s+/).filter(Boolean);
   rows = rows.filter((row) => {
@@ -2979,7 +3113,7 @@ function projectMetrics(rows = projectPlanRows(false)) {
   const projectRows = rows.filter((row) => row.isProject);
   const delivered = projectRows.filter((row) => ["salaTecnica", "concluido"].includes(projectStatusKey(row)));
   const late = projectRowsByStatus(projectRows, "atrasado");
-  const next = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= TODAY_ISO && daysBetween(TODAY_ISO, row.terminoPlanejado) <= 30);
+  const next = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= todayISO() && daysBetween(todayISO(), row.terminoPlanejado) <= 30);
   return {
     rows,
     projectRows,
@@ -3075,10 +3209,6 @@ function renderProjectsPortfolio() {
       ${renderProjectPlanTable(rows)}
     </section>
   `;
-}
-
-function renderProjectsPlan() {
-  return renderProjectsPortfolio();
 }
 
 function renderProjectPlanFilters(allRows) {
@@ -3833,211 +3963,6 @@ function renderHomeLaunchpadCard(module) {
   `;
 }
 
-function renderLoginScreen() {
-  const users = activeUsers();
-  return `
-    <section class="login-screen" aria-label="Login do SLT 360">
-      <div class="login-hero">
-        <div class="login-brand">
-          <img src="assets/logo-slt360.png" alt="SLT 360" />
-          <span></span>
-          <img src="assets/logo-hapvida.png" alt="Hapvida" />
-        </div>
-        <p class="login-eyebrow">Sala Técnica Hapvida</p>
-        <h1>SLT 360</h1>
-        <p>Entre com seu e-mail e senha cadastrados para acessar as visões liberadas da Sala Técnica.</p>
-      </div>
-
-      <div class="login-card">
-        <div>
-          <h2>Acesso seguro por equipe</h2>
-          <p>Use o e-mail cadastrado em Configuração. O sistema ajusta os módulos, indicadores e ações conforme o perfil do usuário.</p>
-        </div>
-        <form id="loginForm" class="login-form">
-          <div class="error-box inline-form-error" data-form-error></div>
-          <label class="field">
-            <span>E-mail</span>
-            <input name="email" type="email" required autocomplete="username" placeholder="nome@hapvida.com.br" />
-          </label>
-          <label class="field">
-            <span>Senha</span>
-            <input name="senha" type="password" required autocomplete="current-password" placeholder="Senha de acesso" />
-          </label>
-          <button class="primary-action" type="submit">Entrar no SLT 360</button>
-        </form>
-
-        <div class="login-users-grid">
-          ${users.map(renderLoginUserCard).join("") || `<div class="empty-state">Nenhum usuário ativo cadastrado.</div>`}
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderFirstAccessPasswordScreen(user) {
-  return `
-    <section class="login-screen first-access-screen" aria-label="Troca de senha no primeiro acesso">
-      <div class="login-hero">
-        <div class="login-brand">
-          <img src="assets/logo-slt360.png" alt="SLT 360" />
-          <span></span>
-          <img src="assets/logo-hapvida.png" alt="Hapvida" />
-        </div>
-        <p class="login-eyebrow">Primeiro acesso</p>
-        <h1>Troque sua senha</h1>
-        <p>Esta conta foi criada com senha provisória. Para continuar os testes, defina uma senha definitiva.</p>
-      </div>
-
-      <div class="login-card first-access-card">
-        <div>
-          <h2>${user.nome}</h2>
-          <p>${user.email} · ${normalizeUserProfile(user.perfil)}</p>
-        </div>
-        <form id="firstAccessPasswordForm" class="first-access-form">
-          <div class="error-box inline-form-error" data-form-error></div>
-          <label class="field">
-            <span>Senha provisória atual</span>
-            <input name="senhaAtual" type="password" required autocomplete="current-password" placeholder="Informe a senha recebida" />
-          </label>
-          <label class="field">
-            <span>Nova senha</span>
-            <input name="novaSenha" type="password" required autocomplete="new-password" placeholder="Mínimo de 8 caracteres" />
-          </label>
-          <label class="field">
-            <span>Confirmar nova senha</span>
-            <input name="confirmarSenha" type="password" required autocomplete="new-password" placeholder="Repita a nova senha" />
-          </label>
-          <button class="primary-action" type="submit">Salvar senha e entrar</button>
-        </form>
-        <div class="first-access-rules">
-          <strong>Regra de acesso</strong>
-          <span>A senha definitiva não pode ser igual à provisória e precisa ter pelo menos 8 caracteres.</span>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderLoginUserCard(user) {
-  const perfil = normalizeUserProfile(user.perfil);
-  const modules = userAccessModuleLabels(user) || loginModulesForRole(perfil);
-  return `
-    <button class="login-user-card" type="button" data-action="fill-login-email" data-email="${user.email || ""}">
-      <span class="login-avatar">${initials(user.nome)}</span>
-      <strong>${user.nome}</strong>
-      <small>${user.email || "sem e-mail cadastrado"}</small>
-      <em>${perfil}</em>
-      <span>${modules}</span>
-      ${user.mustChangePassword || user.senhaProvisoria ? `<span class="temporary-password-note">Senha provisória</span>` : ""}
-      <b>Usar este e-mail</b>
-    </button>
-  `;
-}
-
-function userAccessModuleLabels(user) {
-  const modules = normalizeAccessModules(user?.accessModules, user?.perfil);
-  return userAccessModules
-    .filter((module) => modules.includes(module.id))
-    .map((module) => module.label.replace(" 360", ""))
-    .join(" · ");
-}
-
-function loginModulesForRole(role) {
-  const access = moduleAccessConfig(role);
-  return [
-    access.projects ? "Projetos" : "",
-    access.works ? "Orçamento" : "",
-    access.maintenance ? "Manutenção" : "",
-    access.clinical ? "Eng. Clínica" : "",
-    access.budget ? "Controle de Verbas" : "",
-    access.settings ? "Configuração" : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function initials(name = "") {
-  return String(name || "ST")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] || "")
-    .join("")
-    .toUpperCase();
-}
-
-function dashboardKpi(label, value, hint, tone, view = "", reportFilter = "") {
-  const attrs = reportFilter
-    ? ` data-action="open-dashboard-report" data-report-filter="${reportFilter}" role="button" tabindex="0"`
-    : view
-      ? ` data-view="${view}" role="button" tabindex="0"`
-      : "";
-  return `
-    <article class="kpi-card is-clickable" data-tone="${tone}" data-click-label="Abrir visão"${attrs}>
-      <small>${label}</small>
-      <strong>${value}</strong>
-      <span>${hint}</span>
-    </article>
-  `;
-}
-
-function renderCoordinationAttention(indicators = dashboardDemandIndicators()) {
-  const alerts = [
-    {
-      total: indicators.overdue.length,
-      title: "Demandas atrasadas",
-      detail: "Priorizar revisão de prazos e redistribuição.",
-      tone: "red",
-      filter: "overdue",
-    },
-    {
-      total: indicators.unassigned.length,
-      title: "Demandas sem responsável",
-      detail: "Distribuir atividades para a equipe.",
-      tone: "orange",
-      filter: "unassigned",
-    },
-    {
-      total: indicators.waitingFunds.length,
-      title: "Orçamentos aguardando verba",
-      detail: "Vincular ou disponibilizar verba para permitir conclusão.",
-      tone: "orange",
-      view: "fundsOverview",
-    },
-    {
-      total: indicators.validation.length,
-      title: "Demandas aguardando validação",
-      detail: "Revisar entregas e registrar decisões.",
-      tone: "cyan",
-      filter: "validation",
-    },
-  ].filter((item) => item.total > 0);
-
-  if (!alerts.length) {
-    return `<div class="attention-empty"><strong>Nenhuma pendência crítica</strong><span>A coordenação não possui bloqueios relevantes neste momento.</span></div>`;
-  }
-
-  return `
-    <div class="alert-list">
-      ${alerts.map(renderAttentionItem).join("")}
-    </div>
-  `;
-}
-
-function renderAttentionItem(item) {
-  const attrs = item.view
-    ? `data-view="${item.view}"`
-    : `data-action="open-dashboard-report" data-report-filter="${item.filter}"`;
-  return `
-    <button class="alert-item attention-item" type="button" data-tone="${item.tone}" ${attrs}>
-      <div>
-        <strong>${number(item.total)} ${item.title}</strong>
-        <span class="muted">${item.detail}</span>
-      </div>
-    </button>
-  `;
-}
-
 function reportsRowsByFilter(filter = dashboardReportsFilter) {
   const indicators = dashboardDemandIndicators();
   if (filter === "active") return indicators.active;
@@ -4175,25 +4100,6 @@ function renderTeam() {
   `;
 }
 
-function cycleStep(label, title, detail) {
-  return `
-    <article class="cycle-step">
-      <span>${label}</span>
-      <strong>${title}</strong>
-      <small>${detail}</small>
-    </article>
-  `;
-}
-
-function insightTile(title, detail, view) {
-  return `
-    <button class="insight-tile" type="button" data-view="${view}">
-      <strong>${title}</strong>
-      <span>${detail}</span>
-    </button>
-  `;
-}
-
 function moduleSummaries() {
   const projectPortfolio = projectPlanRows(false);
   const projectMetricsSummary = projectMetrics(projectPortfolio);
@@ -4205,6 +4111,10 @@ function moduleSummaries() {
   const fundsBalance = positiveFundsBalanceTotal();
   const totals = allTotals();
   const pendingEvs = (state.works || []).filter((work) => work.ev?.status !== "Completo").length;
+  const historicalEVCount = Array.isArray(globalThis.EV_HISTORICAL_DATA?.records) ? globalThis.EV_HISTORICAL_DATA.records.length : 0;
+  const clinicalEquipmentCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.equipment || clinicalEquipmentRecords().length || 0);
+  const clinicalUnitCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.units || 0);
+  const projectOperationalCount = projectOperationalRows(false).length;
 
   return [
     {
@@ -4215,8 +4125,8 @@ function moduleSummaries() {
       logo: moduleHeaders.projects.logo,
       tone: "cyan",
       metrics: [
-        { label: "Projetos", value: String(projectMetricsSummary.projectRows.length) },
-        { label: "Próximos", value: String(projectMetricsSummary.next.length) },
+        { label: "Projetos no plano", value: String(projectMetricsSummary.projectRows.length) },
+        { label: "Cards operacionais", value: String(projectOperationalCount) },
         { label: "Atrasados", value: String(projectMetricsSummary.late.length) },
       ],
     },
@@ -4228,8 +4138,8 @@ function moduleSummaries() {
       logo: moduleHeaders.works.logo,
       tone: "blue",
       metrics: [
-        { label: "Obras", value: String(state.works.length) },
-        { label: "Demandas", value: String(worksMetrics.active.length) },
+        { label: "EVs históricos", value: number(historicalEVCount) },
+        { label: "Cards operacionais", value: String(worksMetrics.active.length) },
         { label: "EVs pendentes", value: String(pendingEvs) },
       ],
     },
@@ -4241,7 +4151,7 @@ function moduleSummaries() {
       logo: moduleHeaders.maintenance.logo,
       tone: "orange",
       metrics: [
-        { label: "Demandas", value: String(maintenancePortfolio.length) },
+        { label: "Cards operacionais", value: String(maintenancePortfolio.length) },
         { label: "Em fluxo", value: String(maintenancePortfolioMetrics.active.length) },
         { label: "Atrasadas", value: String(maintenancePortfolioMetrics.overdue.length) },
       ],
@@ -4254,9 +4164,9 @@ function moduleSummaries() {
       logo: moduleHeaders.clinical.logo,
       tone: "green",
       metrics: [
-        { label: "Demandas", value: String(clinicalPortfolio.length) },
-        { label: "Em fluxo", value: String(clinicalPortfolioMetrics.active.length) },
-        { label: "Atrasadas", value: String(clinicalPortfolioMetrics.overdue.length) },
+        { label: "Equipamentos", value: number(clinicalEquipmentCount) },
+        { label: "Unidades", value: number(clinicalUnitCount) },
+        { label: "OS em fluxo", value: String(clinicalPortfolioMetrics.active.length) },
       ],
     },
     {
@@ -4268,66 +4178,11 @@ function moduleSummaries() {
       tone: "red",
       metrics: [
         { label: "Verbas", value: String(state.funds?.length || 0) },
+        { label: "Saldo disponível", value: moneyCompact(fundsBalance) },
         { label: "Contratado", value: moneyCompact(totals.contratado) },
-        { label: "Saldo", value: moneyCompact(fundsBalance) },
       ],
     },
   ].filter((module) => canAccessView(viewAliases[module.view] || module.view));
-}
-
-function renderHomeModuleCard(module) {
-  return `
-    <article class="module-card module-card--entry home-module-card" data-tone="${module.tone}" data-view="${module.view}" role="button" tabindex="0">
-      <header>
-        <span class="home-module-logo" aria-hidden="true">
-          <img src="${module.logo}" alt="" />
-        </span>
-        <div>
-          <span class="home-module-number">${module.eyebrow}</span>
-          <h2>${module.title}</h2>
-        </div>
-      </header>
-      <div class="module-metrics home-module-metrics">
-        ${module.metrics
-          .map(
-            (metric) => `
-              <div>
-                <span>${metric.label}</span>
-                <strong>${metric.value}</strong>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
-    </article>
-  `;
-}
-
-function renderModuleCard(module) {
-  return `
-    <article class="module-card module-card--entry" data-tone="${module.tone}" data-view="${module.view}" role="button" tabindex="0">
-      <header>
-        <span class="module-acronym" aria-hidden="true">${module.abbr}</span>
-        <div>
-          <h2>${module.title}</h2>
-          <p>${module.description}</p>
-        </div>
-      </header>
-      <div class="module-metrics">
-        ${module.metrics
-          .map(
-            (metric) => `
-              <div>
-                <span>${metric.label}</span>
-                <strong>${metric.value}</strong>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
-      <span class="ghost-button module-card__cta">Abrir módulo</span>
-    </article>
-  `;
 }
 
 function kpi(label, value, hint, tone, view = "", detailKey = "") {
@@ -4419,7 +4274,7 @@ function kpiDetailData(key) {
   const active = pendingDemands();
   const completed = completedDemands();
   const overdue = overdueDemands();
-  const pendingEvs = state.works.filter((work) => work.ev.status !== "Completo");
+  const pendingEvs = budgetWorks().filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo");
   const nearMilestone = rows.filter((row) => row.marcoStatus === "Próximo");
 
   const workDetail = (title, subtitle, works, metrics, view = "portfolio", viewLabel = "Abrir portfólio") => ({
@@ -4456,9 +4311,9 @@ function kpiDetailData(key) {
   });
 
   if (key === "worksPortfolio") {
-    return workDetail("Obras no portfólio", "Carteira cadastrada do plano de investimento.", state.works, [
-      { label: "Total de obras", value: String(state.works.length) },
-      { label: "Regiões", value: String(new Set(state.works.map((work) => work.regiao)).size) },
+    return workDetail("Obras no portfólio", "Carteira cadastrada do plano de investimento.", budgetWorks(), [
+      { label: "Total de obras", value: String(budgetWorks().length) },
+      { label: "Regiões", value: String(new Set(budgetWorks().map((work) => work.regiao)).size) },
       { label: "CAPEX", value: money(capex) },
       { label: "EVs pendentes", value: String(pendingEvs.length) },
     ]);
@@ -4476,19 +4331,19 @@ function kpiDetailData(key) {
       { label: "Atrasadas", value: String(overdue.length) },
       { label: "Maior impacto", value: topLabel(activeLoadByWork()) },
       { label: "Analistas envolvidos", value: String(new Set(overdue.map((demand) => demand.analistaResponsavel).filter(Boolean)).size) },
-      { label: "Data base", value: dateText(TODAY_ISO) },
+      { label: "Data base", value: dateText(todayISO()) },
     ], "overdueDemands");
   }
   if (key === "capexConsolidated") {
-    const ranked = state.works
+    const ranked = budgetWorks()
       .map((work) => ({ work, total: workTotals(work).orcado + workTotals(work).aditivado }))
       .sort((a, b) => b.total - a.total)
       .map((item) => item.work);
-    return workDetail("CAPEX consolidado", "Maiores EVs que compõem a carteira de investimento.", ranked, [
+    return workDetail("Total orçado", "Maiores EVs que compõem a carteira de investimento.", ranked, [
       { label: "EV + SICs", value: money(capex) },
       { label: "Contratado", value: money(totals.contratado) },
       { label: "Saldo", value: money(totals.saldo) },
-      { label: "Obras", value: String(state.works.length) },
+      { label: "Obras", value: String(budgetWorks().length) },
     ], "budget", "Abrir Controle de Verba");
   }
   if (key === "nearMilestone") {
@@ -4503,9 +4358,9 @@ function kpiDetailData(key) {
   if (key === "pendingEvs") {
     return workDetail("EVs com pendência", "Obras com estudo de viabilidade em rascunho ou cotação aberta.", pendingEvs, [
       { label: "Pendentes", value: String(pendingEvs.length) },
-      { label: "Completos", value: String(state.works.length - pendingEvs.length) },
-      { label: "% pendente", value: `${number((pendingEvs.length / Math.max(state.works.length, 1)) * 100)}%` },
-      { label: "Total obras", value: String(state.works.length) },
+      { label: "Completos", value: String(budgetWorks().length - pendingEvs.length) },
+      { label: "% pendente", value: `${number((pendingEvs.length / Math.max(budgetWorks().length, 1)) * 100)}%` },
+      { label: "Total obras", value: String(budgetWorks().length) },
     ], "ev", "Abrir EVs");
   }
   if (key === "completedDemands") {
@@ -4589,8 +4444,42 @@ function sicKpiDetailData(key) {
 }
 
 function strategicKpiDetailData(key) {
+  if (key === "strategicUnifiedEV" || key === "strategicUnifiedTop5") {
+    const records = evUnifiedRecords().slice().sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
+    const selected = key === "strategicUnifiedTop5" ? records.slice(0, 5) : records;
+    const total = records.reduce((sum, record) => sum + Number(record.total || 0), 0);
+    const valid = records.filter((record) => Number(record.total) > 0 && Number(record.area) > 0);
+    const area = valid.reduce((sum, record) => sum + Number(record.area || 0), 0);
+    const validValue = valid.reduce((sum, record) => sum + Number(record.total || 0), 0);
+    return {
+      eyebrow: "Visão Estratégica · Base EV",
+      title: key === "strategicUnifiedTop5" ? "Cinco maiores EVs da base unificada" : "Base estratégica unificada de EVs",
+      subtitle: "A mesma origem de dados da aba EV, sem indicadores paralelos da antiga Base Geral.",
+      metrics: [
+        { label: "EVs", value: String(records.length) },
+        { label: "Valor total", value: money(total) },
+        { label: "Área válida", value: `${number(area)} m²` },
+        { label: "EVs com área válida", value: String(valid.length) },
+      ],
+      columns: ["Ano / EV", "Tipologia", "Origem", "Valor", "Área", "Custo/m²", "% da base"],
+      rows: selected.map((record) => [
+        `<strong>${record.year} · ${escapeAttribute(record.project)}</strong><br /><span class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision || "")}</span>`,
+        record.typology || "Não informada",
+        record.sourceLabel || "Base EV",
+        money(record.total),
+        record.area ? `${number(record.area)} m²` : "—",
+        record.area && record.total ? `${money(record.total / record.area)}/m²` : "—",
+        `${number((Number(record.total || 0) / Math.max(total, 1)) * 100, 1)}%`,
+      ]),
+      view: "ev",
+      viewLabel: "Abrir aba EV",
+    };
+  }
   const totals = allTotals();
-  const capex = totals.orcado + totals.aditivado;
+  const sourceRecords = historicalWorksRecords();
+  const sourceSummary = historicalWorksSummary(sourceRecords);
+  const capex = sourceSummary.salaTecnica;
+  const negotiatedTotal = sourceSummary.negociado;
   const ranked = investmentRankingRows();
   const workColumns = ["Obra", "Região", "Tipo", "Classificação", "Valor", "Custo/m²"];
   const workRows = (works) =>
@@ -4626,10 +4515,10 @@ function strategicKpiDetailData(key) {
   const detailBase = {
     eyebrow: "Visão Estratégica",
     metrics: [
-      { label: "CAPEX", value: money(capex) },
-      { label: "Obras", value: String(state.works.length) },
-      { label: "Contratado", value: money(totals.contratado) },
-      { label: "Saldo", value: money(totals.saldo) },
+      { label: "Sala Técnica", value: money(capex) },
+      { label: "Negociado", value: money(negotiatedTotal) },
+      { label: "Obras", value: String(sourceRecords.length) },
+      { label: "Área", value: `${number(sourceSummary.area)} m²` },
     ],
     view: "worksStrategic",
     viewLabel: "Abrir estratégica",
@@ -4649,10 +4538,10 @@ function strategicKpiDetailData(key) {
     return {
       ...detailBase,
       title: row.label,
-      subtitle: `Somente obras com EV/CAPEX e área preenchidos entram nesta leitura de custo por m². Meta SLT: ${row.targetLabel}.`,
+      subtitle: `Somente obras da Base Geral com valor negociado, área e custo/m² válidos entram nesta leitura. Meta SLT: ${row.targetLabel}.`,
       metrics: [
         { label: "Obras válidas", value: String(readings.length) },
-        { label: "CAPEX / EV", value: money(row.capex) },
+        { label: "Valor negociado", value: money(row.capex) },
         { label: "Área válida", value: `${number(row.area)} m²` },
         { label: "Custo médio m²", value: row.costM2 ? `${money(row.costM2)}/m²` : "Sem leitura" },
         { label: "Dentro da meta", value: String(row.withinCount) },
@@ -4680,7 +4569,7 @@ function strategicKpiDetailData(key) {
         { label: "Base histórica", value: String(commissionSummary.count) },
         { label: "M² histórico", value: commissionSummary.count ? `${money(commissionSummary.precoM2Mediana || commissionSummary.precoM2Ponderado)}/m²` : "Sem base" },
       ],
-      columns: ["Tipologia", "Meta SLT", "Obras válidas", "CAPEX", "Área válida", "Custo/m²", "Aderência", "Base hist. m²", "Hist. negociado", "Status"],
+      columns: ["Tipologia", "Meta SLT", "Obras válidas", "Negociado", "Área válida", "Custo/m²", "Aderência", "Mediana m²", "Negociado total", "Status"],
       rows: targetRows.map((row) => [
         `<strong>${row.label}</strong>`,
         row.targetLabel,
@@ -4697,19 +4586,19 @@ function strategicKpiDetailData(key) {
   }
 
   if (key === "strategicCommissionBase") {
-    const records = commissionSummary.records
+    const records = sourceRecords
       .slice()
       .sort((a, b) => (Number(b.valorNegociado) || 0) - (Number(a.valorNegociado) || 0));
     return {
       ...detailBase,
-      title: "Base histórica Comissão de Obras",
-      subtitle: "Aba Base Geral completa, usando somente linhas válidas com valor negociado, área e preço/m² preenchidos.",
+      title: "Base Geral de Obras 2023 a 2026",
+      subtitle: "Todas as linhas de obras importadas; campos ausentes permanecem identificados na consulta.",
       metrics: [
-        { label: "Registros válidos", value: String(commissionSummary.count) },
-        { label: "Valor Sala Técnica", value: money(commissionSummary.valorSalaTecnica) },
-        { label: "Valor negociado", value: money(commissionSummary.valorNegociado) },
-        { label: "Saving técnico", value: money(commissionSummary.savingTecnico) },
-        { label: "Área histórica", value: `${number(commissionSummary.area)} m²` },
+        { label: "Obras importadas", value: String(sourceRecords.length) },
+        { label: "Valor Sala Técnica", value: money(sourceSummary.salaTecnica) },
+        { label: "Valor negociado", value: money(sourceSummary.negociado) },
+        { label: "Saving técnico", value: money(sourceSummary.saving) },
+        { label: "Área histórica", value: `${number(sourceSummary.area)} m²` },
         { label: "Preço/m² mediano", value: commissionSummary.count ? `${money(commissionSummary.precoM2Mediana)}/m²` : "Sem base" },
       ],
       columns: ["Obra", "UF", "Região", "Classificação", "Tipo", "Sala Técnica", "Negociado", "Área", "Preço/m²", "Status"],
@@ -4746,13 +4635,32 @@ function strategicKpiDetailData(key) {
   }
 
   if (key === "strategicRegions") {
-    const rows = capexByRegional();
+    const rows = historicalNegotiatedByRegion();
     return {
       ...detailBase,
       title: "Regiões atendidas",
-      subtitle: "Distribuição regional do CAPEX e cobertura da carteira.",
-      columns: ["Região", "CAPEX", "% do total"],
-      rows: rows.map((row) => [row.label, money(row.valor), `${number((row.valor / Math.max(capex, 1)) * 100, 1)}%`]),
+      subtitle: "Distribuição regional do valor negociado nas 485 obras da Base Geral.",
+      columns: ["Região", "Valor negociado", "% do total"],
+      rows: rows.map((row) => [row.label, money(row.valor), `${number((row.valor / Math.max(negotiatedTotal, 1)) * 100, 1)}%`]),
+    };
+  }
+
+  if (key === "strategicTop5") {
+    const rows = historicalInvestmentRankingRows().slice(0, 5);
+    return {
+      ...detailBase,
+      title: "Concentração Top 5",
+      subtitle: "Cinco maiores valores negociados da Base Geral atualizada.",
+      columns: ["Obra", "Região", "Classificação", "Negociado", "% do total", "Área", "Custo/m²"],
+      rows: rows.map(({ record, valor }) => [
+        `<strong>${record.nomeObra}</strong><br /><span class="muted">${record.codigoObra || "Sem código"}</span>`,
+        record.regiao || "—",
+        historicalClassificationLabel(record.classificacaoObra),
+        money(valor),
+        `${number((valor / Math.max(negotiatedTotal, 1)) * 100, 1)}%`,
+        `${number(record.areaM2)} m²`,
+        record.precoM2 ? `${money(record.precoM2)}/m²` : "—",
+      ]),
     };
   }
 
@@ -4765,17 +4673,17 @@ function strategicKpiDetailData(key) {
     strategicWorks: {
       title: "Obras estratégicas",
       subtitle: "Projetos classificados como estratégicos, expansão ou verticalização.",
-      works: state.works.filter(isStrategicWork),
+      works: budgetWorks().filter(isStrategicWork),
     },
     strategicNewUnits: {
       title: "Novas unidades",
       subtitle: "Projetos associados à expansão de rede e novas operações.",
-      works: state.works.filter(isNewUnit),
+      works: budgetWorks().filter(isNewUnit),
     },
     strategicPendingEvs: {
       title: "EVs pendentes",
       subtitle: "Estudos de viabilidade ainda em rascunho ou cotação.",
-      works: state.works.filter((work) => work.ev.status !== "Completo"),
+      works: budgetWorks().filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo"),
     },
     strategicCriticalBalance: {
       title: "Saldo crítico",
@@ -4888,103 +4796,6 @@ function barList(items, valueKey, formatter) {
   `;
 }
 
-function renderStrategicCostTargetList(rows) {
-  if (!rows.length) return `<div class="empty-state">Sem metas configuradas.</div>`;
-  return `
-    <div class="target-list">
-      ${rows
-        .map((row) => {
-          const width = row.costM2 ? Math.min((row.costM2 / row.targetMax) * 100, 120) : 0;
-          const overTarget = row.costM2 > row.targetMax;
-          return `
-            <button class="target-row" type="button" data-action="open-kpi-detail" data-kpi="strategicCostTarget:${row.id}">
-              <span>
-                <strong>${row.label}</strong>
-                <small>${row.targetLabel} · ${row.measuredCount} obra(s) válida(s)</small>
-                ${row.historicalCount ? `<small>Base histórica: ${money(row.historicalPrecoM2Mediana || row.historicalPrecoM2Ponderado)}/m² · ${row.historicalCount} registro(s)</small>` : ""}
-              </span>
-              <span class="target-meter" aria-hidden="true">
-                <i style="width:${Math.max(width, row.measuredCount ? 4 : 0)}%" data-over="${overTarget ? "true" : "false"}"></i>
-              </span>
-              <span class="target-values">
-                <b>${row.costM2 ? `${money(row.costM2)}/m²` : "—"}</b>
-                <em>${number(row.adherence)}% dentro</em>
-              </span>
-              <span class="status-pill" data-status="${strategicCostTargetStatusTone(row.status)}">${row.status}</span>
-            </button>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function renderStrategicTargetSpotlight(summary) {
-  const tone = summary.adherence >= 80 ? "green" : summary.adherence >= 60 ? "orange" : "red";
-  const value = summary.measured ? `${number(summary.adherence)}%` : "Sem leitura";
-  const width = summary.measured ? Math.max(summary.adherence, 4) : 0;
-  const statusText = summary.above ? `${summary.above} obra(s) acima da meta` : "Carteira dentro da premissa";
-  return `
-    <button class="strategic-main-kpi" type="button" data-tone="${tone}" data-action="open-kpi-detail" data-kpi="strategicCostTargets">
-      <span class="eyebrow">Indicador principal</span>
-      <strong>Aderência à meta de custo por m²</strong>
-      <b>${value}</b>
-      <small>${summary.within} de ${summary.measured} obras válidas dentro da premissa SLT</small>
-      <span class="spotlight-meter" aria-hidden="true">
-        <i style="width:${width}%"></i>
-      </span>
-      <em>${statusText}</em>
-    </button>
-  `;
-}
-
-function renderWorksTable(works) {
-  return `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>ID App</th>
-            <th>Obra</th>
-            <th>Regional</th>
-            <th>Tipologia</th>
-            <th class="numeric">EV atualizado</th>
-            <th class="numeric">Contratado</th>
-            <th class="numeric">Saldo</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${works
-            .map((work) => {
-              const values = workTotals(work);
-              return `
-                <tr>
-                  <td>${work.chaveUnica}</td>
-                  <td>
-                    <strong>${work.nome}</strong><br />
-                    <span class="muted">${work.codigoOriginal} | ${work.cidade}/${work.uf}</span>
-                  </td>
-                  <td>${work.regiao}</td>
-                  <td>${work.tipologiaObra}</td>
-                  <td class="numeric">${money(values.orcado + values.aditivado)}</td>
-                  <td class="numeric">${money(values.contratado)}</td>
-                  <td class="numeric">${money(values.saldo)}</td>
-                  <td><span class="status-pill" data-status="${work.ev.status}">${work.ev.status}</span></td>
-                </tr>
-              `;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderKanban() {
-  return renderWorksOperational();
-}
-
 function renderWorksHome() {
   const rows = portfolioRows();
   const totals = allTotals();
@@ -5007,7 +4818,7 @@ function renderWorksHome() {
       ${kpi("Obras no portfólio", String(rows.length), "Carteira do plano de investimento", "blue", "", "worksPortfolio")}
       ${kpi("Demandas ativas", String(activeDemands.length), "Fluxo operacional de obras", "orange", "", "activeDemands")}
       ${kpi("Demandas atrasadas", String(overdue.length), "Itens fora do prazo previsto", overdue.length ? "red" : "green", "", "overdueDemands")}
-      ${kpi("CAPEX consolidado", money(capex), "EVs + SICs aprovadas", "blue", "", "capexConsolidated")}
+      ${kpi("Total orçado", money(capex), "EVs + SICs aprovadas", "blue", "", "capexConsolidated")}
       ${kpi("Próximas do marco", String(nearMilestone), "Acompanhamento executivo", "green", "", "nearMilestone")}
       ${kpi("EVs com pendência", String(pendingEvs), "Rascunho ou em cotação", pendingEvs ? "red" : "green", "", "pendingEvs")}
       ${kpi("Demandas concluídas", String(completed.length), "Entregas registradas", "green", "", "completedDemands")}
@@ -5091,7 +4902,7 @@ function renderWorksOperational() {
     <section class="status-line module-status-line">
       <span class="tag">Sprint atual: ${activeSprint?.nome || "Sem sprint ativa"}</span>
       <span class="tag">Busca global aplicada: ${searchTerm || "sem filtro"}</span>
-      <span class="tag">Pendências de cotação: ${state.works.filter((work) => work.ev.status !== "Completo").length}</span>
+      <span class="tag">Pendências de cotação: ${state.works.filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo").length}</span>
     </section>
 
     ${renderOperationalFilters()}
@@ -5353,7 +5164,7 @@ function demandTimingInfo(demand) {
     };
   }
   if (isDemandLate(demand)) {
-    const lateDays = daysBetween(demand.dataPrevistaEntrega, TODAY_ISO);
+    const lateDays = daysBetween(demand.dataPrevistaEntrega, todayISO());
     return {
       tone: "red",
       label: `Atrasada há ${lateDays} dia${lateDays === 1 ? "" : "s"}`,
@@ -5361,7 +5172,7 @@ function demandTimingInfo(demand) {
     };
   }
   if (demand.dataPrevEnvioValidacaoObras) {
-    const daysToValidation = daysBetween(TODAY_ISO, demand.dataPrevEnvioValidacaoObras);
+    const daysToValidation = daysBetween(todayISO(), demand.dataPrevEnvioValidacaoObras);
     if (daysToValidation >= 0 && daysToValidation <= 5) {
       return {
         tone: "orange",
@@ -5443,7 +5254,7 @@ function isDemandLate(demand) {
   return (
     !["concluido", "cancelado"].includes(demand.coluna) &&
     demand.dataPrevistaEntrega &&
-    demand.dataPrevistaEntrega < TODAY_ISO
+    demand.dataPrevistaEntrega < todayISO()
   );
 }
 
@@ -5527,14 +5338,6 @@ function uniqueAnalysts() {
   ].filter(Boolean);
 }
 
-function analystOptions(selected = "") {
-  const analysts = uniqueAnalysts();
-  const options = selected && !analysts.includes(selected) ? [selected, ...analysts] : analysts;
-  return [`<option value="">A definir</option>`]
-    .concat(options.map((analyst) => `<option value="${analyst}" ${analyst === selected ? "selected" : ""}>${analyst}</option>`))
-    .join("");
-}
-
 function daysBetween(start, end) {
   const startDate = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
@@ -5547,7 +5350,7 @@ function criticalDemandItems() {
       const isLate =
         !["concluido", "cancelado"].includes(demand.coluna) &&
         demand.dataPrevistaEntrega &&
-        demand.dataPrevistaEntrega < TODAY_ISO;
+        demand.dataPrevistaEntrega < todayISO();
       return isLate || ["validacaoST", "validacaoObras"].includes(demand.coluna);
     })
     .slice(0, 5);
@@ -5555,8 +5358,8 @@ function criticalDemandItems() {
   return critical.map((demand) => {
     const work = workById(demand.obraId);
     const lateDays =
-      demand.dataPrevistaEntrega && demand.dataPrevistaEntrega < TODAY_ISO
-        ? daysBetween(demand.dataPrevistaEntrega, TODAY_ISO)
+      demand.dataPrevistaEntrega && demand.dataPrevistaEntrega < todayISO()
+        ? daysBetween(demand.dataPrevistaEntrega, todayISO())
         : 0;
     const column = columns.find((item) => item.id === demand.coluna)?.label || demand.coluna;
     const statusText = lateDays > 0 ? `Atrasada há ${lateDays} dia${lateDays === 1 ? "" : "s"}` : column;
@@ -5593,7 +5396,7 @@ function analystLoad(includeCompleted = true) {
 
 function workCountBy(field) {
   const map = new Map();
-  state.works.forEach((work) => {
+  budgetWorks().forEach((work) => {
     const label = work[field] || "Não informado";
     map.set(label, (map.get(label) || 0) + 1);
   });
@@ -5623,7 +5426,7 @@ function median(values) {
 
 function disciplineBenchmarkRows() {
   const groups = new Map();
-  state.works.forEach((work) => {
+  budgetWorks().forEach((work) => {
     if (!work.areaEquivalente) return;
     work.ev.lines.forEach((line) => {
       if (isRiskLine(line) || !line.valorOrcado) return;
@@ -5636,7 +5439,7 @@ function disciplineBenchmarkRows() {
 
   const medians = new Map([...groups.entries()].map(([id, values]) => [id, median(values)]));
   const rows = [];
-  state.works.forEach((work) => {
+  budgetWorks().forEach((work) => {
     if (!work.areaEquivalente) return;
     work.ev.lines.forEach((line) => {
       if (isRiskLine(line) || !line.valorOrcado) return;
@@ -5973,94 +5776,232 @@ function legendItem(label, value, tone) {
   `;
 }
 
+function historicalWorksRecords() {
+  return Array.isArray(globalThis.GENERAL_WORKS_DATA?.records) ? globalThis.GENERAL_WORKS_DATA.records : [];
+}
+
+function historicalWorksSummary(records) {
+  const area = records.reduce((sum, record) => sum + (Number(record.areaM2) || 0), 0);
+  const salaTecnica = records.reduce((sum, record) => sum + (Number(record.valorSalaTecnica) || 0), 0);
+  const negociado = records.reduce((sum, record) => sum + (Number(record.valorNegociado) || 0), 0);
+  const validArea = records.filter((record) => Number(record.areaM2) > 0 && Number(record.valorNegociado) >= 0);
+  const validAreaTotal = validArea.reduce((sum, record) => sum + Number(record.areaM2), 0);
+  const validNegotiated = validArea.reduce((sum, record) => sum + (Number(record.valorNegociado) || 0), 0);
+  return {
+    count: records.length,
+    area,
+    salaTecnica,
+    negociado,
+    saving: salaTecnica - negociado,
+    precoM2: validAreaTotal ? validNegotiated / validAreaTotal : 0,
+  };
+}
+
+function executiveKpi(label, value, exact, hint, tone, detailKey, tag = "KPI") {
+  return `
+    <article class="executive-kpi-card is-clickable" data-tone="${tone}" data-action="open-kpi-detail" data-kpi="${detailKey}" role="button" tabindex="0">
+      <header><span>${escapeAttribute(tag)}</span><small>${escapeAttribute(label)}</small></header>
+      <strong>${value}</strong>
+      ${exact ? `<b>${exact}</b>` : ""}
+      <p>${hint}</p>
+      <em>Ver análise →</em>
+    </article>
+  `;
+}
+
+function strategicHeroMetric(label, value, detail = "", tag = "KPI", tone = "blue", progress = 100) {
+  return `
+    <article class="strategic-hero-metric" data-tone="${tone}" style="--metric-progress:${Math.max(2, Math.min(progress, 100))}%">
+      <header><span>${tag}</span><small>${label}</small></header>
+      <strong>${value}</strong>
+      ${detail ? `<p>${detail}</p>` : ""}
+      <i><b></b></i>
+    </article>
+  `;
+}
+
+function historicalClassificationLabel(value) {
+  const key = normalizeSearchText(value).trim();
+  const labels = {
+    "adequacao regulatoria": "Adequação Regulatória",
+    "suficiencia de rede": "Suficiência de Rede",
+    "eficiencia operacional": "Eficiência Operacional",
+    "obra estrategica": "Obra Estratégica",
+    "verticalizacao": "Verticalização",
+    "venda de servico": "Venda de Serviço",
+    "obra emergencial": "Obra Emergencial",
+    "padronizacao de unidade": "Padronização de Unidade",
+    "fachada": "Fachada",
+  };
+  return labels[key] || (value && value !== "-" ? value : "Não informada");
+}
+
+function historicalNegotiatedByRegion() {
+  const grouped = new Map();
+  historicalWorksRecords().forEach((record) => {
+    const label = record.regiao || "Não informada";
+    grouped.set(label, (grouped.get(label) || 0) + (Number(record.valorNegociado) || 0));
+  });
+  return [...grouped.entries()].map(([label, valor]) => ({ label, valor })).sort((a, b) => b.valor - a.valor);
+}
+
+function historicalInvestmentRankingRows() {
+  return historicalWorksRecords()
+    .map((record) => ({ record, valor: Number(record.valorNegociado) || 0 }))
+    .filter((row) => row.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
 function renderWorksStrategic() {
-  const totals = allTotals();
-  const capex = totals.orcado + totals.aditivado;
-  const regions = new Set(state.works.map((work) => work.regiao)).size;
-  const strategicWorks = state.works.filter((work) => isStrategicWork(work)).length;
-  const newUnits = state.works.filter((work) => isNewUnit(work)).length;
-  const pendingEvs = state.works.filter((work) => work.ev.status !== "Completo").length;
-  const investmentRows = investmentRankingRows();
+  const sourceRecords = evUnifiedRecords();
+  const validAreaRecords = sourceRecords.filter((record) => Number(record.total) > 0 && Number(record.area) > 0);
+  const totalValue = sourceRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const validValue = validAreaRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const totalArea = validAreaRecords.reduce((sum, record) => sum + Number(record.area || 0), 0);
+  const historicalCount = sourceRecords.filter((record) => record.sourceKind === "historical").length;
+  const currentCount = sourceRecords.filter((record) => record.sourceKind === "current").length;
+  const years = new Set(sourceRecords.map((record) => String(record.year)).filter(Boolean)).size;
+  const typologies = new Set(sourceRecords.map((record) => record.typology).filter(Boolean)).size;
+  const investmentRows = sourceRecords.map((record) => ({ record, valor: Number(record.total) || 0 })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
   const topInvestment = investmentRows[0];
   const topFiveValue = investmentRows.slice(0, 5).reduce((sum, row) => sum + row.valor, 0);
-  const topFiveShare = capex ? (topFiveValue / capex) * 100 : 0;
-  const criticalBalance = worksWithCriticalBalance().length;
-  const targetRows = strategicCostTargetRows();
-  const targetSummary = strategicCostTargetSummary(targetRows);
-  const targetTone = targetSummary.adherence >= 80 ? "green" : targetSummary.adherence >= 60 ? "orange" : "red";
-  const commissionSummary = commissionBenchmarkSummary();
+  const topFiveShare = totalValue ? (topFiveValue / totalValue) * 100 : 0;
+  const byYear = [...sourceRecords.reduce((map, record) => map.set(String(record.year || "Não informado"), (map.get(String(record.year || "Não informado")) || 0) + Number(record.total || 0)), new Map())]
+    .map(([label, valor]) => ({ label, valor })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
+  const byTypology = [...sourceRecords.reduce((map, record) => map.set(record.typology || "Não informada", (map.get(record.typology || "Não informada") || 0) + Number(record.total || 0)), new Map())]
+    .map(([label, valor]) => ({ label, valor })).sort((a, b) => b.valor - a.valor);
+  const byDiscipline = disciplines.map((discipline) => ({
+    label: discipline.nome,
+    valor: sourceRecords.reduce((sum, record) => sum + Number(record.disciplines?.[discipline.id] || 0), 0),
+  })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
+  const decisionRows = investmentRows.map((row) => strategicEVDecision(row, totalValue));
+  const filteredDecisionRows = decisionRows.filter(matchesStrategicEVDecisionFilters);
+  const visibleDecisionRows = filteredDecisionRows;
+  const filteredDecisionValue = filteredDecisionRows.reduce((sum, row) => sum + row.valor, 0);
+  const decisionYears = [...new Set(decisionRows.map((row) => String(row.record.year)).filter(Boolean))].sort((a, b) => b.localeCompare(a, "pt-BR", { numeric: true }));
 
   return `
-    ${renderWorksToolbar("worksStrategic", "Visão Estratégica", "Leitura executiva do investimento, CAPEX e composição do portfólio", `
+    ${renderWorksToolbar("worksStrategic", "Visão Estratégica", `Base unificada de ${sourceRecords.length} EVs · mesma inteligência da aba EV`, `
       <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
       <button class="primary-action" type="button" data-view="budget">Controle de Verbas</button>
     `)}
 
     <section class="strategic-hero panel">
-      ${renderStrategicTargetSpotlight(targetSummary)}
+      <article class="strategic-main-kpi" data-tone="green" style="--hero-progress:360deg">
+        <header><span class="eyebrow">Indicador principal</span><em>Fonte única · Base de EVs</em></header>
+        <div class="strategic-main-kpi__body">
+          <span class="strategic-main-ring"><b>${number(sourceRecords.length)}</b><small>EVs</small></span>
+          <span class="strategic-main-copy">
+            <strong>Base estratégica totalmente unificada</strong>
+            <small>Todos os indicadores abaixo são recalculados diretamente com os mesmos registros da aba EV.</small>
+            <span class="strategic-main-breakdown">
+              <span data-tone="green"><i></i><b>${historicalCount}</b><small>Históricos</small></span>
+              <span data-tone="blue"><i></i><b>${currentCount}</b><small>Atuais</small></span>
+              <span data-tone="orange"><i></i><b>${validAreaRecords.length}</b><small>Com área válida</small></span>
+            </span>
+          </span>
+        </div>
+        <span class="strategic-main-footer"><i>Base unificada · EV histórico + cadastro atual</i><b>Atualização automática</b></span>
+      </article>
       <div class="strategic-hero-metrics">
-        ${splitItem("CAPEX total", money(capex))}
-        ${splitItem("Maior investimento", topInvestment ? topInvestment.work.nome : "Sem carteira")}
-        ${splitItem("Valor do maior EV", topInvestment ? money(topInvestment.valor) : money(0))}
-        ${splitItem("Top 5 concentram", `${number(topFiveShare, 1)}% do CAPEX`)}
+        ${strategicHeroMetric("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "EV", "blue", 100)}
+        ${strategicHeroMetric("Maior EV", topInvestment ? topInvestment.record.project : "Sem carteira", topInvestment ? `${moneyCompact(topInvestment.valor)} · ${number((topInvestment.valor / Math.max(totalValue, 1)) * 100, 1)}% da base` : "", "TOP 1", "orange", topInvestment ? (topInvestment.valor / Math.max(totalValue, 1)) * 100 : 0)}
+        ${strategicHeroMetric("Área equivalente", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m² · ${validAreaRecords.length} EVs válidos`, "ÁREA", "green", 100)}
+        ${strategicHeroMetric("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "TOP 5", "purple", topFiveShare)}
       </div>
     </section>
 
-    <section class="kpi-grid strategic-kpis">
-      ${kpi("CAPEX total", money(capex), "EVs consolidados", "blue", "", "strategicCapex")}
-      ${kpi("Aderência à meta m²", targetSummary.measured ? `${number(targetSummary.adherence)}%` : "Sem leitura", `${targetSummary.within} de ${targetSummary.measured} obras válidas`, targetTone, "", "strategicCostTargets")}
-      ${kpi("Acima da meta m²", String(targetSummary.above), "Obras acima da premissa por tipologia", targetSummary.above ? "red" : "green", "", "strategicAboveTarget")}
-      ${kpi("Regiões atendidas", String(regions), "Cobertura do portfólio", "green", "", "strategicRegions")}
-      ${kpi("Obras estratégicas", String(strategicWorks), "Classificação estratégica", "blue", "", "strategicWorks")}
-      ${kpi("Novas unidades", String(newUnits), "Expansão de rede", "green", "", "strategicNewUnits")}
-      ${kpi("EVs pendentes", String(pendingEvs), "Risco para consolidação", pendingEvs ? "red" : "green", "", "strategicPendingEvs")}
-      ${kpi("Saldo crítico", String(criticalBalance), "Projetos próximos ao limite", criticalBalance ? "red" : "green", "", "strategicCriticalBalance")}
-      ${kpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, money(topFiveValue), topFiveShare > 80 ? "orange" : "blue", "", "strategicTop5")}
-      ${kpi("Base histórica m²", commissionSummary.count ? `${money(commissionSummary.precoM2Mediana || commissionSummary.precoM2Ponderado)}/m²` : "Sem base", `${commissionSummary.count} registros válidos da Comissão`, "blue", "", "strategicCommissionBase")}
-      ${kpi("Negociado histórico", money(commissionSummary.valorNegociado), "Coluna AD · Base Geral", "green", "", "strategicCommissionBase")}
+    <div class="strategic-section-heading">
+      <div><span>Painel executivo</span><h2>Indicadores estratégicos</h2></div>
+      <p>Valores abreviados para leitura rápida, com o montante exato logo abaixo.</p>
+    </div>
+    <section class="strategic-kpis">
+      ${executiveKpi("EVs unificados", number(sourceRecords.length), `${historicalCount} históricos + ${currentCount} atuais`, "Quantidade da mesma base exibida na aba EV", "blue", "strategicUnifiedEV", "EV")}
+      ${executiveKpi("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "Soma dos valores dos EVs unificados", "green", "strategicUnifiedEV", "VALOR")}
+      ${executiveKpi("Área equivalente válida", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m²`, `${validAreaRecords.length} EVs com valor e área`, "blue", "strategicUnifiedEV", "ÁREA")}
+      ${executiveKpi("Registros históricos", number(historicalCount), `${number((historicalCount / Math.max(sourceRecords.length, 1)) * 100, 1)}% da base`, "EVs históricos disponíveis para inteligência", "green", "strategicUnifiedEV", "HIST")}
+      ${executiveKpi("Sem leitura de m²", number(sourceRecords.length - validAreaRecords.length), `${validAreaRecords.length} leituras válidas`, "EVs sem valor ou área equivalente", sourceRecords.length > validAreaRecords.length ? "orange" : "green", "strategicUnifiedEV", "QUALIDADE")}
+      ${executiveKpi("Tipologias", number(typologies), "Classificações disponíveis na base EV", "Agrupamento unificado por tipologia", "green", "strategicUnifiedEV", "TIPO")}
+      ${executiveKpi("Anos disponíveis", number(years), "Histórico de 2020 a 2026 + atuais", "Períodos disponíveis para inteligência", "blue", "strategicUnifiedEV", "ANO")}
+      ${executiveKpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "Participação dos cinco maiores EVs", topFiveShare > 80 ? "orange" : "blue", "strategicUnifiedTop5", "TOP 5")}
     </section>
 
-    <div class="content-grid three strategic-chart-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>CAPEX por região</h2>
-            <p class="panel-subtitle">Soma dos EVs vinculados aos projetos</p>
-          </div>
-        </div>
-        ${barList(capexByRegional(), "valor", money)}
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Meta de custo por m²</h2>
-            <p class="panel-subtitle">Aderência por tipologia às premissas da Sala Técnica</p>
-          </div>
-        </div>
-        ${renderStrategicCostTargetList(targetRows)}
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Classificação do portfólio</h2>
-            <p class="panel-subtitle">Projetos agrupados pela motivação de investimento</p>
-          </div>
-        </div>
-        ${barList(workCountBy("classificacaoObra"), "valor", (value) => String(value))}
-      </section>
-    </div>
+    ${renderEVHistoricalIntelligence()}
 
-    <section class="panel strategic-investment-panel">
+    <section class="panel strategic-investment-panel strategic-intelligence-ranking">
       <div class="panel-header">
         <div>
-          <h2>Maiores investimentos</h2>
-          <p class="panel-subtitle">Ranking visual dos EVs de maior valor, com participação no CAPEX total</p>
+          <h2>EVs prioritários para decisão</h2>
+          <p class="panel-subtitle">Valor, concentração e aderência às metas oficiais de custo por m² da Sala Técnica</p>
         </div>
-        <button class="secondary-action" type="button" data-view="ev">Abrir EVs</button>
+        <div class="inline-actions">
+          <span class="historical-source-badge">${sourceRecords.length} EVs analisados</span>
+          <button class="secondary-action compact-action" type="button" data-action="open-ev-reference-targets">Ajustar referências</button>
+        </div>
       </div>
-      ${renderInvestmentRanking()}
+      <div class="strategic-decision-filters">
+        <label><span>Buscar EV</span><input type="search" value="${escapeAttribute(strategicEVDecisionFilters.query)}" placeholder="Código ou nome do EV..." data-strategic-decision-search></label>
+        <label><span>Situação da meta</span><select data-strategic-decision-filter="status"><option value="">Todas as situações</option><option value="outside" ${strategicEVDecisionFilters.status === "outside" ? "selected" : ""}>Fora da meta</option><option value="above" ${strategicEVDecisionFilters.status === "above" ? "selected" : ""}>Acima do limite</option><option value="below" ${strategicEVDecisionFilters.status === "below" ? "selected" : ""}>Abaixo da faixa</option><option value="within" ${strategicEVDecisionFilters.status === "within" ? "selected" : ""}>Dentro da meta</option><option value="unclassified" ${strategicEVDecisionFilters.status === "unclassified" ? "selected" : ""}>Sem meta vinculada</option></select></label>
+        <label><span>Classificação</span><select data-strategic-decision-filter="targetId"><option value="">Todas as metas</option>${effectiveStrategicCostTargets().map((target) => `<option value="${target.id}" ${strategicEVDecisionFilters.targetId === target.id ? "selected" : ""}>${escapeAttribute(target.label)}</option>`).join("")}</select></label>
+        <label><span>Ano do EV</span><select data-strategic-decision-filter="year"><option value="">Todos os anos</option>${decisionYears.map((year) => `<option value="${year}" ${strategicEVDecisionFilters.year === year ? "selected" : ""}>${year}</option>`).join("")}</select></label>
+        <button class="ghost-button compact-action" type="button" data-action="clear-strategic-decision-filters">Limpar filtros</button>
+      </div>
+      <div class="strategic-filter-summary"><strong>${number(filteredDecisionRows.length)} EVs encontrados</strong><span>Todos os registros filtrados estão na planilha</span><span>${moneyCompact(filteredDecisionValue)} em valor analisado</span><span>${number((filteredDecisionValue / Math.max(totalValue, 1)) * 100, 1)}% da base financeira</span></div>
+      <div class="table-wrap strategic-intelligence-table-wrap">
+        <table class="data-table strategic-intelligence-table">
+          <thead><tr><th class="numeric">#</th><th>EV / CONTEXTO</th><th class="numeric">VALOR</th><th class="numeric">PARTICIPAÇÃO</th><th class="numeric">R$/M²</th><th class="numeric">REFERÊNCIA</th><th>LEITURA EXECUTIVA</th><th>AÇÃO</th></tr></thead>
+          <tbody>
+            ${visibleDecisionRows.map((row, index) => {
+              const { costM2, target, share, reading, tone } = row;
+              const openAction = row.record.sourceKind === "historical" ? "open-historical-ev" : "open-ev-modal";
+              const openId = row.record.sourceKind === "historical" ? row.record.id : row.record.workId;
+              return `<tr><td class="numeric"><strong>${index + 1}</strong></td><td><strong>${escapeAttribute(row.record.project)}</strong><br><span class="muted">${escapeAttribute(String(row.record.year))} · ${escapeAttribute(row.record.typology)} · ${escapeAttribute(row.record.code || "Sem código")}</span></td><td class="numeric"><strong>${moneyCompact(row.valor)}</strong><br><span class="muted">${money(row.valor)}</span></td><td class="numeric">${number(share, 1)}%</td><td class="numeric">${costM2 ? `${money(costM2)}/m²` : "—"}<br><span class="muted">${row.record.area ? `${number(row.record.area, 0)} m²` : "Sem área"}</span></td><td class="numeric">${target ? escapeAttribute(target.targetLabel) : "—"}<br><span class="muted">${target ? escapeAttribute(target.label) : "Sem meta vinculada"}</span></td><td><span class="executive-reading" data-tone="${tone}">${reading}</span></td><td><button class="ghost-button compact-action" type="button" data-action="${openAction}" data-id="${escapeAttribute(openId)}">Ver EV</button></td></tr>`;
+            }).join("") || `<tr><td colspan="8"><div class="empty-state">Nenhum EV encontrado para os filtros selecionados.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </section>
   `;
+}
+
+function openEVReferenceTargetsModal() {
+  const rows = effectiveStrategicCostTargets();
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <section class="modal-card ev-reference-modal" role="dialog" aria-modal="true" aria-labelledby="evReferenceTitle" data-modal-panel>
+        <header class="modal-header">
+          <div><span class="eyebrow">PREMISSAS DA SALA TÉCNICA</span><h2 id="evReferenceTitle">Metas oficiais de custo por m²</h2><p>Estas metas orientam os alertas da visão Estratégica e a validação dos novos EVs.</p></div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="reference-guidance"><strong>Referência corporativa, não histórica</strong><span>Os dados históricos apoiam a análise, mas os alertas abaixo são calculados exclusivamente contra as metas definidas pela Sala Técnica.</span></div>
+        <div class="table-wrap ev-reference-table-wrap">
+          <table class="data-table ev-reference-table">
+            <thead><tr><th>CLASSIFICAÇÃO DA META</th><th>LIMITE MÍNIMO (R$/M²)</th><th>LIMITE MÁXIMO (R$/M²)</th><th>REGRA ATUAL</th></tr></thead>
+            <tbody>${rows.map((row) => `<tr><td><strong>${escapeAttribute(row.label)}</strong></td><td><input class="reference-target-input" type="number" min="0" step="1" data-target-id="${row.id}" data-target-field="targetMin" value="${row.targetMin || ""}" placeholder="Sem mínimo" aria-label="Limite mínimo de ${escapeAttribute(row.label)}"></td><td><input class="reference-target-input" type="number" min="0" step="1" data-target-id="${row.id}" data-target-field="targetMax" value="${row.targetMax || ""}" required aria-label="Limite máximo de ${escapeAttribute(row.label)}"></td><td><strong>${escapeAttribute(row.targetLabel)}</strong></td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+        <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="button" data-action="save-ev-reference-targets">Salvar referências</button></footer>
+      </section>
+    </div>`);
+}
+
+function saveEVReferenceTargets() {
+  const targets = {};
+  modalRoot.querySelectorAll("[data-target-id]").forEach((input) => {
+    const value = Number(input.value) || 0;
+    targets[input.dataset.targetId] = targets[input.dataset.targetId] || {};
+    targets[input.dataset.targetId][input.dataset.targetField] = value;
+  });
+  const invalid = Object.entries(targets).find(([, target]) => !target.targetMax || (target.targetMin && target.targetMin > target.targetMax));
+  if (invalid) {
+    showToast("Revise as metas: o limite máximo é obrigatório e deve ser maior que o mínimo.");
+    return;
+  }
+  state.strategicTargetOverrides = targets;
+  saveState();
+  closeModal();
+  render();
+  showToast("Metas de referência atualizadas. Alertas executivos recalculados.");
 }
 
 function demandDeliveryDelay(demand) {
@@ -6193,61 +6134,12 @@ function isNewUnit(work) {
 }
 
 function investmentRankingRows() {
-  return state.works
+  return budgetWorks()
     .map((work) => {
       const values = workTotals(work);
       return { work, valor: values.orcado + values.aditivado };
     })
     .sort((a, b) => b.valor - a.valor);
-}
-
-function renderInvestmentRanking() {
-  const rows = investmentRankingRows();
-  const capex = rows.reduce((sum, row) => sum + row.valor, 0);
-  const max = Math.max(...rows.map((row) => row.valor), 1);
-  return `
-    <div class="ranking-list">
-      ${rows
-        .slice(0, 12)
-        .map(
-          (row, index) => {
-            const reading = strategicCostReadingForWork(row.work);
-            const statusTone = strategicCostTargetStatusTone(reading.status);
-            const rankingWidth = Math.max((row.valor / max) * 100, 2);
-            const costM2Text = reading.costM2 ? `${money(reading.costM2)}/m²` : "—";
-            return `
-              <article class="ranking-item strategic-ranking-item ${reading.aboveTarget ? "is-above-target" : ""}">
-                <span>${index + 1}</span>
-                <div class="strategic-ranking-main">
-                  <strong>${row.work.nome}</strong>
-                  <small>${row.work.regiao} | ${row.work.tipoUnidade} | ${row.work.cidade}/${row.work.uf}</small>
-                  <div class="strategic-ranking-meta">
-                    <span>
-                      <small>Custo/m²</small>
-                      <b>${costM2Text}</b>
-                    </span>
-                    <span>
-                      <small>Meta SLT</small>
-                      <b>${reading.target?.targetLabel || "Sem meta"}</b>
-                    </span>
-                  </div>
-                  <i class="ranking-track">
-                    <em style="width:${rankingWidth}%"></em>
-                  </i>
-                </div>
-                <div class="ranking-value">
-                  <b>${money(row.valor)}</b>
-                  <small>${capex ? number((row.valor / capex) * 100, 1) : 0}% do CAPEX</small>
-                  <span class="status-pill" data-status="${statusTone}">${reading.status}</span>
-                  <button class="ghost-button compact-action" type="button" data-action="open-investment-detail" data-id="${row.work.id}">Ver composição</button>
-                </div>
-              </article>
-            `;
-          }
-        )
-        .join("")}
-    </div>
-  `;
 }
 
 function openInvestmentDetailModal(workId) {
@@ -6345,7 +6237,7 @@ function renderPortfolio() {
   const projectRows = allRows.filter((row) => row.isProject);
   const uniqueWorks = new Set(allRows.map((row) => row.obra)).size;
   const linkedWorks = allRows.filter((row) => row.obraId).length;
-  const upcomingProjects = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= TODAY_ISO && daysBetween(TODAY_ISO, row.terminoPlanejado) <= 30);
+  const upcomingProjects = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= todayISO() && daysBetween(todayISO(), row.terminoPlanejado) <= 30);
   const overdueProjects = projectRows.filter((row) => planDeliveryStatus(row).label === "Projeto atrasado");
 
   return `
@@ -6450,32 +6342,9 @@ function renderPortfolioInvestmentPlanTable(rows) {
   `;
 }
 
-function renderPortfolioFilters() {
-  return `
-    <div class="portfolio-filter-bar">
-      <input data-portfolio-search value="${escapeAttribute(portfolioQuickFilters.query)}" placeholder="Buscar por nome, chave, cidade, UF, região, tipo..." />
-      <select data-portfolio-quick-filter="tipoUnidade" aria-label="Filtrar por tipo de unidade">
-        <option value="">Todas</option>
-        ${uniqueWorkValues("tipoUnidade").map((value) => `<option value="${value}" ${portfolioQuickFilters.tipoUnidade === value ? "selected" : ""}>${value}</option>`).join("")}
-      </select>
-      <select data-portfolio-quick-filter="regional" aria-label="Filtrar por região">
-        <option value="">Todas</option>
-        ${uniqueWorkValues("regiao").map((value) => `<option value="${value}" ${portfolioQuickFilters.regional === value ? "selected" : ""}>${value}</option>`).join("")}
-      </select>
-      <select data-portfolio-quick-filter="evStatus" aria-label="Filtrar por status do EV">
-        <option value="">Todas</option>
-        ${[...new Set(state.works.map((work) => work.ev.status).filter(Boolean))]
-          .map((value) => `<option value="${value}" ${portfolioQuickFilters.evStatus === value ? "selected" : ""}>${value}</option>`)
-          .join("")}
-      </select>
-      <button class="secondary-action" type="button" data-action="clear-portfolio-filters">Limpar filtros</button>
-    </div>
-  `;
-}
-
 function portfolioRows(applySearch = false, applyColumnFilters = true) {
   const milestones = ["EV aprovado", "Orçamento executivo", "Contratação", "Início de obra", "Entrega técnica"];
-  const works = applySearch ? state.works.filter(workMatchesPortfolioFilters) : state.works;
+  const works = applySearch ? budgetWorks().filter(workMatchesPortfolioFilters) : budgetWorks();
   const rows = works.map((work, index) => {
     const totals = workTotals(work);
     const capex = totals.orcado + totals.aditivado;
@@ -6502,8 +6371,8 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       contratado: totals.contratado,
       saldo: totals.saldo,
       proximoMarco: milestones[index % milestones.length],
-      marcoStatus: index === 0 || work.ev.status !== "Completo" ? "Próximo" : "Planejado",
-      risco: saldoRatio < 0.18 ? "Alto" : work.ev.status !== "Completo" ? "Médio" : "Baixo",
+      marcoStatus: index === 0 || !work.ev?._virtualEmptyEV && work.ev.status !== "Completo" ? "Próximo" : "Planejado",
+      risco: saldoRatio < 0.18 ? "Alto" : !work.ev?._virtualEmptyEV && work.ev.status !== "Completo" ? "Médio" : "Baixo",
     };
   });
   return applyColumnFilters ? rows.filter(portfolioRowMatchesFilters) : rows;
@@ -6532,11 +6401,6 @@ function plannedDurationForWork(work) {
   return Math.max(...relatedDemands.map((demand) => Math.max(daysBetween(demand.dataPrevistaInicio, demand.dataPrevistaEntrega), 1)));
 }
 
-function workMatchesSearch(work) {
-  const terms = normalizeSearchText(searchTerm).split(/\s+/).filter(Boolean);
-  return !terms.length || terms.every((term) => workSearchText(work).includes(term));
-}
-
 function workSearchText(work) {
   const text = [
     work.chaveUnica,
@@ -6555,68 +6419,6 @@ function workSearchText(work) {
   ]
     .join(" ");
   return normalizeSearchText(text);
-}
-
-function filterCell(field, placeholder) {
-  return `<input class="table-filter" data-filter-field="${field}" value="${escapeAttribute(portfolioFilters[field] || "")}" placeholder="${escapeAttribute(placeholder)}" />`;
-}
-
-function renderPortfolioTable(rows) {
-  return `
-    <div class="table-wrap">
-      <table class="data-table portfolio-table">
-        <thead>
-          <tr>
-            <th>Chave</th>
-            <th>Cód. Orig.</th>
-            <th>Nome da Obra</th>
-            <th>Tipo</th>
-            <th>Cidade / UF</th>
-            <th>Região</th>
-            <th>Prazo</th>
-            <th>Classificação</th>
-            <th>Tipologia</th>
-            <th class="numeric">Área Eq. (m²)</th>
-            <th class="numeric">Área Const. (m²)</th>
-            <th>SAP</th>
-            <th>CNPJ</th>
-            <th>Endereço</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr>
-                  <td><span class="key-badge">${row.idApp}</span></td>
-                  <td>${row.codigo}</td>
-                  <td><strong>${row.nome}</strong></td>
-                  <td>${row.tipoUnidade}</td>
-                  <td>${row.cidadeUf}</td>
-                  <td>${row.regional}</td>
-                  <td>${row.prazo === "—" ? "—" : `${row.prazo} dias`}</td>
-                  <td>${row.classificacao}</td>
-                  <td>${row.tipologia}</td>
-                  <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente) : "–"}</td>
-                  <td class="numeric">${row.areaConstruida ? number(row.areaConstruida) : "–"}</td>
-                  <td>${row.sap}</td>
-                  <td>${row.cnpj}</td>
-                  <td>${row.endereco}</td>
-                  <td>
-                    <div class="table-actions portfolio-actions">
-                      <button class="secondary-action compact-action" type="button" data-action="open-ev-modal" data-id="${row.id}">Abrir EV</button>
-                      <button class="ghost-button compact-action" type="button" data-action="edit-work" data-id="${row.id}">Editar</button>
-                    </div>
-                  </td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
 }
 
 function isInvestmentPlanCurrentYear(record) {
@@ -6693,8 +6495,8 @@ function planDeliveryStatus(row) {
     const late = row.terminoPlanejado && row.terminoReal > row.terminoPlanejado;
     return { label: late ? "Entregue com atraso" : "Entregue", tone: late ? "Atrasada" : "Completo" };
   }
-  if (row.terminoPlanejado && row.terminoPlanejado < TODAY_ISO) return { label: "Projeto atrasado", tone: "Saldo crítico" };
-  if (row.terminoPlanejado && daysBetween(TODAY_ISO, row.terminoPlanejado) <= 30) return { label: "Próximo", tone: "Pendente" };
+  if (row.terminoPlanejado && row.terminoPlanejado < todayISO()) return { label: "Projeto atrasado", tone: "Saldo crítico" };
+  if (row.terminoPlanejado && daysBetween(todayISO(), row.terminoPlanejado) <= 30) return { label: "Próximo", tone: "Pendente" };
   return { label: row.status || "Planejado", tone: "Aguardando" };
 }
 
@@ -6783,36 +6585,6 @@ function investmentPlanRows(applyFilters = true) {
   });
 }
 
-function renderInvestmentPlan() {
-  const allRows = investmentPlanRows(false);
-  const rows = investmentPlanRows(true);
-  const projectRows = allRows.filter((row) => row.isProject);
-  const uniqueWorks = new Set(allRows.map((row) => row.obra)).size;
-  const linkedWorks = allRows.filter((row) => row.obraId).length;
-  const upcomingProjects = projectRows.filter((row) => row.terminoPlanejado && row.terminoPlanejado >= TODAY_ISO && daysBetween(TODAY_ISO, row.terminoPlanejado) <= 30);
-  const overdueProjects = projectRows.filter((row) => planDeliveryStatus(row).label === "Projeto atrasado");
-
-  return `
-    ${renderWorksToolbar("investmentPlan", "Plano de Investimento", "Consulta das datas de entrega de Projetos para iniciar a orçamentação da Sala Técnica", `
-      <span class="tag">${projectRows.length} projetos</span>
-      <button class="secondary-action" type="button" data-action="clear-investment-plan-filters">Limpar filtros</button>
-    `)}
-
-    <section class="kpi-grid investment-kpis">
-      ${kpi("Obras no plano", String(uniqueWorks), "Demandas da aba Plano de Investimento", "blue")}
-      ${kpi("Etapas de Projetos", String(projectRows.length), `${rows.length} registro(s) no filtro atual`, "orange")}
-      ${kpi("Projetos próximos", String(upcomingProjects.length), "Término planejado nos próximos 30 dias", "green")}
-      ${kpi("Projetos atrasados", String(overdueProjects.length), "Sem término real e data planejada vencida", "red")}
-      ${kpi("Linhas vinculadas", String(linkedWorks), "Encontradas no Portfólio Orçamento 360", "blue")}
-    </section>
-
-    <section class="panel investment-plan-panel">
-      ${renderInvestmentPlanFilters(allRows)}
-      ${renderInvestmentPlanTable(rows)}
-    </section>
-  `;
-}
-
 function renderInvestmentPlanFilters(allRows) {
   const etapas = [...new Set(allRows.map((row) => row.etapa).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const status = [...new Set(allRows.map((row) => row.status).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -6856,250 +6628,529 @@ function renderInvestmentPlanFilters(allRows) {
   `;
 }
 
-function renderInvestmentPlanTable(rows) {
+function evHistoricalSourceRecords() {
+  const deleted = new Set(arrayOrFallback(state.deletedEVRecordIds));
+  return Array.isArray(window.EV_HISTORICAL_DATA?.records) ? window.EV_HISTORICAL_DATA.records.filter((record) => !deleted.has(record.id)) : [];
+}
+
+function evUnifiedCode(value) {
+  const text = String(value || "").trim();
+  const digits = text.match(/\d+/)?.[0] || "";
+  if (!digits || /^0+$/.test(digits)) return "";
+  return String(Number(digits));
+}
+
+function evUnifiedName(value) {
+  return normalizeSearchText(value || "")
+    .replace(/^projeto\s+/, "")
+    .replace(/^\d+(?:[.\s-]+)?/, "")
+    .replace(/\b(hs|ho|hc)\b/g, "hospital")
+    .replace(/\b(novo|nova)\b/g, "")
+    .replace(/\s+[a-z]{2}\s+tec\s+\d+.*$/, "")
+    .replace(/\s+tec\s+\d+.*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function evUnifiedNamesCompatible(leftValue, rightValue) {
+  const left = evUnifiedName(leftValue);
+  const right = evUnifiedName(rightValue);
+  if (!left || !right) return false;
+  if (left === right || (left.length >= 12 && right.length >= 12 && (left.includes(right) || right.includes(left)))) return true;
+  const ignored = new Set(["novo", "nova", "fase", "hospital", "unidade", "reforma", "adequacao", "ampliacao"]);
+  const leftTokens = new Set(left.split(" ").filter((token) => token.length >= 4 && !ignored.has(token)));
+  const rightTokens = new Set(right.split(" ").filter((token) => token.length >= 4 && !ignored.has(token)));
+  const smaller = Math.min(leftTokens.size, rightTokens.size);
+  if (!smaller) return false;
+  const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return shared >= 2 && shared / smaller >= 0.5;
+}
+
+function evTypologyFromProjectName(value) {
+  const text = normalizeSearchText(value || "");
+  return /\badequacao\b|\badequacoes\b/.test(text) ? "Adequação Regulatória" : "";
+}
+
+function evUnifiedWorkForHistorical(record) {
+  const recordCode = evUnifiedCode(record.code);
+  if (recordCode) {
+    const byCode = state.works.find((work) =>
+      [work.chaveUnica, work.codigoOriginal, work.idApp].some((value) => evUnifiedCode(value) === recordCode) &&
+      evUnifiedNamesCompatible(record.project, work.nome)
+    );
+    if (byCode) return byCode;
+  }
+  const recordName = evUnifiedName(record.project);
+  if (recordName.length < 10) return null;
+  return state.works.find((work) => {
+    const workName = evUnifiedName(work.nome);
+    return evUnifiedNamesCompatible(recordName, workName);
+  }) || null;
+}
+
+function evUnifiedRecords() {
+  const matchedWorkIds = new Set();
+  const historicalRows = evHistoricalSourceRecords().map((record) => {
+    const work = evUnifiedWorkForHistorical(record);
+    if (work) matchedWorkIds.add(work.id);
+    const typology = evTypologyFromProjectName(record.project) || state.evTypologyOverrides?.[record.id] || record.typology || "Não informada";
+    return { ...record, typology, sourceKind: "historical", workId: work?.id || "", sourceLabel: work ? "Histórico + cadastro" : "Histórico", searchAliases: work?.nome || "" };
+  });
+  const currentRows = state.works
+    .filter((work) => !matchedWorkIds.has(work.id))
+    .map((work) => {
+      const totals = workTotals(work);
+      const values = {};
+      const items = (work.ev?.lines || []).map((line, index) => {
+        const id = canonicalDisciplineId(line.disciplinaId);
+        const value = Number(line.valorOrcado || 0);
+        values[id] = (values[id] || 0) + value;
+        return { item: String(disciplineById(id).posicao || index + 1), description: disciplineById(id).nome, disciplineId: id, value };
+      });
+      const risk = Number(values["taxa-risco"] || 0);
+      const latest = work.ev?.versions?.[work.ev.versions.length - 1];
+      const date = latest?.data || "";
+      return {
+        id: `current-${work.id}`, code: work.chaveUnica || work.codigoOriginal || "", project: work.nome,
+        revision: `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")}`, date,
+        year: date ? String(date).slice(0, 4) : "Atual", typology: evTypologyFromProjectName(work.nome) || state.evTypologyOverrides?.[`current-${work.id}`] || evHistoricalTypologyForWork(work) || work.tipologiaObra || work.tipoUnidade || "Não informada",
+        area: Number(work.areaEquivalente || work.areaConstruida || 0), total: totals.orcado + totals.aditivado,
+        baseTotal: Math.max(0, totals.orcado - risk), disciplines: values, items,
+        sourceKind: "current", workId: work.id, sourceLabel: "Cadastro SLT 360", searchAliases: `${work.nome} ${work.chaveUnica || ""} ${work.codigoOriginal || ""}`,
+      };
+    });
+  return [...historicalRows, ...currentRows];
+}
+
+function evHistoricalTypologyForWork(work) {
+  const text = normalizeSearchText(`${work?.tipologiaObra || ""} ${work?.tipoUnidade || ""} ${work?.nome || ""}`);
+  if (/\btea\b|autismo/.test(text)) return "TEA";
+  if (/diagnost|laborat|imagem|coleta|terapia/.test(text)) return "Diagnóstico, Laboratório e Terapias";
+  if (/pronto atendimento|\bpa\b(?!\s+tec\b)|urgencia|emergencia/.test(text)) return "Pronto Atendimento";
+  if (/hospital|\bhs\b|\bho\b|\bhc\b|\buti\b/.test(text)) return "Hospital";
+  if (/clinica|medprev|centro clinico/.test(text)) return "Clínica e Medicina Preventiva";
+  if (/administr|logistic|centro de distribuicao/.test(text)) return "Administrativo e Logística";
+  return "";
+}
+
+function evHistoricalFilteredRecords({ ignoreDiscipline = false } = {}) {
+  const terms = normalizeSearchText(evHistoricalFilters.query).split(/\s+/).filter(Boolean);
+  return evUnifiedRecords().filter((record) => {
+    if (evHistoricalFilters.year && String(record.year) !== evHistoricalFilters.year) return false;
+    if (evHistoricalFilters.typology && record.typology !== evHistoricalFilters.typology) return false;
+    if (evHistoricalFilters.technician && record.technician !== evHistoricalFilters.technician) return false;
+    if (!ignoreDiscipline && evHistoricalFilters.discipline && !Number(record.disciplines?.[evHistoricalFilters.discipline] || 0)) return false;
+    const haystack = normalizeSearchText(`${record.code || ""} ${record.project} ${record.revision} ${record.typology} ${record.technician || ""} ${record.searchAliases || ""}`);
+    return !terms.length || terms.every((term) => haystack.includes(term));
+  });
+}
+
+function evPercentile(values, ratio) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * ratio;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
+function evHistoricalBenchmark(records, disciplineId) {
+  const shares = records
+    .filter((record) => Number(record.baseTotal) > 0 && Number(record.disciplines?.[disciplineId]) > 0)
+    .map((record) => (Number(record.disciplines[disciplineId]) / Number(record.baseTotal)) * 100)
+    .filter(Number.isFinite);
+  const mean = shares.length ? shares.reduce((sum, value) => sum + value, 0) / shares.length : 0;
+  const variance = shares.length ? shares.reduce((sum, value) => sum + (value - mean) ** 2, 0) / shares.length : 0;
+  return { count: shares.length, mean, median: evPercentile(shares, 0.5), p25: evPercentile(shares, 0.25), p75: evPercentile(shares, 0.75), stdDev: Math.sqrt(variance) };
+}
+
+function evHistoricalBenchmarkRows(records) {
+  return disciplines
+    .filter((item) => !["taxa-risco", "sics", "outras-linhas-ev"].includes(item.id))
+    .map((item) => ({ discipline: item, ...evHistoricalBenchmark(records, item.id) }))
+    .filter((row) => row.count >= 5)
+    .sort((a, b) => b.mean - a.mean);
+}
+
+function evHistoricalFilterOptions(values, selected, allLabel, labelFor = (value) => value) {
+  return `<option value="">${allLabel}</option>${[...new Set(values)].filter(Boolean).sort((a, b) => String(labelFor(a)).localeCompare(String(labelFor(b)), "pt-BR"))
+    .map((value) => `<option value="${escapeAttribute(value)}" ${String(value) === String(selected) ? "selected" : ""}>${escapeAttribute(labelFor(value))}</option>`).join("")}`;
+}
+
+function evHistoricalSortValue(record, key) {
+  if (key === "year") return Number(record.year) || 0;
+  if (key === "project") return normalizeSearchText(record.project);
+  if (key === "typology") return normalizeSearchText(record.typology);
+  if (key === "total") return Number(record.total) || 0;
+  if (key === "area") return Number(record.area) || 0;
+  if (key === "discipline") {
+    const value = evHistoricalFilters.discipline ? Number(record.disciplines?.[evHistoricalFilters.discipline] || 0) : 0;
+    return Number(record.baseTotal) > 0 ? (value / Number(record.baseTotal)) * 100 : 0;
+  }
+  return 0;
+}
+
+function evHistoricalSortedRecords(records) {
+  if (!evHistoricalSort.key || !evHistoricalSort.direction) return records;
+  const factor = evHistoricalSort.direction === "desc" ? -1 : 1;
+  return records.map((record, index) => ({ record, index })).sort((a, b) => {
+    const left = evHistoricalSortValue(a.record, evHistoricalSort.key);
+    const right = evHistoricalSortValue(b.record, evHistoricalSort.key);
+    const comparison = typeof left === "string" ? left.localeCompare(right, "pt-BR") : left - right;
+    return comparison ? comparison * factor : a.index - b.index;
+  }).map((item) => item.record);
+}
+
+function evSortableHeader(label, key, numeric = false) {
+  const active = evHistoricalSort.key === key ? evHistoricalSort.direction : "";
+  const icon = active === "desc" ? "↓" : active === "asc" ? "↑" : "↕";
+  const title = active === "desc" ? "Maior para menor; clique para menor para maior" : active === "asc" ? "Menor para maior; clique para voltar à ordem original" : "Clique para ordenar do maior para o menor";
+  return `<th class="${numeric ? "numeric " : ""}ev-sortable-th"><button type="button" data-action="sort-ev-history" data-sort-key="${key}" title="${title}"><span>${label}</span><i>${icon}</i></button></th>`;
+}
+
+function renderEVHistoricalIntelligence() {
+  const source = evUnifiedRecords();
+  if (!source.length) return "";
+  const records = evHistoricalFilteredRecords();
+  const benchmarkBase = evHistoricalFilteredRecords({ ignoreDiscipline: true });
+  let benchmarks = evHistoricalBenchmarkRows(benchmarkBase);
+  if (evHistoricalFilters.discipline) benchmarks = benchmarks.filter((row) => row.discipline.id === evHistoricalFilters.discipline);
+  const total = records.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const totalArea = records.reduce((sum, record) => sum + Number(record.area || 0), 0);
+  const costM2Records = records.filter((record) => Number(record.area) > 0 && Number(record.total) > 0);
+  const costM2Area = costM2Records.reduce((sum, record) => sum + Number(record.area || 0), 0);
+  const costM2Value = costM2Records.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const typologyCostM2 = costM2Area > 0 ? costM2Value / costM2Area : 0;
+  const sortedRecords = evHistoricalSortedRecords(records);
+  const selectedBenchmark = benchmarks[0];
+  const maxMean = Math.max(...benchmarks.map((row) => row.mean), 1);
+  const selectableDisciplines = disciplines.filter((d) => !["taxa-risco", "sics"].includes(d.id));
   return `
-    <div class="table-wrap investment-plan-table-wrap">
-      <table class="data-table investment-plan-table">
-        <thead>
-          <tr>
-            <th>Obra</th>
-            <th>Tipo</th>
-            <th>Praça / UF</th>
-            <th>Região</th>
-            <th>Etapa</th>
-            <th class="numeric">SLA</th>
-            <th>Início Plan.</th>
-            <th>Término Projeto</th>
-            <th>Término Real</th>
-            <th>Status</th>
-            <th>Início Orçamentação</th>
-            <th>Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows
-            .map((row) => {
-              const canBudget = row.isProject && row.inicioOrcamentacao;
-              return `
-                <tr>
-                  <td><strong>${row.obra}</strong><br /><span class="muted">${row.chaveEtapa}</span></td>
-                  <td>${row.tipoUnidade || "—"}</td>
-                  <td>${row.praca || "—"}/${row.uf || "—"}</td>
-                  <td>${row.regiao || "—"}</td>
-                  <td><span class="tag">${row.etapa}</span></td>
-                  <td class="numeric">${row.slaDias ?? "—"}</td>
-                  <td>${row.inicioPlanejado ? dateText(row.inicioPlanejado) : "—"}</td>
-                  <td><strong>${row.terminoPlanejado ? dateText(row.terminoPlanejado) : "—"}</strong></td>
-                  <td>${row.terminoReal ? dateText(row.terminoReal) : "—"}</td>
-                  <td><span class="status-pill" data-status="${row.statusInfo.tone}">${row.statusInfo.label}</span></td>
-                  <td>${canBudget ? `<strong>${dateText(row.inicioOrcamentacao)}</strong><br /><span class="muted">após entrega de Projetos</span>` : "—"}</td>
-                  <td>
-                    <div class="table-actions">
-                      ${canBudget ? `<button class="secondary-action compact-action" type="button" data-action="start-budget-from-plan" data-row="${row.row}">Criar orçamento</button>` : ""}
-                      ${row.obraId ? `<button class="ghost-button compact-action" type="button" data-action="select-plan-work" data-id="${row.obraId}">Portfólio</button>` : `<span class="muted">Sem vínculo</span>`}
-                    </div>
-                  </td>
-                </tr>
-              `;
-            })
-            .join("") || `<tr><td colspan="12"><div class="empty-state">Nenhum registro encontrado no Plano de Investimento.</div></td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
+    <section class="panel ev-history-panel">
+      <div class="panel-header ev-history-heading"><div><span class="eyebrow">Base única de inteligência · 2020 a 2026 + carteira atual</span><h2>Todos os EVs em uma única visão</h2><p class="panel-subtitle">${source.length} EVs unificados entre o histórico importado e os cadastros do SLT 360. Registros vinculados por código ou nome aparecem uma única vez.</p></div><span class="ev-history-badge">Base unificada</span></div>
+      <div class="ev-history-filters">
+        <label class="field ev-history-search"><span>Buscar EV histórico</span><input data-ev-history-search value="${escapeAttribute(evHistoricalFilters.query)}" placeholder="Código ou nome do projeto..." /></label>
+        <label class="field"><span>Ano</span><select data-ev-history-filter="year">${evHistoricalFilterOptions(source.map((r) => String(r.year)), evHistoricalFilters.year, "Todos os anos")}</select></label>
+        <label class="field"><span>Tipologia</span><select data-ev-history-filter="typology">${evHistoricalFilterOptions(source.map((r) => r.typology), evHistoricalFilters.typology, "Todas as tipologias")}</select></label>
+        <label class="field"><span>Técnico</span><select data-ev-history-filter="technician">${evHistoricalFilterOptions(source.map((r) => r.technician), evHistoricalFilters.technician, "Todos os técnicos")}</select></label>
+        <label class="field"><span>Disciplina</span><select data-ev-history-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((d) => d.id), evHistoricalFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
+      </div>
+      <div class="ev-history-kpis">
+        <article><span>EVs encontrados</span><strong>${number(records.length)}</strong><small>${number((records.length / Math.max(source.length, 1)) * 100, 1)}% da base</small></article>
+        <article><span>Valor histórico</span><strong>${moneyCompact(total)}</strong><small>${money(total)}</small></article>
+        <article><span>Área equivalente</span><strong>${metricCompact(totalArea, " m²")}</strong><small>${number(totalArea, 0)} m²</small></article>
+        ${evHistoricalFilters.typology ? `<article class="ev-history-cost-m2"><span>Valor da tipologia por m²</span><strong>${typologyCostM2 ? `${money(typologyCostM2)}/m²` : "Sem leitura"}</strong><small>${escapeAttribute(evHistoricalFilters.typology)} · média ponderada de ${number(costM2Records.length)} EVs com área válida</small></article>` : ""}
+        <article><span>${selectedBenchmark ? escapeAttribute(selectedBenchmark.discipline.nome) : "Média por disciplina"}</span><strong>${selectedBenchmark ? `${number(selectedBenchmark.mean, 1)}%` : `${number(benchmarks.reduce((s, r) => s + r.mean, 0) / Math.max(benchmarks.length, 1), 1)}%`}</strong><small>${selectedBenchmark ? `mediana ${number(selectedBenchmark.median, 1)}% · σ ${number(selectedBenchmark.stdDev, 1)} p.p.` : `${benchmarks.length} disciplinas com histórico`}</small></article>
+      </div>
+      <div class="ev-history-grid">
+        <article class="ev-history-table-card ev-history-primary-table"><div class="panel-header"><div><span class="eyebrow">Base principal</span><h3>Carteira unificada de EVs</h3><p class="panel-subtitle">Clique nos títulos das colunas: maior → menor, menor → maior e ordem original.</p></div><span class="tag">${records.length} EVs</span></div><div class="table-wrap ev-history-table-wrap"><table class="data-table ev-unified-table"><thead><tr>${evSortableHeader("Ano", "year")}${evSortableHeader("EV", "project")}${evSortableHeader("Tipologia", "typology")}${evSortableHeader("Valor", "total", true)}${evSortableHeader("Área", "area", true)}${evSortableHeader("% disciplina", "discipline", true)}<th>Ação</th></tr></thead><tbody>
+          ${sortedRecords.slice(0, 60).map((record) => { const disciplineValue = evHistoricalFilters.discipline ? Number(record.disciplines?.[evHistoricalFilters.discipline] || 0) : 0; const share = record.baseTotal ? (disciplineValue / record.baseTotal) * 100 : 0; const historical = record.sourceKind === "historical"; const openAction = historical ? "open-historical-ev" : "open-ev-modal"; const openId = historical ? record.id : record.workId; const deleteAction = canDeleteEVRecords() ? `<button class="ghost-button compact-action danger-action" type="button" data-action="delete-ev-record" data-id="${escapeAttribute(record.id)}">Excluir</button>` : ""; return `<tr><td class="ev-year-cell"><strong>${escapeAttribute(String(record.year || "—"))}</strong><small>Elaboração</small></td><td><button class="ev-history-project-link" type="button" data-action="${openAction}" data-id="${openId}">${escapeAttribute(record.project)}</button><br /><span class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${number(record.items?.length || 0)} filhas</span><br /><span class="ev-unified-source" data-source="${record.sourceKind}">${escapeAttribute(record.sourceLabel)}</span></td><td><strong>${escapeAttribute(record.typology)}</strong><br /><button class="ev-typology-edit" type="button" data-action="edit-ev-typology" data-id="${escapeAttribute(record.id)}">Editar tipologia</button></td><td class="numeric">${moneyCompact(record.total)}</td><td class="numeric">${record.area ? `${number(record.area, 0)} m²` : "—"}</td><td class="numeric">${evHistoricalFilters.discipline ? `${number(share, 1)}%` : "Selecione"}</td><td><div class="table-actions">${historical ? `<button class="secondary-action compact-action" type="button" data-action="open-historical-ev" data-id="${record.id}">Ver composição</button><button class="primary-action compact-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button>` : `<button class="primary-action compact-action" type="button" data-action="open-ev-modal" data-id="${record.workId}">Editar EV</button>`}<button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button>${deleteAction}</div></td></tr>`; }).join("") || `<tr><td colspan="7"><div class="empty-state">Nenhum EV encontrado.</div></td></tr>`}
+        </tbody></table></div></article>
+        <article class="ev-history-chart-card"><div class="panel-header"><div><span class="eyebrow">Leitura complementar</span><h3>Composição histórica</h3><p class="panel-subtitle">Percentual médio nos EVs em que a disciplina foi utilizada</p></div></div><div class="ev-history-bars">
+          ${benchmarks.slice(0, 10).map((row, index) => `<div class="ev-history-bar"><span class="ev-history-rank">${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeAttribute(row.discipline.nome)}</strong><small>${row.count} EVs · mediana ${number(row.median, 1)}% · σ ${number(row.stdDev, 1)} p.p.</small></div><i><b style="width:${Math.max(3, (row.mean / maxMean) * 100)}%"></b></i><em>${number(row.mean, 1)}%</em></div>`).join("") || `<div class="empty-state">Sem dados para os filtros selecionados.</div>`}
+        </div></article>
+      </div>
+    </section>`;
+}
+
+async function openHistoricalEVModal(recordId) {
+  const record = evHistoricalSourceRecords().find((item) => item.id === recordId);
+  if (!record) return;
+  let items = Array.isArray(record.items) ? record.items : [];
+  if (!items.length && (record.itemsCount || record.itemsLazy || record.itemCount)) {
+    try { items = await globalThis.SLT_CLOUD.historicalEVItems(recordId); }
+    catch { showToast("Não foi possível carregar a composição do EV. Tente novamente."); return; }
+  }
+  const risk = Number(record.disciplines?.["taxa-risco"] || 0);
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
+        <header class="ev-modal-header">
+          <div><span class="eyebrow">EV histórico · ${record.year}</span><h2 id="historicalEVTitle">${escapeAttribute(record.project)}</h2><p class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${escapeAttribute(record.typology)} · Técnico: ${escapeAttribute(record.technician || "Não informado")} · ${dateText(String(record.date || "").slice(0, 10))}</p></div>
+          <div class="ev-modal-status"><span class="tag">${items.length} filhas</span><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></div>
+        </header>
+        <div class="modal-body ev-modal-body">
+          <section class="ev-summary-grid ev-historical-summary">
+            ${miniMetric("Valor total do EV", money(record.total))}
+            ${miniMetric("EV sem taxa de risco", money(record.baseTotal))}
+            ${miniMetric("Taxa de risco", money(risk))}
+            ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
+            ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
+            ${miniMetric("Filhas da coluna F", number(items.length))}
+          </section>
+          <section class="ev-historical-source-note"><span>Coluna F</span><div><strong>Composição completa do EV</strong><small>Cada linha abaixo corresponde a uma filha da coluna “Descrição” da planilha de origem.</small></div></section>
+          <div class="table-wrap ev-historical-items-wrap">
+            <table class="data-table ev-historical-items-table">
+              <thead><tr><th>Item</th><th>Filha / descrição da coluna F</th><th>Disciplina SLT 360</th><th class="numeric">Valor</th><th class="numeric">% do EV</th><th class="numeric">R$/m²</th></tr></thead>
+              <tbody>${items.map((item) => { const share = record.total ? (Number(item.value || 0) / record.total) * 100 : 0; return `<tr><td>${escapeAttribute(item.item || "—")}</td><td><strong>${escapeAttribute(item.description || "Sem descrição")}</strong></td><td><span class="tag">${escapeAttribute(disciplineById(item.disciplineId).nome)}</span></td><td class="numeric"><strong>${money(Number(item.value || 0))}</strong></td><td class="numeric">${number(share, 2)}%</td><td class="numeric">${record.area ? money(Number(item.value || 0) / record.area) : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty-state">Este EV não possui filhas registradas.</div></td></tr>`}</tbody>
+              <tfoot><tr class="ev-total-row"><td colspan="3"><strong>Total Geral</strong></td><td class="numeric"><strong>${money(record.total)}</strong></td><td class="numeric"><strong>100%</strong></td><td class="numeric"><strong>${record.area ? money(record.total / record.area) : "—"}</strong></td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="ghost-button" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
+      </article>
+    </div>`);
+}
+
+function ensureEditableHistoricalEV(recordId) {
+  const record = evHistoricalSourceRecords().find((item) => item.id === recordId);
+  if (!record) return null;
+  const linked = evUnifiedWorkForHistorical(record);
+  if (linked) {
+    const hasExistingValues = (linked.ev?.lines || []).some((line) => Number(line.valorOrcado || 0) > 0);
+    if (!hasExistingValues) {
+      linked.ev.lines = Object.entries(record.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({ disciplinaId, valorOrcado: Number(valorOrcado || 0), status: "Estimado" }));
+      if (!Number(linked.areaEquivalente || 0)) linked.areaEquivalente = Number(record.area || 0);
+      if (!Number(linked.areaConstruida || 0)) linked.areaConstruida = Number(record.area || 0);
+      linked.area = linked.areaEquivalente || linked.areaConstruida || 0;
+      const revisionNumber = Number(String(record.revision || "").match(/\d+/)?.[0] || 0);
+      linked.ev.versaoAtual = Math.max(Number(linked.ev.versaoAtual || 0), revisionNumber);
+      if (!(linked.ev.versions || []).length) {
+        linked.ev.versions = [{ numero: revisionNumber, data: String(record.date || "").slice(0, 10), origem: `Importado de ${window.EV_HISTORICAL_DATA.source}`, valorTotal: Number(record.total || 0), diffs: [] }];
+      }
+    }
+    return linked;
+  }
+  const revisionNumber = Number(String(record.revision || "").match(/\d+/)?.[0] || 0);
+  const uf = String(record.project || "").match(/\s-\s([A-Z]{2})\s(?:-|$)/)?.[1] || "";
+  const work = {
+    id: `historical-work-${record.id}`,
+    chaveUnica: record.code && record.code !== "0000" ? record.code : record.id,
+    codigoOriginal: record.code || record.id,
+    nome: record.project,
+    tipoUnidade: record.typology || "Não informada",
+    cidade: "Não informada",
+    uf,
+    regiao: "Não informada",
+    classificacaoObra: "Histórico importado",
+    tipologiaObra: record.typology || "Não informada",
+    areaConstruida: Number(record.area || 0),
+    areaEquivalente: Number(record.area || 0),
+    area: Number(record.area || 0),
+    ordemInternaSAP: "",
+    status: "Histórico",
+    ev: {
+      id: `editable-${record.id}`,
+      versaoAtual: revisionNumber,
+      status: "Completo",
+      anexos: [],
+      lines: Object.entries(record.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({ disciplinaId, valorOrcado: Number(valorOrcado || 0), status: "Estimado" })),
+      versions: [{ numero: revisionNumber, data: String(record.date || "").slice(0, 10), origem: `Importado de ${window.EV_HISTORICAL_DATA.source}`, valorTotal: Number(record.total || 0), diffs: [] }],
+    },
+  };
+  state.works.push(work);
+  return work;
+}
+
+function editHistoricalEV(recordId) {
+  const work = ensureEditableHistoricalEV(recordId);
+  if (!work) return;
+  closeModal();
+  openEVModal(work.id);
+}
+
+function openEVTypologyModal(recordId) {
+  const record = evUnifiedRecords().find((item) => item.id === recordId);
+  if (!record) return;
+  const options = [...new Set(evUnifiedRecords().map((item) => item.typology).concat([
+    "Hospital", "Pronto Atendimento", "Clínica e Medicina Preventiva", "Diagnóstico, Laboratório e Terapias",
+    "TEA", "Administrativo e Logística", "Adequação Regulatória", "Outros", "Não informada",
+  ]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <article class="modal-card compact-modal" aria-labelledby="evTypologyTitle">
+        <header class="modal-header"><div><span class="eyebrow">Classificação unificada</span><h2 id="evTypologyTitle">Editar tipologia do EV</h2><p class="muted">${escapeAttribute(record.project)} · ${escapeAttribute(record.code || "Sem código")}</p></div><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></header>
+        <form id="evTypologyForm" class="modal-body" data-record-id="${escapeAttribute(record.id)}">
+          <label class="field"><span>Tipologia</span><select name="typology" required>${options.map((option) => `<option value="${escapeAttribute(option)}" ${option === record.typology ? "selected" : ""}>${escapeAttribute(option)}</option>`).join("")}</select></label>
+          <div class="info-callout"><strong>Atualização integrada</strong><span>A nova tipologia atualizará a aba EV, os filtros, o R$/m², os gráficos estratégicos e a inteligência do Haptec.</span></div>
+          <footer class="modal-actions"><button class="secondary-action" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Salvar tipologia</button></footer>
+        </form>
+      </article>
+    </div>`);
+}
+
+function handleEVTypologySubmit(form) {
+  const recordId = form.dataset.recordId;
+  const typology = String(new FormData(form).get("typology") || "").trim();
+  const record = evUnifiedRecords().find((item) => item.id === recordId);
+  if (!record || !typology) return;
+  state.evTypologyOverrides = { ...(state.evTypologyOverrides || {}), [record.id]: typology };
+  if (record.sourceKind === "historical") {
+    const linked = evUnifiedWorkForHistorical(record);
+    if (linked) {
+      linked.tipoUnidade = typology;
+      linked.tipologiaObra = typology;
+    }
+  } else {
+    const work = workById(record.workId);
+    if (work) {
+      work.tipoUnidade = typology;
+      work.tipologiaObra = typology;
+    }
+  }
+  if (evHistoricalFilters.typology && evHistoricalFilters.typology !== typology) evHistoricalFilters.typology = "";
+  saveState();
+  closeModal();
+  render();
+  showToast(`Tipologia atualizada para ${typology}.`);
+}
+
+function canDeleteEVRecords() {
+  return activeRole() === "Admin";
+}
+
+function evDeleteDependencies(record) {
+  const work = record.sourceKind === "historical" ? evUnifiedWorkForHistorical(record) : workById(record.workId);
+  const workId = work?.id || "";
+  return {
+    work,
+    demands: workId ? state.demands.filter((item) => item.obraId === workId || item.workId === workId).length : 0,
+    sics: workId ? state.sics.filter((item) => item.obraId === workId || item.workId === workId).length : 0,
+    contracts: workId ? state.contracts.filter((item) => item.obraId === workId || item.workId === workId).length : 0,
+    funds: workId ? state.funds.filter((item) => item.obraId === workId || item.workId === workId).length : 0,
+  };
+}
+
+function openDeleteEVRecordModal(recordId) {
+  if (!canDeleteEVRecords()) {
+    showToast("Somente o perfil Admin pode excluir EVs.");
+    return;
+  }
+  const record = evUnifiedRecords().find((item) => item.id === recordId);
+  if (!record) return;
+  const dependencies = evDeleteDependencies(record);
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <article class="modal-card compact-modal ev-delete-modal" aria-labelledby="deleteEVTitle">
+        <header class="modal-header"><div><span class="eyebrow">Ação exclusiva do Admin</span><h2 id="deleteEVTitle">Excluir EV de toda a base?</h2><p class="muted">${escapeAttribute(record.year)} · ${escapeAttribute(record.project)}</p></div><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></header>
+        <div class="modal-body">
+          <div class="danger-callout"><strong>Esta exclusão é permanente neste navegador.</strong><span>O EV será removido da carteira unificada, Estratégica, SICs, indicadores e pesquisas. Seus vínculos cadastrados também serão excluídos.</span></div>
+          <div class="kpi-detail-grid">
+            ${splitItem("Demandas vinculadas", String(dependencies.demands))}
+            ${splitItem("SICs vinculadas", String(dependencies.sics))}
+            ${splitItem("Contratos vinculados", String(dependencies.contracts))}
+            ${splitItem("Verbas vinculadas", String(dependencies.funds))}
+          </div>
+          <label class="ev-delete-confirm"><input type="checkbox" data-ev-delete-check /><span>Confirmo que desejo excluir este EV e todos os seus dados relacionados.</span></label>
+        </div>
+        <footer class="modal-actions"><button class="secondary-action" type="button" data-action="close-modal">Cancelar</button><button class="primary-action danger-action" type="button" data-action="confirm-delete-ev-record" data-id="${escapeAttribute(record.id)}" disabled>Excluir definitivamente</button></footer>
+      </article>
+    </div>`);
+}
+
+function deleteEVRecordEverywhere(recordId) {
+  if (!canDeleteEVRecords()) {
+    showToast("Somente o perfil Admin pode excluir EVs.");
+    return;
+  }
+  const record = evUnifiedRecords().find((item) => item.id === recordId);
+  if (!record) return;
+  const dependencies = evDeleteDependencies(record);
+  const workId = dependencies.work?.id || "";
+  if (record.sourceKind === "historical") state.deletedEVRecordIds = [...new Set([...arrayOrFallback(state.deletedEVRecordIds), record.id])];
+  if (workId) {
+    state.works = state.works.filter((item) => item.id !== workId);
+    state.demands = state.demands.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.sics = state.sics.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.contracts = state.contracts.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.funds = state.funds.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.fundMovements = state.fundMovements.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.budgetRevisions = state.budgetRevisions.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.capexManualOiRows = state.capexManualOiRows.filter((item) => item.obraId !== workId && item.workId !== workId);
+    state.history = state.history.filter((item) => item.obraId !== workId && item.workId !== workId);
+    if (state.projectStatusOverrides) delete state.projectStatusOverrides[workId];
+  }
+  if (state.evTypologyOverrides) delete state.evTypologyOverrides[record.id];
+  if (selectedWorkId === workId) selectedWorkId = "all";
+  saveState();
+  closeModal();
+  render();
+  showToast(`EV ${record.code || record.project} excluído de toda a base.`);
+}
+
+const sltINCCData = Object.freeze({
+  latestLabel: "ago/2026",
+  annualRates: { 2021: 14.03, 2022: 9.40, 2023: 3.32, 2024: 6.34, 2025: 6.10 },
+  monthly2026: [0.63, 0.34, 0.36, 1.04, 0.77, 0.85, 0.62, 0.85],
+  sourceUrl: "https://portal.fgv.br/especiais/incc-m-resultados",
+  sourceLabel: "FGV IBRE · INCC-M Resultados",
+});
+
+function sltINCCFactor(basePeriod) {
+  const [yearText, monthText] = String(basePeriod || "2023-12").split("-");
+  const year = Number(yearText);
+  const month = Number(monthText || 12);
+  let factor = 1;
+  Object.entries(sltINCCData.annualRates).forEach(([rateYear, rate]) => {
+    if (Number(rateYear) > year) factor *= 1 + Number(rate) / 100;
+  });
+  sltINCCData.monthly2026.forEach((rate, index) => {
+    if (year < 2026 || index + 1 > month) factor *= 1 + rate / 100;
+  });
+  return factor;
+}
+
+function sltINCCReading(value = sltINCCCalculator.value, basePeriod = sltINCCCalculator.basePeriod) {
+  const amount = Number(value) || 0;
+  const factor = sltINCCFactor(basePeriod);
+  return { amount, factor, correction: amount * (factor - 1), updated: amount * factor, percentage: (factor - 1) * 100 };
+}
+
+function renderSLTCalculator() {
+  const reading = sltINCCReading();
+  return `
+    <section class="panel slt-calculator" id="sltCalculator">
+      <div class="panel-header"><div><span class="eyebrow">Calculadoras SLT</span><h2>Simulador de atualização por INCC-M</h2><p class="panel-subtitle">Receba um EV da carteira ou informe um valor avulso para atualizar da competência-base até ${sltINCCData.latestLabel}.</p></div><a class="secondary-action" href="${sltINCCData.sourceUrl}" target="_blank" rel="noopener noreferrer">Consultar fonte FGV</a></div>
+      <div class="slt-calculator-layout">
+        <div class="slt-calculator-form">
+          <label class="field"><span>Valor original</span><input data-slt-incc-value inputmode="decimal" value="${currencyInputValue(sltINCCCalculator.value)}" placeholder="R$ 0,00" /></label>
+          <label class="field"><span>Competência-base do EV</span><select data-slt-incc-period>${[2020,2021,2022,2023,2024,2025].map((year) => ({ value: `${year}-12`, label: `dez/${year}` })).concat([1,2,3,4,5,6,7,8].map((month) => ({ value: `2026-${String(month).padStart(2,"0")}`, label: `${["jan","fev","mar","abr","mai","jun","jul","ago"][month-1]}/2026` }))).map((period) => `<option value="${period.value}" ${period.value === sltINCCCalculator.basePeriod ? "selected" : ""}>${period.label}</option>`).join("")}</select></label>
+          <div class="slt-calculator-method"><strong>Metodologia</strong><span>Valor atualizado = valor original × fator INCC composto</span><small>Estimativa gerencial. Não substitui cláusula contratual, índice regional ou parecer financeiro.</small></div>
+        </div>
+        <div class="slt-calculator-results" data-slt-incc-results>
+          ${renderSLTINCCResults(reading)}
+        </div>
+      </div>
+      <footer><span>Fonte: ${sltINCCData.sourceLabel}</span><span>Última competência disponível: ${sltINCCData.latestLabel}</span></footer>
+    </section>`;
+}
+
+function renderSLTINCCResults(reading) {
+  return `
+    <article><span>Fator acumulado</span><strong>${number(reading.factor, 4)}×</strong><small>Variação de ${number(reading.percentage, 2)}%</small></article>
+    <article><span>Correção estimada</span><strong>${money(reading.correction)}</strong><small>Acréscimo pelo INCC-M</small></article>
+    <article class="is-primary"><span>Valor atualizado</span><strong>${money(reading.updated)}</strong><small>Referência ${sltINCCData.latestLabel}</small></article>`;
+}
+
+function updateSLTINCCResults() {
+  const root = document.querySelector("[data-slt-incc-results]");
+  if (root) root.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSLTINCCResults(sltINCCReading()));
+}
+
+function loadUnifiedEVIntoINCC(recordId) {
+  const record = evUnifiedRecords().find((item) => item.id === recordId);
+  if (!record) return;
+  const recordYear = Number(record.year) || 2025;
+  const dateMonth = Number(String(record.date || "").slice(5, 7)) || 12;
+  const basePeriod = recordYear >= 2026 ? `2026-${String(Math.min(dateMonth, 8)).padStart(2, "0")}` : `${Math.max(2020, Math.min(recordYear, 2025))}-12`;
+  sltINCCCalculator = { value: Number(record.total || 0), basePeriod };
+  closeModal();
+  render();
+  document.querySelector("#sltCalculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast(`EV enviado para a Calculadora SLT (${record.year}).`);
 }
 
 function renderEV() {
-  const evWorks = filteredEVWorks();
-  const evHasSearch = Boolean(searchTerm || evAssistantQuery);
-  if (evHasSearch && !evWorks.length) {
-    return `
-      ${renderWorksToolbar("ev", "Estudos de Viabilidade", "Valores, versões, indicadores por m² e pendências de cada obra", `
-        <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
-        <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros</button>
-        ${miroButton("Fluxo Miro")}
-      `)}
-      ${renderEVSearchAssistant(evWorks)}
-      <div class="empty-state">Nenhum EV encontrado para o filtro "${searchTerm || evAssistantQuery}".</div>
-    `;
-  }
-  const selectedAll = selectedWorkId === "all";
-  if (evHasSearch && evWorks.length && !selectedAll && !evWorks.some((item) => item.id === selectedWorkId)) {
-    selectedWorkId = evWorks[0].id;
-  }
-  const work = selectedAll ? null : workById(selectedWorkId) || evWorks[0] || state.works[0];
-  if (!work && !selectedAll) return `<div class="empty-state">Nenhuma obra cadastrada.</div>`;
-  if (work) selectedWorkId = work.id;
-  const totals = selectedAll ? totalsForWorks(evWorks) : workTotals(work);
-  const importedSicAdditives = sicLineRecords()
-    .filter((record) => record.valor > 0)
-    .reduce((sum, record) => sum + record.valor, 0);
-  const sicAdditiveValue = selectedAll ? Math.max(importedSicAdditives, totals.aditivado) : totals.aditivado;
-  const totalArea = selectedAll
-    ? evWorks.reduce((sum, item) => sum + (item.areaEquivalente || 0), 0)
-    : work.areaEquivalente;
-
   return `
-    ${renderWorksToolbar("ev", "Estudos de Viabilidade", "Valores, versões, indicadores por m² e pendências de cada obra", `
+    ${renderWorksToolbar("ev", "Base unificada de EVs", "Histórico, carteira atual, composição por disciplina e alertas estatísticos em uma única visão", `
       <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
       <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros</button>
       ${miroButton("Fluxo Miro")}
       <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
     `)}
-    ${renderEVSearchAssistant(evWorks)}
-    <div class="selector-row">
-      <label class="field">
-        <span>Obra</span>
-        <select data-action="select-work">
-          <option value="all" ${selectedAll ? "selected" : ""}>Todas as obras</option>
-          ${evWorks.map((item) => `<option value="${item.id}" ${item.id === work?.id ? "selected" : ""}>${item.nome}</option>`).join("")}
-        </select>
-      </label>
-      ${
-        selectedAll
-          ? `<span class="tag">${evWorks.length} EVs</span><span class="tag">Todas as obras</span>`
-          : `<span class="status-pill" data-status="${work.ev.status}">${work.ev.status}</span><span class="tag">EV v${work.ev.versaoAtual}</span>`
-      }
-    </div>
-
-    <section class="kpi-grid">
-      ${kpi("Valor EV", money(totals.orcado), "Base orçada por disciplina", "blue")}
-      ${kpi("Valores de Aditivos", money(sicAdditiveValue), "SICs aprovadas/importadas e decompostas", "orange")}
-      ${kpi("Contratado", money(totals.contratado), "Contratações por disciplina", "green")}
-      ${kpi("Custo médio m²", money((totals.orcado + totals.aditivado) / Math.max(totalArea, 1)), `${number(totalArea)} m² equivalentes`, "blue")}
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Carteira de EVs</h2>
-          <p class="panel-subtitle">Versões, pendências, valor total e custo por m²</p>
-        </div>
-      </div>
-      ${renderEVOverviewTable(selectedAll ? null : work)}
-    </section>
-
+    ${renderEVHistoricalIntelligence()}
+    ${renderSLTCalculator()}
     ${renderBudgetingFlowPanel()}
-
-    ${selectedAll ? "" : renderEVVersionPanel(work)}
-  `;
-}
-
-function filteredEVWorks() {
-  const terms = normalizeSearchText([searchTerm, evAssistantQuery].filter(Boolean).join(" "))
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!terms.length) return state.works;
-  return state.works.filter((work) => terms.every((term) => workSearchText(work).includes(term)));
-}
-
-function renderEVSearchAssistant(evWorks) {
-  const hasQuery = Boolean(evAssistantQuery);
-  const suggestions = hasQuery ? evWorks.slice(0, 10) : [];
-  return `
-    <section class="panel ev-search-assistant">
-      <label class="field">
-        <span>Assistente de busca EV</span>
-        <input data-ev-assistant-search value="${escapeAttribute(evAssistantQuery)}" placeholder="Buscar por obra, chave, cidade, UF, tipo, região ou classificação..." />
-      </label>
-      ${
-        hasQuery
-          ? suggestions.length
-            ? `
-              <div class="ev-search-results" aria-label="Sugestões de obras">
-                ${suggestions
-                  .map(
-                    (work) => `
-                      <button type="button" data-action="select-ev-work" data-id="${work.id}">
-                        <strong>${work.nome}</strong>
-                        <span>${work.chaveUnica} | ${work.tipoUnidade} | ${work.cidade}/${work.uf} | ${work.regiao}</span>
-                      </button>
-                    `
-                  )
-                  .join("")}
-              </div>
-              <p class="muted">Mostrando ${suggestions.length} de ${evWorks.length} obra${evWorks.length === 1 ? "" : "s"} encontrada${evWorks.length === 1 ? "" : "s"}.</p>
-            `
-            : `<div class="empty-state">Nenhuma obra encontrada para "${evAssistantQuery}".</div>`
-          : `<p class="muted">Digite parte do nome, chave, cidade, UF ou tipo para localizar rapidamente o EV de uma obra cadastrada.</p>`
-      }
-    </section>
-  `;
-}
-
-function totalsForWorks(works) {
-  return works.reduce(
-    (total, work) => {
-      const values = workTotals(work);
-      total.orcado += values.orcado;
-      total.aditivado += values.aditivado;
-      total.contratado += values.contratado;
-      total.saldo += values.saldo;
-      return total;
-    },
-    { orcado: 0, aditivado: 0, contratado: 0, saldo: 0 }
-  );
-}
-
-function renderEVVersionPanel(work) {
-  const latestVersion = work.ev.versions[work.ev.versions.length - 1];
-  return `
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Comparador de versões</h2>
-          <p class="panel-subtitle">${latestVersion?.origem || "Sem versão"} | diferenças por disciplina</p>
-        </div>
-        <button class="primary-action" type="button" data-action="open-ev-modal" data-id="${work.id}">Abrir EV</button>
-      </div>
-      ${renderVersionDiff(latestVersion)}
-    </section>
-  `;
-}
-
-function renderEVOverviewTable(selectedWork = null) {
-  const works = selectedWork ? [selectedWork] : filteredEVWorks();
-  if (!works.length) return `<div class="empty-state">Nenhum EV encontrado para o filtro atual.</div>`;
-  return `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Obra</th>
-            <th>Cidade/UF</th>
-            <th>Versão</th>
-            <th>Última atualização</th>
-            <th>Pendência</th>
-            <th class="numeric">Valor total</th>
-            <th class="numeric">Valor por m²</th>
-            <th>Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${works
-            .map((work) => {
-              const totals = workTotals(work);
-              const totalValue = totals.orcado + totals.aditivado;
-              const lastVersion = work.ev.versions[work.ev.versions.length - 1];
-              const pending = work.ev.status === "Completo" ? "OK" : "Pendente";
-              return `
-                <tr>
-                  <td><strong>${work.nome}</strong><br /><span class="muted">${work.chaveUnica}</span></td>
-                  <td>${work.cidade}/${work.uf}</td>
-                  <td>REV${String(work.ev.versaoAtual).padStart(2, "0")} · ${work.ev.versions.length} versão${work.ev.versions.length === 1 ? "" : "es"}</td>
-                  <td>${lastVersion?.data ? dateText(lastVersion.data) : "Rascunho"}</td>
-                  <td><span class="status-pill" data-status="${pending === "OK" ? "Completo" : "Pendente"}">${pending}</span></td>
-                  <td class="numeric">${money(totalValue)}</td>
-                  <td class="numeric">${work.areaEquivalente ? `${money(totalValue / work.areaEquivalente)}/m²` : "—"}</td>
-                  <td><button class="secondary-action" type="button" data-action="open-ev-modal" data-id="${work.id}">Abrir EV</button></td>
-                </tr>
-              `;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>
   `;
 }
 
@@ -7252,16 +7303,6 @@ function renderBudgetingFlowPanel() {
   `;
 }
 
-function processStage(numberLabel, title, detail) {
-  return `
-    <article class="process-stage">
-      <span>${numberLabel}</span>
-      <strong>${title}</strong>
-      <p>${detail}</p>
-    </article>
-  `;
-}
-
 function renderEVStandardStructure(work) {
   const lineMap = new Map();
   (work.ev.lines || []).forEach((line) => {
@@ -7280,6 +7321,7 @@ function renderEVStandardStructure(work) {
   const baseTotalNoRisk = applicableRows
     .filter((row) => !isRiskLine({ disciplinaId: row.discipline.id }))
     .reduce((sum, row) => sum + row.value, 0);
+  const valuesByDiscipline = Object.fromEntries(applicableRows.map((row) => [row.discipline.id, row.value]));
   const currentCostPerM2 = work.areaEquivalente ? baseTotalNoRisk / work.areaEquivalente : 0;
   const renderRows = (category) =>
     visibleRows
@@ -7310,6 +7352,9 @@ function renderEVStandardStructure(work) {
             <strong data-ev-area-preview>${currentCostPerM2 ? `${money(currentCostPerM2)}/m²` : "—"}</strong>
           </div>
         </div>
+      </section>
+      <section class="ev-deviation-panel" data-ev-deviation-panel>
+        ${evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotalNoRisk)}
       </section>
       <div class="ev-editor-toolbar">
         <button class="secondary-action" type="button" data-action="toggle-ev-na">
@@ -7525,41 +7570,6 @@ function renderEVLinesTable(work) {
   `;
 }
 
-function renderVersionDiff(version) {
-  if (!version || !version.diffPorDisciplina.length) {
-    return `<div class="empty-state">Versão base sem diferenças registradas.</div>`;
-  }
-  return `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Disciplina</th>
-            <th class="numeric">Antes</th>
-            <th class="numeric">Depois</th>
-            <th class="numeric">Diferença</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${version.diffPorDisciplina
-            .map((diff) => {
-              const delta = diff.valorDepois - diff.valorAntes;
-              return `
-                <tr>
-                  <td><strong>${disciplineById(diff.disciplinaId).nome}</strong></td>
-                  <td class="numeric">${money(diff.valorAntes)}</td>
-                  <td class="numeric">${money(diff.valorDepois)}</td>
-                  <td class="numeric">${money(delta)}</td>
-                </tr>
-              `;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
 const CLINICAL_COST_CENTER_LABEL = "ENGENHARIA CLÍNICA";
 
 function isClinicalView(view = currentView) {
@@ -7719,11 +7729,11 @@ function maintenanceMonthLabel(value) {
 
 function maintenanceLeadTime(item) {
   if (!item?.dataInicio) return 0;
-  return Math.max(0, daysBetween(item.dataInicio, item.dataFim || TODAY_ISO));
+  return Math.max(0, daysBetween(item.dataInicio, item.dataFim || todayISO()));
 }
 
 function maintenancePhaseDays(item) {
-  return item?.phaseStartedAt ? Math.max(0, daysBetween(item.phaseStartedAt, TODAY_ISO)) : maintenanceLeadTime(item);
+  return item?.phaseStartedAt ? Math.max(0, daysBetween(item.phaseStartedAt, todayISO())) : maintenanceLeadTime(item);
 }
 
 function isMaintenanceClosed(item) {
@@ -7974,7 +7984,7 @@ function renderMaintenanceHome() {
   const units = new Set(items.map((item) => item.unidadeNome).filter(Boolean)).size;
   const states = new Set(items.map((item) => item.uf).filter(Boolean)).size;
   const labels = maintenanceModuleLabels();
-  const assetCount = labels.isClinical ? clinicalAssets().length : 0;
+  const assetCount = labels.isClinical ? (clinicalEquipmentRecords().length || clinicalAssets().length) : 0;
   return `
     ${renderMaintenanceContextToolbar(labels.homeView, labels.title, labels.isClinical ? "Central de demandas de equipamentos, ativos assistenciais, OS, prazo, valor e fase Pipefy" : "Central de demandas prediais e técnicas por unidade, OS, prazo, valor e fase Pipefy", `
       <button class="secondary-action" type="button" data-view="${labels.reportsView}">${labels.reportsLabel}</button>
@@ -8173,7 +8183,7 @@ function renderMaintenanceCard(item) {
         <span>${item.unidadeNome}</span>
         <b>${item.uf || "UF"}</b>
       </div>
-      ${labels.isClinical ? `<span class="maintenance-asset-label">${equipmentName || "Equipamento a vincular"}</span>` : ""}
+      ${labels.isClinical ? `<span class="maintenance-asset-label">${equipmentName || "Equipamento a vincular"}<small>${item.assetTag ? `TAG ${escapeAttribute(item.assetTag)}` : ""}${item.clinicalAssetId ? ` · ID ${escapeAttribute(item.clinicalAssetId)}` : ""}</small></span>` : ""}
       <span class="demand-card-date">${dateText(item.dataInicio)} → ${item.dataFim ? dateText(item.dataFim) : "em aberto"}</span>
       <div class="demand-card-alert" data-tone="${timing.tone}">
         <i></i>
@@ -8217,7 +8227,7 @@ function renderMaintenanceList(filtered) {
                   <td>${item.tipologia}</td>
                   <td><span class="status-dot" data-status="${item.coluna}"></span>${maintenanceStatusLabel(item)}</td>
                   <td>${maintenanceSprintName(item)}</td>
-                  ${labels.isClinical ? `<td>${clinicalEquipmentName(item) || "A vincular"}<br /><span class="muted">${item.patrimonio || item.numeroSerie || ""}</span></td>` : ""}
+                  ${labels.isClinical ? `<td>${clinicalEquipmentName(item) || "A vincular"}<br /><span class="muted">${item.assetTag ? `TAG ${escapeAttribute(item.assetTag)}` : item.patrimonio || ""}${item.clinicalAssetId ? ` · ID ${escapeAttribute(item.clinicalAssetId)}` : ""}</span></td>` : ""}
                   <td>${dateText(item.dataInicio)}</td>
                   <td>${maintenanceLeadTime(item)} d</td>
                   <td class="numeric">${money(maintenanceValue(item))}</td>
@@ -8527,7 +8537,7 @@ function renderMaintenanceExecutive() {
   const lateValue = maintenancePrimaryValueForItems(metrics.late);
   const topItem = items.slice().sort((a, b) => maintenanceValue(b) - maintenanceValue(a))[0];
   const unitCount = new Set(items.map((item) => item.unidadeNome).filter(Boolean)).size;
-  const assetCount = labels.isClinical ? clinicalAssets().length : 0;
+  const assetCount = labels.isClinical ? (clinicalEquipmentRecords().length || clinicalAssets().length) : 0;
   const topStates = maintenanceGroupRows(items, "uf").slice(0, 12);
   const typologyRows = maintenanceGroupRows(items, "tipologia").slice(0, 12);
   const phaseRows = maintenancePhaseRows(items);
@@ -8643,14 +8653,6 @@ function renderMaintenanceExecutive() {
   `;
 }
 
-function renderMaintenanceDiagnostic() {
-  return renderMaintenanceExecutive();
-}
-
-function renderMaintenancePerformance() {
-  return renderMaintenanceExecutive();
-}
-
 function renderMaintenanceStateGrid(rows) {
   if (!rows.length) return `<div class="empty-state">Sem estados registrados no filtro atual.</div>`;
   const maxValue = Math.max(...rows.map((row) => row.valor), 1);
@@ -8674,7 +8676,8 @@ function renderMaintenanceStateGrid(rows) {
 function renderMaintenanceSettings() {
   const units = maintenanceUnits();
   const labels = maintenanceModuleLabels();
-  const assets = clinicalAssets();
+  const assets = labels.isClinical ? clinicalParkAssets(clinicalParkQuery) : clinicalAssets();
+  const clinicalParkCount = clinicalEquipmentRecords().length || assets.length;
   return `
     ${renderMaintenanceContextToolbar(labels.settingsView, labels.settingsTitle, labels.settingsSubtitle, `
       <button class="primary-action" type="button" data-action="open-maintenance-demand">+ Nova demanda</button>
@@ -8703,10 +8706,14 @@ function renderMaintenanceSettings() {
             <div class="panel-header">
               <div>
                 <h2>Parque tecnológico</h2>
-                <p class="panel-subtitle">Estrutura pronta para receber a lista do Effort e vincular OS ao histórico do equipamento.</p>
+                <p class="panel-subtitle">Base completa do parque Hapvida, rastreável por unidade, TAG, ID, patrimônio e número de série.</p>
               </div>
-              <span class="tag">${assets.length} ativo(s)</span>
+              <span class="tag">${number(clinicalParkCount)} equipamento(s)</span>
             </div>
+            <label class="field clinical-park-search">
+              <span>Buscar no parque tecnológico</span>
+              <input type="search" data-clinical-park-search value="${escapeAttribute(clinicalParkQuery)}" placeholder="TAG, ID, patrimônio, série, equipamento, fabricante ou unidade..." autocomplete="off" />
+            </label>
             ${renderClinicalAssetRegistry(assets)}
           </section>
         `
@@ -8731,26 +8738,11 @@ function renderMaintenanceSettings() {
 }
 
 function clinicalAssets() {
-  const registered = Array.isArray(state.clinicalAssets) ? state.clinicalAssets : [];
-  if (registered.length) {
-    const query = normalizeSearchText(clinicalParkQuery).trim();
-    return registered
-      .map((asset) => ({
-        ...asset,
-        equipamento: asset.equipamento || asset.name || "Equipamento sem descrição",
-        unidadeNome: asset.unidadeNome || "Unidade não informada",
-        patrimonio: asset.patrimonio || asset.assetTag || "",
-        numeroSerie: asset.numeroSerie || asset.serialNumber || "",
-        os: clinicalItems().filter((item) => String(item.assetId || "") === String(asset.id || "")).length,
-        valor: clinicalItems()
-          .filter((item) => String(item.assetId || "") === String(asset.id || ""))
-          .reduce((sum, item) => sum + maintenanceValue(item), 0),
-      }))
-      .filter((asset) => !query || normalizeSearchText([
-        asset.id, asset.tag, asset.patrimonio, asset.numeroSerie, asset.equipamento,
-        asset.fabricante, asset.modelo, asset.unidadeNome, asset.cidade, asset.uf,
-      ].join(" ")).includes(query))
-      .sort((a, b) => String(a.unidadeNome).localeCompare(String(b.unidadeNome), "pt-BR") || String(a.equipamento).localeCompare(String(b.equipamento), "pt-BR"));
+  if (clinicalEquipmentRecords().length) {
+    return clinicalEquipmentRecords().slice(0, 120).map((row) => {
+      const asset = clinicalEquipmentFromRow(row);
+      return { ...asset, tipologia: asset.setor || "Parque tecnológico", os: clinicalItems().filter((item) => String(item.clinicalAssetId || "") === asset.id).length, valor: clinicalItems().filter((item) => String(item.clinicalAssetId || "") === asset.id).reduce((sum, item) => sum + maintenanceValue(item), 0) };
+    });
   }
   const seen = new Map();
   clinicalItems().forEach((item, index) => {
@@ -8774,6 +8766,76 @@ function clinicalAssets() {
   return [...seen.values()].sort((a, b) => b.os - a.os || b.valor - a.valor);
 }
 
+function clinicalEquipmentRecords() {
+  return Array.isArray(globalThis.CLINICAL_EQUIPMENT_DATA?.records) ? globalThis.CLINICAL_EQUIPMENT_DATA.records : [];
+}
+
+function clinicalParkAssets(query = "") {
+  const term = normalizeSearchText(query);
+  const results = [];
+  for (const row of clinicalEquipmentRecords()) {
+    const asset = clinicalEquipmentFromRow(row);
+    if (term) {
+      const searchable = normalizeSearchText([asset.id, asset.tag, asset.tagAntiga, asset.numeroSerie, asset.patrimonio, asset.equipamento, asset.fabricante, asset.modelo, asset.unidadeNome, asset.setor].join(" "));
+      if (!searchable.includes(term)) continue;
+    }
+    const linked = clinicalItems().filter((item) => String(item.clinicalAssetId || "") === asset.id);
+    results.push({ ...asset, tipologia: asset.setor || "Parque tecnológico", os: linked.length, valor: linked.reduce((sum, item) => sum + maintenanceValue(item), 0) });
+    if (results.length >= 200) break;
+  }
+  return results;
+}
+
+function clinicalEquipmentFromRow(row) {
+  const path = String(row?.[11] || "");
+  const pathParts = path.split("\\").map((part) => part.trim()).filter(Boolean);
+  const unitFromPath = pathParts.length > 1 ? pathParts[pathParts.length - 2] : "";
+  return {
+    id: String(row?.[0] || ""), tag: String(row?.[1] || ""), numeroSerie: String(row?.[2] || ""),
+    patrimonio: String(row?.[3] || ""), tagAntiga: String(row?.[4] || ""), equipamento: String(row?.[5] || "Equipamento não informado"),
+    modelo: String(row?.[6] || ""), fabricante: String(row?.[7] || ""), criticidade: String(row?.[8] || ""), prioridade: String(row?.[9] || ""),
+    unidadeNome: String(unitFromPath || "Unidade não informada").trim(), setor: String(row?.[10] || ""),
+    caminhoSetor: path, endereco: String(row?.[12] || ""), uf: String(row?.[13] || ""), cidade: String(row?.[14] || ""),
+    anvisa: String(row?.[20] || ""), propriedade: String(row?.[21] || ""), status: String(row?.[22] || ""), fornecedor: String(row?.[24] || ""),
+  };
+}
+
+function clinicalEquipmentById(id) {
+  const row = clinicalEquipmentRecords().find((record) => String(record?.[0] || "") === String(id || ""));
+  return row ? clinicalEquipmentFromRow(row) : null;
+}
+
+function clinicalEquipmentSearchResults(query = "", unitQuery = "") {
+  const term = normalizeSearchText(query);
+  if (term.length < 2) return `<div class="empty-state compact">Digite ao menos 2 caracteres da TAG, ID, patrimônio, série ou equipamento.</div>`;
+  const unitTerm = normalizeSearchText(unitQuery);
+  const matches = [];
+  for (const row of clinicalEquipmentRecords()) {
+    const asset = clinicalEquipmentFromRow(row);
+    const searchable = normalizeSearchText([asset.id, asset.tag, asset.tagAntiga, asset.numeroSerie, asset.patrimonio, asset.equipamento, asset.fabricante, asset.modelo, asset.unidadeNome, asset.setor].join(" "));
+    if (!searchable.includes(term)) continue;
+    if (unitTerm && !normalizeSearchText(asset.unidadeNome).includes(unitTerm) && !normalizeSearchText(asset.caminhoSetor).includes(unitTerm)) continue;
+    matches.push(asset);
+    if (matches.length >= 20) break;
+  }
+  if (!matches.length) return `<div class="empty-state compact">Nenhum equipamento encontrado para esta busca.</div>`;
+  return `<div class="unit-search-results clinical-equipment-results">${matches.map((asset) => `<button type="button" data-action="select-clinical-equipment" data-id="${escapeAttribute(asset.id)}"><strong>${escapeAttribute(asset.tag || asset.id)} · ${escapeAttribute(asset.equipamento)}</strong><span>${escapeAttribute(asset.unidadeNome)} · ${escapeAttribute([asset.fabricante, asset.modelo].filter(Boolean).join(" ") || "Sem fabricante/modelo")}</span><small>ID ${escapeAttribute(asset.id)}${asset.patrimonio ? ` · Patrimônio ${escapeAttribute(asset.patrimonio)}` : ""}${asset.numeroSerie ? ` · Série ${escapeAttribute(asset.numeroSerie)}` : ""}</small></button>`).join("")}</div>`;
+}
+
+function applyClinicalEquipmentToForm(form, asset) {
+  if (!form || !asset) return;
+  const set = (name, value) => { const field = form.querySelector(`[name="${name}"]`); if (field) field.value = value || ""; };
+  set("clinicalAssetId", asset.id); set("equipamentoBusca", `${asset.tag || asset.id} · ${asset.equipamento}`);
+  set("equipamento", asset.equipamento); set("patrimonio", asset.patrimonio || asset.tag); set("fabricante", asset.fabricante); set("modelo", asset.modelo);
+  set("assetTag", asset.tag); set("assetSerial", asset.numeroSerie); set("assetUnit", asset.unidadeNome);
+  const unitInput = form.querySelector('[name="unidadeBusca"]');
+  if (unitInput) unitInput.value = asset.unidadeNome;
+  const matchingUnit = maintenanceUnits().find((unit) => normalizeSearchText(unit.nome) === normalizeSearchText(asset.unidadeNome));
+  if (matchingUnit) { set("unidadeId", matchingUnit.id); }
+  const results = form.querySelector("[data-clinical-equipment-results]");
+  if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<div class="selected-work-card"><strong>${escapeAttribute(asset.tag || asset.id)} · ${escapeAttribute(asset.equipamento)}</strong><span>${escapeAttribute(asset.unidadeNome)} · ID ${escapeAttribute(asset.id)}</span><small>${escapeAttribute([asset.fabricante, asset.modelo, asset.numeroSerie && `Série ${asset.numeroSerie}`].filter(Boolean).join(" · "))}</small></div>`);
+}
+
 function renderClinicalAssetRegistry(assets) {
   if (!assets.length) {
     return `
@@ -8783,14 +8845,11 @@ function renderClinicalAssetRegistry(assets) {
     `;
   }
   return `
-    <label class="field clinical-park-search">
-      <span>Localizar equipamento no parque</span>
-      <input type="search" data-clinical-park-search value="${escapeAttribute(clinicalParkQuery)}" placeholder="TAG, ID, patrimônio, série, equipamento, fabricante ou unidade..." autocomplete="off" />
-    </label>
     <div class="table-wrap">
       <table class="data-table">
         <thead>
           <tr>
+            <th>TAG / ID</th>
             <th>Equipamento</th>
             <th>Unidade</th>
             <th>Patrimônio / série</th>
@@ -8806,67 +8865,156 @@ function renderClinicalAssetRegistry(assets) {
             .map(
               (asset) => `
                 <tr>
+                  <td><strong>${asset.tag || "Sem TAG"}</strong><br /><span class="muted">ID ${asset.id || "—"}</span></td>
                   <td><strong>${asset.equipamento}</strong><br /><span class="muted">${asset.fabricante || "Fabricante a informar"} ${asset.modelo || ""}</span></td>
                   <td>${asset.unidadeNome}</td>
                   <td>${asset.patrimonio || "A informar"}</td>
-                  <td>${asset.tipologia || asset.status || "Não informada"}</td>
+                  <td>${asset.tipologia}</td>
                   <td>${asset.os}</td>
                   <td class="numeric">${money(asset.valor)}</td>
-                  <td><button class="primary-action compact-action" type="button" data-action="create-clinical-demand-for-asset" data-id="${escapeAttribute(asset.id || "")}">Criar demanda</button></td>
+                  <td><button class="primary-action compact-action" type="button" data-action="create-clinical-demand-for-asset" data-id="${escapeAttribute(asset.id)}">Criar demanda</button></td>
                 </tr>
               `
             )
             .join("")}
         </tbody>
       </table>
-    </div>
-    <p class="muted">Mostrando ${number(assets.length)} equipamento(s). A demanda criada manterá o vínculo pelo ID do ativo.</p>
-  `;
-}
-
-function maintenanceBubbleList(items) {
-  if (!items.length) return `<div class="empty-state">Sem dados para exibir.</div>`;
-  const max = Math.max(...items.map((item) => item.valor), 1);
-  return `
-    <div class="maintenance-bubble-list">
-      ${items.slice(0, 10).map((item) => {
-        const size = 42 + (item.valor / max) * 72;
-        return `
-          <button type="button" style="width:${size}px;height:${size}px" data-action="open-maintenance-slice" data-field="${item.field}" data-label="${escapeAttribute(item.value)}">
-            <strong>${item.count}</strong>
-            <span>${item.label}</span>
-          </button>
-        `;
-      }).join("")}
+      <p class="muted">Mostrando ${number(assets.length)} resultado(s) de ${number(clinicalEquipmentRecords().length || assets.length)} equipamentos. Localize o ativo e use “Criar demanda” para manter a rastreabilidade.</p>
     </div>
   `;
 }
 
-function maintenanceStackedBy(items, field) {
-  const groups = maintenanceGroup(items, field).slice(0, 8);
-  if (!groups.length) return `<div class="empty-state">Sem dados para exibir.</div>`;
-  const colors = ["var(--blue)", "var(--green)", "var(--orange)", "var(--red)", "var(--cyan)", "var(--yellow)", "#586a85", "#9aaaba"];
+function clinicalParkStats() {
+  const group = (map, key, value = 1) => { const label = String(key || "Não informado").trim() || "Não informado"; map.set(label, (map.get(label) || 0) + value); };
+  const units = new Set();
+  const statuses = new Map();
+  const criticalities = new Map();
+  const equipmentTypes = new Map();
+  const manufacturers = new Map();
+  const states = new Map();
+  const ownership = new Map();
+  let active = 0; let inactive = 0; let highCriticality = 0; let acquisitionValue = 0; let replacementValue = 0;
+  for (const row of clinicalEquipmentRecords()) {
+    const asset = clinicalEquipmentFromRow(row);
+    units.add(asset.unidadeNome);
+    group(statuses, asset.status); group(criticalities, asset.criticidade); group(equipmentTypes, asset.equipamento);
+    group(manufacturers, asset.fabricante); group(states, asset.uf || "Não informado"); group(ownership, asset.propriedade);
+    const normalizedStatus = normalizeSearchText(asset.status);
+    if (normalizedStatus === "ativo") active += 1; else if (normalizedStatus) inactive += 1;
+    if (["alta", "critica", "critico"].includes(normalizeSearchText(asset.criticidade))) highCriticality += 1;
+    acquisitionValue += parseCurrency(row?.[16] || 0); replacementValue += parseCurrency(row?.[17] || 0);
+  }
+  const rows = (map, limit = 12) => [...map.entries()].map(([label, valor]) => ({ label, value: label, valor, count: valor })).sort((a, b) => b.valor - a.valor).slice(0, limit);
+  return {
+    total: clinicalEquipmentRecords().length, units: units.size, active, inactive, highCriticality, acquisitionValue, replacementValue,
+    statuses: rows(statuses), criticalities: rows(criticalities), equipmentTypes: rows(equipmentTypes), manufacturers: rows(manufacturers), states: rows(states), ownership: rows(ownership),
+  };
+}
+
+function renderClinicalHomeIntegrated() {
+  const park = clinicalParkStats();
+  const os = clinicalItems();
+  const metrics = maintenanceMetrics(os);
   return `
-    <div class="maintenance-stack-list">
-      ${groups
-        .map((group) => {
-          const subset = items.filter((item) => (item[field] || "Não informado") === group.value);
-          const total = Math.max(subset.length, 1);
-          return `
-            <button type="button" data-action="open-maintenance-slice" data-field="${field}" data-label="${escapeAttribute(group.value)}">
-              <span>${group.label}</span>
-              <i>
-                ${maintenanceColumns
-                  .map((column, index) => {
-                    const count = subset.filter((item) => item.coluna === column.id).length;
-                    return count ? `<b style="width:${(count / total) * 100}%;background:${colors[index % colors.length]}">${number((count / total) * 100)}%</b>` : "";
-                  })
-                  .join("")}
-              </i>
-            </button>
-          `;
-        })
-        .join("")}
+    ${renderMaintenanceContextToolbar("clinical", "Engenharia Clínica 360", `Parque tecnológico unificado · ${number(park.total)} equipamentos · fonte ${escapeAttribute(globalThis.CLINICAL_EQUIPMENT_DATA?.source || "Base de equipamentos")}`, `
+      <button class="secondary-action" type="button" data-view="clinicalSettings">Abrir Parque Tecnológico</button>
+      <button class="primary-action" type="button" data-action="open-maintenance-demand">+ Nova demanda</button>`)}
+    <section class="kpi-grid">
+      ${kpi("Equipamentos cadastrados", number(park.total), "Base mestre do parque Hapvida", "blue", "clinicalSettings")}
+      ${kpi("Unidades com parque", number(park.units), "Unidades identificadas na planilha", "green", "clinicalSettings")}
+      ${kpi("Equipamentos ativos", number(park.active), `${number((park.active / Math.max(park.total, 1)) * 100, 1)}% da base`, "green", "clinicalSettings")}
+      ${kpi("Alta criticidade", number(park.highCriticality), "Prioridade para gestão do risco", park.highCriticality ? "red" : "green", "clinicalReports")}
+      ${kpi("OS em fluxo", number(metrics.active.length), `${os.length} demandas vinculadas`, "orange", "clinicalOperational")}
+      ${kpi("Valor de substituição", moneyCompact(park.replacementValue), money(park.replacementValue), "blue", "clinicalExecutive")}
+    </section>
+    <div class="content-grid three">
+      <section class="panel"><h2>Status do parque</h2><p class="panel-subtitle">Situação cadastral dos equipamentos</p>${barList(park.statuses, "valor", number)}</section>
+      <section class="panel"><h2>Criticidade</h2><p class="panel-subtitle">Distribuição do risco assistencial</p>${barList(park.criticalities, "valor", number)}</section>
+      <section class="panel"><h2>Principais equipamentos</h2><p class="panel-subtitle">Tipos com maior presença no parque</p>${barList(park.equipmentTypes, "valor", number)}</section>
+    </div>
+  `;
+}
+
+function renderClinicalReportsIntegrated() {
+  const park = clinicalParkStats();
+  const os = clinicalItems();
+  return `
+    ${renderMaintenanceContextToolbar("clinicalReports", "BI Engenharia Clínica", "Inteligência consolidada do parque tecnológico e das OS vinculadas por TAG e ID", `
+      <button class="secondary-action" type="button" data-view="clinicalSettings">Consultar equipamentos</button>
+      <button class="primary-action" type="button" data-action="open-maintenance-demand">+ Nova demanda</button>`)}
+    <section class="kpi-grid">
+      ${kpi("Parque total", number(park.total), `${number(park.units)} unidades`, "blue")}
+      ${kpi("Ativos", number(park.active), `${number(park.inactive)} não ativos/informados`, "green")}
+      ${kpi("Alta criticidade", number(park.highCriticality), "Equipamentos prioritários", "red")}
+      ${kpi("OS vinculadas", number(os.length), "Histórico operacional rastreável", "orange", "clinicalOperational")}
+    </section>
+    <div class="content-grid">
+      <section class="panel"><h2>Equipamentos por fabricante</h2><p class="panel-subtitle">Concentração dos principais fabricantes</p>${barList(park.manufacturers, "valor", number)}</section>
+      <section class="panel"><h2>Equipamentos por estado</h2><p class="panel-subtitle">Distribuição geográfica da base cadastrada</p>${barList(park.states, "valor", number)}</section>
+    </div>
+    <div class="content-grid">
+      <section class="panel"><h2>Modalidade patrimonial</h2><p class="panel-subtitle">Próprio, locado, comodato e demais situações</p>${barList(park.ownership, "valor", number)}</section>
+      <section class="panel"><h2>Tipos de equipamento</h2><p class="panel-subtitle">Maiores grupos do parque tecnológico</p>${barList(park.equipmentTypes, "valor", number)}</section>
+    </div>
+  `;
+}
+
+function renderClinicalExecutiveIntegrated() {
+  const park = clinicalParkStats();
+  const os = clinicalItems();
+  const metrics = maintenanceMetrics(os);
+  return `
+    ${renderMaintenanceContextToolbar("clinicalExecutive", "Executiva Engenharia Clínica", "Visão executiva construída diretamente da base completa do parque tecnológico", `
+      <button class="secondary-action" type="button" data-view="clinicalReports">Abrir BI</button>
+      <button class="primary-action" type="button" data-view="clinicalSettings">Abrir Parque</button>`)}
+    <section class="maintenance-exec-hero">
+      <div class="maintenance-exec-main"><span class="eyebrow">Parque tecnológico Hapvida</span><strong>${number(park.total)} equipamentos</strong><p>${number(park.units)} unidades · ${number(park.active)} ativos · rastreabilidade por TAG, ID, patrimônio e série.</p></div>
+      <div class="maintenance-exec-tiles">
+        <article><span>Valor de aquisição</span><strong>${moneyCompact(park.acquisitionValue)}</strong><small>${money(park.acquisitionValue)}</small></article>
+        <article><span>Valor de substituição</span><strong>${moneyCompact(park.replacementValue)}</strong><small>${money(park.replacementValue)}</small></article>
+        <article><span>Alta criticidade</span><strong>${number(park.highCriticality)}</strong><small>Equipamentos prioritários</small></article>
+        <article><span>OS em fluxo</span><strong>${number(metrics.active.length)}</strong><small>${number(os.length)} OS cadastradas</small></article>
+      </div>
+    </section>
+    <div class="content-grid">
+      <section class="panel"><h2>Leitura executiva por criticidade</h2>${barList(park.criticalities, "valor", number)}</section>
+      <section class="panel"><h2>Leitura executiva por status</h2>${barList(park.statuses, "valor", number)}</section>
+    </div>
+    <div class="content-grid">
+      <section class="panel"><h2>Fabricantes estratégicos</h2>${barList(park.manufacturers, "valor", number)}</section>
+      <section class="panel"><h2>Distribuição geográfica</h2>${barList(park.states, "valor", number)}</section>
+    </div>
+  `;
+}
+
+function renderClinicalTimelineIntegrated() {
+  const acquisitions = new Map(); const installations = new Map(); const manufacturing = new Map();
+  let withAcquisition = 0; let withInstallation = 0; let withManufacture = 0; let withEndOfLife = 0;
+  const addYear = (map, value) => {
+    const text = String(value || "");
+    const year = text.match(/(?:19|20)\d{2}/)?.[0];
+    if (year) map.set(year, (map.get(year) || 0) + 1);
+    return Boolean(year);
+  };
+  for (const row of clinicalEquipmentRecords()) {
+    if (addYear(acquisitions, row?.[15])) withAcquisition += 1;
+    if (addYear(manufacturing, row?.[18])) withManufacture += 1;
+    if (addYear(installations, row?.[19])) withInstallation += 1;
+    if (String(row?.[23] || "").trim()) withEndOfLife += 1;
+  }
+  const series = (map) => [...map.entries()].map(([label, valor]) => ({ label, valor })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR", { numeric: true })).slice(-15);
+  return `
+    ${renderMaintenanceContextToolbar("clinicalTimeline", "Linha do Tempo do Parque", "Ciclo de vida dos equipamentos a partir das datas cadastradas na base tecnológica", `<button class="secondary-action" type="button" data-view="clinicalSettings">Consultar equipamentos</button>`)}
+    <section class="kpi-grid">
+      ${kpi("Com data de aquisição", number(withAcquisition), "Equipamentos com histórico aquisitivo", "blue")}
+      ${kpi("Com data de fabricação", number(withManufacture), "Base disponível para análise de idade", "orange")}
+      ${kpi("Com data de instalação", number(withInstallation), "Ativos com implantação registrada", "green")}
+      ${kpi("End-of-Life informado", number(withEndOfLife), "Registros para planejamento de substituição", withEndOfLife ? "red" : "green")}
+    </section>
+    <div class="content-grid three">
+      <section class="panel"><h2>Aquisições por ano</h2>${barList(series(acquisitions), "valor", number)}</section>
+      <section class="panel"><h2>Fabricações por ano</h2>${barList(series(manufacturing), "valor", number)}</section>
+      <section class="panel"><h2>Instalações por ano</h2>${barList(series(installations), "valor", number)}</section>
     </div>
   `;
 }
@@ -8976,7 +9124,7 @@ function updateSharedUnitSearch(input, resultsSelector) {
   const hidden = form?.querySelector('[name="unidadeId"]');
   const results = form?.querySelector(resultsSelector);
   if (hidden) hidden.value = "";
-  if (results) results.innerHTML = maintenanceUnitSearchResults(input.value);
+  if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value));
 }
 
 function updateMaintenanceUnitSearch(input) {
@@ -8995,7 +9143,7 @@ function updateWorkUnitSearch(input) {
     const results = form?.querySelector("[data-work-unit-results]");
     if (hidden) hidden.value = exactUnit.id;
     applyUnitToWorkForm(form, exactUnit);
-    if (results) results.innerHTML = maintenanceUnitSearchResults(input.value, exactUnit.id);
+    if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, exactUnit.id));
     return;
   }
   updateSharedUnitSearch(input, "[data-work-unit-results]");
@@ -9027,9 +9175,6 @@ function applyUnitToWorkForm(form, unit) {
 function openMaintenanceDemandModal(assetId = "") {
   const labels = maintenanceModuleLabels();
   const activeSprint = currentSprint();
-  const selectedAsset = labels.isClinical
-    ? (state.clinicalAssets || []).find((asset) => String(asset.id || "") === String(assetId || ""))
-    : null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card maintenance-demand-form" id="maintenanceDemandForm" aria-labelledby="maintenanceDemandTitle">
@@ -9048,10 +9193,9 @@ function openMaintenanceDemandModal(assetId = "") {
               <span>Unidade vinculada</span>
             </div>
             <input type="hidden" name="unidadeId" />
-            <input type="hidden" name="assetId" value="${escapeAttribute(selectedAsset?.id || "")}" />
             <label class="field">
               <span>Assistente de busca de unidades</span>
-              <input name="unidadeBusca" data-maintenance-unit-search value="${escapeAttribute(selectedAsset?.unidadeNome || "")}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" required />
+              <input name="unidadeBusca" data-maintenance-unit-search placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" required />
             </label>
             <div data-maintenance-unit-results>
               ${maintenanceUnitSearchResults()}
@@ -9128,21 +9272,30 @@ function openMaintenanceDemandModal(assetId = "") {
               ${
                 labels.isClinical
                   ? `
+                    <div class="field full-span clinical-asset-linker">
+                      <input type="hidden" name="clinicalAssetId" />
+                      <input type="hidden" name="assetTag" />
+                      <input type="hidden" name="assetSerial" />
+                      <input type="hidden" name="assetUnit" />
+                      <span>Equipamento do parque tecnológico *</span>
+                      <input name="equipamentoBusca" data-clinical-asset-search placeholder="Busque por TAG, ID, patrimônio, série ou nome..." autocomplete="off" required />
+                      <div data-clinical-equipment-results>${clinicalEquipmentSearchResults()}</div>
+                    </div>
                     <label class="field">
                       <span>Equipamento / ativo</span>
-                      <input name="equipamento" value="${escapeAttribute(selectedAsset?.equipamento || "")}" placeholder="Ex.: Tomógrafo, raio-X, autoclave..." ${selectedAsset ? "readonly" : ""} />
+                      <input name="equipamento" readonly required />
                     </label>
                     <label class="field">
-                      <span>Patrimônio / nº de série</span>
-                      <input name="patrimonio" value="${escapeAttribute(selectedAsset?.patrimonio || selectedAsset?.tag || selectedAsset?.numeroSerie || "")}" placeholder="Patrimônio, série ou TAG do ativo" ${selectedAsset ? "readonly" : ""} />
+                      <span>Patrimônio / TAG</span>
+                      <input name="patrimonio" readonly />
                     </label>
                     <label class="field">
                       <span>Fabricante</span>
-                      <input name="fabricante" value="${escapeAttribute(selectedAsset?.fabricante || "")}" placeholder="Fabricante do equipamento" ${selectedAsset ? "readonly" : ""} />
+                      <input name="fabricante" readonly />
                     </label>
                     <label class="field">
                       <span>Modelo</span>
-                      <input name="modelo" value="${escapeAttribute(selectedAsset?.modelo || "")}" placeholder="Modelo do equipamento" ${selectedAsset ? "readonly" : ""} />
+                      <input name="modelo" readonly />
                     </label>
                   `
                   : ""
@@ -9156,7 +9309,7 @@ function openMaintenanceDemandModal(assetId = "") {
             <div class="form-grid">
               <label class="field">
                 <span>Data de início</span>
-                <input name="dataInicio" type="date" value="${TODAY_ISO}" />
+                <input name="dataInicio" type="date" value="${todayISO()}" />
               </label>
               <label class="field">
                 <span>Data fim prevista</span>
@@ -9192,6 +9345,10 @@ function openMaintenanceDemandModal(assetId = "") {
       </form>
     </div>
   `);
+  if (labels.isClinical && assetId) {
+    const asset = clinicalEquipmentById(assetId);
+    if (asset) applyClinicalEquipmentToForm(modalRoot.querySelector("#maintenanceDemandForm"), asset);
+  }
 }
 
 function openMaintenanceCardModal(id) {
@@ -9420,12 +9577,12 @@ function updateMaintenanceDemandPhase(id, nextColumnId) {
   const previous = maintenanceStatusLabel(item);
   item.coluna = nextColumnId;
   item.fasePipefy = next.label.toUpperCase();
-  item.phaseStartedAt = TODAY_ISO;
-  item.updatedAt = TODAY_ISO;
-  if (isMaintenanceClosed(item) && !item.dataFim) item.dataFim = TODAY_ISO;
+  item.phaseStartedAt = todayISO();
+  item.updatedAt = todayISO();
+  if (isMaintenanceClosed(item) && !item.dataFim) item.dataFim = todayISO();
   item.historico = [
     ...(item.historico || []),
-    { fase: next.label, data: TODAY_ISO, observacao: `Movido de ${previous} para ${next.label}.` },
+    { fase: next.label, data: todayISO(), observacao: `Movido de ${previous} para ${next.label}.` },
   ];
   addHistory({
     entidade: "manutencao",
@@ -9441,12 +9598,16 @@ function updateMaintenanceDemandPhase(id, nextColumnId) {
 function handleMaintenanceDemandSubmit(form) {
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
-  const assetId = String(formData.get("assetId") || "").trim();
-  if (labels.isClinical && !assetId) {
-    showFormError("Selecione o equipamento no Parque Tecnológico e use o botão \u201cCriar demanda\u201d.");
+  const selectedAsset = labels.isClinical ? clinicalEquipmentById(formData.get("clinicalAssetId")) : null;
+  if (labels.isClinical && !selectedAsset) {
+    showFormError("Selecione um equipamento válido do parque tecnológico pela TAG ou ID.");
     return;
   }
-  const unit = maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca"));
+  const unit = maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca")) || (selectedAsset ? {
+    id: `clinical-unit-${normalizeSearchText(selectedAsset.unidadeNome).replace(/\s+/g, "-")}`,
+    nome: selectedAsset.unidadeNome, tipo: "Parque tecnológico", municipio: [selectedAsset.cidade, selectedAsset.uf].filter(Boolean).join("/"),
+    cnpj: "", endereco: selectedAsset.endereco || "", cep: "",
+  } : null);
   if (!unit) {
     showFormError("Selecione uma unidade válida pelo assistente de busca.");
     return;
@@ -9481,7 +9642,7 @@ function handleMaintenanceDemandSubmit(form) {
     tipoDespesa,
     coluna: "naoIniciado",
     fasePipefy: "NÃO INICIADO",
-    dataInicio: formData.get("dataInicio") || TODAY_ISO,
+    dataInicio: formData.get("dataInicio") || todayISO(),
     dataFim: "",
     dataPrevistaEntrega: formData.get("dataPrevistaEntrega") || selectedSprint?.dataFim || "",
     valorProposta: parseCurrency(formData.get("valorProposta")),
@@ -9493,16 +9654,22 @@ function handleMaintenanceDemandSubmit(form) {
     observacoes: String(formData.get("observacoes") || "").trim(),
     analistaResponsavel: String(formData.get("analistaResponsavel") || "").trim(),
     prioridade: String(formData.get("prioridade") || "Média"),
-    assetId,
-    equipamento: String(formData.get("equipamento") || "").trim(),
-    assetName: String(formData.get("equipamento") || "").trim(),
-    patrimonio: String(formData.get("patrimonio") || "").trim(),
-    fabricante: String(formData.get("fabricante") || "").trim(),
-    modelo: String(formData.get("modelo") || "").trim(),
-    phaseStartedAt: TODAY_ISO,
-    createdAt: TODAY_ISO,
-    updatedAt: TODAY_ISO,
-    historico: [{ fase: "Não iniciada", data: TODAY_ISO, observacao: "Demanda criada no SLT 360." }],
+    clinicalAssetId: selectedAsset?.id || "",
+    assetTag: selectedAsset?.tag || "",
+    assetOldTag: selectedAsset?.tagAntiga || "",
+    numeroSerie: selectedAsset?.numeroSerie || "",
+    equipamento: selectedAsset?.equipamento || String(formData.get("equipamento") || "").trim(),
+    assetName: selectedAsset?.equipamento || String(formData.get("equipamento") || "").trim(),
+    patrimonio: selectedAsset?.patrimonio || String(formData.get("patrimonio") || "").trim(),
+    fabricante: selectedAsset?.fabricante || String(formData.get("fabricante") || "").trim(),
+    modelo: selectedAsset?.modelo || String(formData.get("modelo") || "").trim(),
+    setorEquipamento: selectedAsset?.setor || "",
+    criticidadeEquipamento: selectedAsset?.criticidade || "",
+    statusEquipamento: selectedAsset?.status || "",
+    phaseStartedAt: todayISO(),
+    createdAt: todayISO(),
+    updatedAt: todayISO(),
+    historico: [{ fase: "Não iniciada", data: todayISO(), observacao: "Demanda criada no SLT 360." }],
   };
   state.maintenanceDemands = [demand, ...(state.maintenanceDemands || [])];
   addHistory({
@@ -9556,7 +9723,7 @@ function handleMaintenanceDetailSubmit(form) {
     patrimonio: String(formData.get("patrimonio") || item.patrimonio || item.numeroSerie || "").trim(),
     fabricante: String(formData.get("fabricante") || item.fabricante || "").trim(),
     modelo: String(formData.get("modelo") || item.modelo || "").trim(),
-    updatedAt: TODAY_ISO,
+    updatedAt: todayISO(),
   });
   const update = updateMaintenanceDemandPhase(item.id, formData.get("coluna") || item.coluna);
   if (update === false) return;
@@ -9567,7 +9734,7 @@ function handleMaintenanceDetailSubmit(form) {
 }
 
 function renderClinical() {
-  return renderMaintenanceHome();
+  return renderClinicalHomeIntegrated();
 }
 
 function renderClinicalOperational() {
@@ -9575,119 +9742,19 @@ function renderClinicalOperational() {
 }
 
 function renderClinicalReports() {
-  return renderMaintenanceReports();
+  return renderClinicalReportsIntegrated();
 }
 
 function renderClinicalTimeline() {
-  return renderMaintenanceTimeline();
+  return renderClinicalTimelineIntegrated();
 }
 
 function renderClinicalExecutive() {
-  return renderMaintenanceExecutive();
+  return renderClinicalExecutiveIntegrated();
 }
 
 function renderClinicalSettings() {
   return renderMaintenanceSettings();
-}
-
-function renderBudgetControlLegacy() {
-  const totals = allTotals();
-  const totalCAPEX = totals.orcado + totals.aditivado;
-  const pendingSics = state.sics.filter((sic) => sic.status === "Pendente");
-  const budgetRows = budgetControlRows();
-  const riskReserve = state.works.reduce(
-    (sum, work) => sum + work.ev.lines.filter(isRiskLine).reduce((lineSum, line) => lineSum + (line.valorOrcado || 0), 0),
-    0
-  );
-  const approvedSics = approvedSicTotal();
-  const riskUse = (approvedSics / Math.max(riskReserve, 1)) * 100;
-
-  return `
-    ${renderToolbar("Controle de Verba 360", "Orçamento aprovado, aditivos, contratos e saldo disponível", `
-      <button class="secondary-action" type="button" data-view="analytics">Disciplina & Tipologia</button>
-      <button class="primary-action" type="button" data-view="sics">Abrir SICs</button>
-    `, moduleHeaders.budget)}
-    <section class="kpi-grid">
-      ${kpi("Verba aprovada", money(totalCAPEX), "EV + SICs aprovadas", "blue")}
-      ${kpi("Contratado", money(totals.contratado), `${number((totals.contratado / Math.max(totalCAPEX, 1)) * 100, 1)}% do CAPEX`, "green")}
-      ${kpi("Saldo disponível", money(totals.saldo), "Orçado + aditivado - contratado", "orange")}
-      ${kpi("Aditivos pendentes", String(pendingSics.length), `${money(pendingSics.reduce((sum, sic) => sum + sicTotal(sic), 0))} em análise`, "red")}
-      ${kpi("Reserva de risco 5%", money(riskReserve), `${number(riskUse, 1)}% consumido por SICs`, riskUse > 100 ? "red" : "green")}
-      ${kpi("SICs aprovadas", money(approvedSics), "Aporte adicional já reconhecido", "orange", "sics")}
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Ciclo de verba do projeto</h2>
-          <p class="panel-subtitle">Integração entre estimativa, EV, contratação, risco e necessidade de novo aporte</p>
-        </div>
-      </div>
-      <div class="budget-flow">
-        ${budgetStage("FEL 01", "Verba inicial", "Estimativa do plano de investimento", money(totalCAPEX + riskReserve))}
-        ${budgetStage("FEL 02", "Escopo validado", "Premissas, área e tipologia", `${state.works.length} obras`)}
-        ${budgetStage("FEL 03", "EV Sala Técnica", "Valor por disciplina", money(totalCAPEX))}
-        ${budgetStage("Suprimentos", "Contratado", "Consumo real por linha do EV", money(totals.contratado))}
-        ${budgetStage("Execução", "SICs e risco", "Aditivos até o limite de risco", `${number(riskUse, 1)}%`)}
-      </div>
-    </section>
-
-    ${renderBudgetSicPanel(riskReserve)}
-
-    <div class="content-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Carteira de verbas</h2>
-            <p class="panel-subtitle">Controle financeiro por módulo da Sala Técnica</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Módulo</th>
-                <th class="numeric">Verba aprovada</th>
-                <th class="numeric">Contratado</th>
-                <th class="numeric">Saldo</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${budgetRows
-                .map(
-                  (row) => `
-                    <tr>
-                      <td><strong>${row.modulo}</strong><br /><span class="muted">${row.descricao}</span></td>
-                      <td class="numeric">${money(row.verba)}</td>
-                      <td class="numeric">${money(row.contratado)}</td>
-                      <td class="numeric">${money(row.saldo)}</td>
-                      <td><span class="status-pill" data-status="${row.saldoCritico ? "Saldo crítico" : "Completo"}">${row.saldoCritico ? "Saldo crítico" : "Controlado"}</span></td>
-                    </tr>
-                  `
-                )
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Alertas de verba</h2>
-            <p class="panel-subtitle">O que precisa de decisão financeira</p>
-          </div>
-        </div>
-        <div class="alert-list">
-          ${alertItem("SICs sem disciplina são bloqueadas", "Nenhum aditivo novo entra sem disciplina real")}
-          ${alertItem(`${pendingSics.length} aditivo pendente`, pendingSics.map((sic) => `${sic.id}: ${money(sicTotal(sic))}`).join(", ") || "Sem aditivo pendente")}
-          ${alertItem("Saldo deve ser sempre derivado", "Orçado + aditivado aprovado - contratado")}
-          ${alertItem("Integração futura SAP", "Ordem Interna e contrato já aparecem como campos estruturais")}
-        </div>
-      </section>
-    </div>
-  `;
 }
 
 function renderBudgetSicPanel(riskReserve) {
@@ -9727,114 +9794,6 @@ function renderBudgetSicPanel(riskReserve) {
       </div>
     </section>
   `;
-}
-
-function budgetStage(label, title, detail, value) {
-  return `
-    <article class="budget-stage">
-      <span>${label}</span>
-      <strong>${title}</strong>
-      <small>${detail}</small>
-      <b>${value}</b>
-    </article>
-  `;
-}
-
-function budgetDisciplineRows() {
-  const map = new Map();
-  state.works.forEach((work) => {
-    work.ev.lines.forEach((line) => {
-      if (isRiskLine(line)) return;
-      const id = canonicalDisciplineId(line.disciplinaId);
-      const current = map.get(id) || { id, ev: 0, sic: 0, contratado: 0, saldo: 0 };
-      const values = lineTotals(work, line);
-      current.ev += values.orcado;
-      current.sic += values.aditivado;
-      current.contratado += values.contratado;
-      current.saldo += values.saldo;
-      map.set(id, current);
-    });
-  });
-  return [...map.values()].sort((a, b) => b.ev + b.sic - (a.ev + a.sic));
-}
-
-function renderBudgetDisciplineTable() {
-  return `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Disciplina</th>
-            <th class="numeric">EV</th>
-            <th class="numeric">SICs aprovadas</th>
-            <th class="numeric">Verba atual</th>
-            <th class="numeric">Contratado</th>
-            <th class="numeric">Saldo</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${budgetDisciplineRows()
-            .slice(0, 20)
-            .map((row) => {
-              const verba = row.ev + row.sic;
-              const saldoRatio = row.saldo / Math.max(verba, 1);
-              return `
-                <tr>
-                  <td><strong>${disciplineById(row.id).nome}</strong></td>
-                  <td class="numeric">${money(row.ev)}</td>
-                  <td class="numeric">${money(row.sic)}</td>
-                  <td class="numeric">${money(verba)}</td>
-                  <td class="numeric">${money(row.contratado)}</td>
-                  <td class="numeric">${money(row.saldo)}</td>
-                  <td><span class="status-pill" data-status="${saldoRatio < 0.05 ? "Saldo crítico" : saldoRatio < 0.18 ? "Pendente" : "Completo"}">${saldoRatio < 0.05 ? "Crítico" : saldoRatio < 0.18 ? "Atenção" : "Controlado"}</span></td>
-                </tr>
-              `;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function budgetControlRows() {
-  const totals = allTotals();
-  const obraVerba = totals.orcado + totals.aditivado;
-  return [
-    {
-      modulo: "01. Obras",
-      descricao: "EV, SICs, contratações e CAPEX de obras",
-      verba: obraVerba,
-      contratado: totals.contratado,
-      saldo: totals.saldo,
-      saldoCritico: totals.saldo / Math.max(obraVerba, 1) < 0.18,
-    },
-    {
-      modulo: "02. Manutenção",
-      descricao: "Orçamentos corretivos e preventivos",
-      verba: 2850000,
-      contratado: 960000,
-      saldo: 1890000,
-      saldoCritico: false,
-    },
-    {
-      modulo: "03. Engenharia Clínica",
-      descricao: "Equipamentos, salas críticas e infraestrutura assistencial",
-      verba: 1920000,
-      contratado: 640000,
-      saldo: 1280000,
-      saldoCritico: false,
-    },
-    {
-      modulo: "04. Reserva e Governança",
-      descricao: "Reserva técnica, contingência e verbas em aprovação",
-      verba: 4200000,
-      contratado: 0,
-      saldo: 4200000,
-      saldoCritico: false,
-    },
-  ];
 }
 
 function capexData() {
@@ -10796,57 +10755,6 @@ function transferGroupedFlows(rows, mode = transferFlowViewMode) {
   return [...groups.values()].sort((a, b) => b.value - a.value).slice(0, 18);
 }
 
-function renderTransferFlowPanel(rows) {
-  const flows = transferGroupedFlows(rows);
-  if (!flows.length) return `<div class="transfer-empty">Sem fluxo para o filtro atual.</div>`;
-  const maxValue = Math.max(...flows.map((row) => row.value), 1);
-  return `
-    <div class="transfer-flow-board">
-      ${flows
-        .map((row, index) => `
-          <button class="transfer-flow-row" type="button" data-action="open-transfer-detail" data-id="${row.ids[0]}">
-            <span class="transfer-flow-node">${row.source}</span>
-            <span class="transfer-flow-bar">
-              <i style="width:${Math.max((row.value / maxValue) * 100, 4)}%"></i>
-            </span>
-            <span class="transfer-flow-node">${row.target}</span>
-            <strong>${moneyCompact(row.value)}</strong>
-            <small>${row.count} mov.</small>
-          </button>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-function renderTransferMonthlyChart(rows) {
-  const months = transferMonthOptions(rows);
-  if (!months.length) return `<div class="transfer-empty">Sem datas de transferência para gerar evolução mensal.</div>`;
-  const monthly = months.map((month) => {
-    const monthRows = rows.filter((row) => transferMonthKey(row) === month);
-    return {
-      month,
-      value: monthRows.reduce((sum, row) => sum + Math.abs(row.valor), 0),
-      count: monthRows.length,
-    };
-  });
-  const maxValue = Math.max(...monthly.map((row) => row.value), 1);
-  return `
-    <div class="transfer-month-chart">
-      ${monthly
-        .map((row) => `
-          <button class="${transferMonthFilter === row.month ? "is-active" : ""}" type="button" data-action="set-transfer-month-filter" data-month="${row.month}">
-            <span>${transferMonthName(row.month)}</span>
-            <i style="height:${Math.max((row.value / maxValue) * 100, 6)}%"></i>
-            <strong>${moneyCompact(row.value)}</strong>
-            <small>${row.count} mov.</small>
-          </button>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
 function transferSideRows(rows, side) {
   const groups = new Map();
   rows.forEach((row) => {
@@ -10862,39 +10770,17 @@ function transferSideRows(rows, side) {
   return [...groups.values()].sort((a, b) => b.value - a.value);
 }
 
-function renderTransferSideChart(rows, side) {
-  const data = transferSideRows(rows, side).slice(0, 10);
-  if (!data.length) return `<div class="transfer-empty">Sem dados para o filtro atual.</div>`;
-  const maxValue = Math.max(...data.map((row) => row.value), 1);
-  return `
-    <div class="transfer-bar-list">
-      ${data
-        .map((row, index) => `
-          <button type="button" data-action="open-transfer-oi" data-oi="${escapeAttribute(`${row.code} ${row.name}`)}">
-            <span>
-              <strong>${row.code}</strong>
-              <small>${row.name}</small>
-            </span>
-            <i><b style="width:${Math.max((row.value / maxValue) * 100, 4)}%"></b></i>
-            <em>${moneyCompact(row.value)}</em>
-          </button>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
 function disposeTransferChart(id) {
   const element = document.getElementById(id);
   if (!element || !globalThis.echarts) return null;
   const current = globalThis.echarts.getInstanceByDom(element);
   if (current) current.dispose();
-  return globalThis.echarts.init(element);
+  return globalThis.echarts.init(element, 'v5');
 }
 
 function renderTransferChartEmpty(id, message) {
   const element = document.getElementById(id);
-  if (element) element.innerHTML = `<div class="transfer-empty transfer-chart-empty">${message}</div>`;
+  if (element) element.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<div class="transfer-empty transfer-chart-empty">${message}</div>`);
 }
 
 function renderTransferDashboardCharts() {
@@ -10934,9 +10820,9 @@ function renderTransferSankeyChart(rows) {
       extraCssText: "box-shadow:0 8px 24px rgba(10,15,40,.15);border-radius:8px;",
       formatter: (params) => {
         if (params.dataType === "edge") {
-          return `${params.data.source} → ${params.data.target}<br><b>${moneyCents(params.data.value)}</b> · ${params.data.count} transferência(s)<br><span style="opacity:.7">clique para detalhar</span>`;
+          return globalThis.SLT_CLOUD.cleanHTML(`${params.data.source} → ${params.data.target}<br><b>${moneyCents(params.data.value)}</b> · ${params.data.count} transferência(s)<br><span style="opacity:.7">clique para detalhar</span>`);
         }
-        return `<b>${params.name}</b><br><span style="opacity:.7">clique para abrir o rastreador</span>`;
+        return globalThis.SLT_CLOUD.cleanHTML(`<b>${params.name}</b><br><span style="opacity:.7">clique para abrir o rastreador</span>`);
       },
     },
     series: [
@@ -11004,7 +10890,7 @@ function renderTransferMonthlyEchart(rows) {
       extraCssText: "box-shadow:0 8px 24px rgba(10,15,40,.15);border-radius:8px;",
       formatter: (params) => {
         const item = monthly[params[0].dataIndex];
-        return `<b>${item.label}</b><br>Valor: <b>${moneyCents(item.value)}</b><br>Transferências: <b>${item.count}</b><br><span style="opacity:.7">clique para filtrar o mês</span>`;
+        return globalThis.SLT_CLOUD.cleanHTML(`<b>${item.label}</b><br>Valor: <b>${moneyCents(item.value)}</b><br>Transferências: <b>${item.count}</b><br><span style="opacity:.7">clique para filtrar o mês</span>`);
       },
     },
     legend: { top: 0, textStyle: { color: "#67719A" } },
@@ -11067,7 +10953,7 @@ function renderTransferRankEchart(id, rows, label) {
       extraCssText: "box-shadow:0 8px 24px rgba(10,15,40,.15);border-radius:8px;",
       formatter: (params) => {
         const item = sorted[params[0].dataIndex];
-        return `${item.code} — ${item.name}<br><b>${moneyCents(item.value)}</b> · ${item.count} mov.<br><span style="opacity:.6">clique para detalhar</span>`;
+        return globalThis.SLT_CLOUD.cleanHTML(`${item.code} — ${item.name}<br><b>${moneyCents(item.value)}</b> · ${item.count} mov.<br><span style="opacity:.6">clique para detalhar</span>`);
       },
     },
     grid: { left: 10, right: 76, top: 10, bottom: 10, containLabel: true },
@@ -11398,18 +11284,6 @@ function openTransferOiModal(query) {
       </section>
     </div>
   `);
-}
-
-function renderBudgetTransferCheck() {
-  const tone = budgetTransferCheck.blocked ? "red" : budgetTransferCheck.needsApproval ? "orange" : "green";
-  return `
-    <div class="budget-transfer-result" data-tone="${tone}">
-      <strong>${budgetTransferCheck.title}</strong>
-      <ul>
-        ${budgetTransferCheck.messages.map((message) => `<li>${message}</li>`).join("")}
-      </ul>
-    </div>
-  `;
 }
 
 function findCapexRowByTerm(term) {
@@ -11800,7 +11674,7 @@ function chartCurrencyOptions() {
 function renderHapcapexChartEmpty(id, message) {
   const canvas = document.getElementById(id);
   const container = canvas?.closest(".chart-container");
-  if (container) container.innerHTML = `<div class="empty-state">${message}</div>`;
+  if (container) container.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<div class="empty-state">${message}</div>`);
 }
 
 function renderHapcapexDashboardCharts() {
@@ -12072,110 +11946,6 @@ function renderHapcapexSCurve(rows) {
 
 function numberRaw(value) {
   return (Number(value) || 0).toFixed(2);
-}
-
-function renderHapcapexMonthlyComparison(rows) {
-  const max = Math.max(...rows.map((row) => Math.max(row.previsto, row.realizadoPlanejado, row.realizadoNaoPlanejado + row.realizadoOper)), 1);
-  return `
-    <div class="hapcapex-month-chart">
-      ${rows
-        .map((row) => {
-          const unplanned = row.realizadoNaoPlanejado + row.realizadoOper;
-          return `
-            <article>
-              <div class="hapcapex-month-bars">
-                <i title="Previsto ${moneyCents(row.previsto)}" style="height:${Math.max((row.previsto / max) * 100, 2)}%"></i>
-                <b title="Realizado planejado ${moneyCents(row.realizadoPlanejado)}" style="height:${Math.max((row.realizadoPlanejado / max) * 100, row.realizadoPlanejado ? 2 : 0)}%"></b>
-                <em title="Não planejado / OPER ${moneyCents(unplanned)}" style="height:${Math.max((unplanned / max) * 100, unplanned ? 2 : 0)}%"></em>
-              </div>
-              <strong>${row.month}</strong>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-    <div class="chart-legend">
-      <span><i data-tone="blue"></i>Previsto</span>
-      <span><i data-tone="green"></i>Realizado planejado</span>
-      <span><i data-tone="orange"></i>Não planejado / OPER</span>
-    </div>
-  `;
-}
-
-function renderHapcapexAccumulatedComparison(rows) {
-  const max = Math.max(...rows.map((row) => Math.max(row.previstoAcumulado, row.realizadoPlanejadoAcumulado, row.realizadoTotalAcumulado)), 1);
-  return `
-    <div class="hapcapex-accumulated">
-      ${rows
-        .map((row) => `
-          <article>
-            <span>${row.month}</span>
-            <div>
-              <em title="Previsto acumulado ${moneyCents(row.previstoAcumulado)}"><i style="width:${Math.max((row.previstoAcumulado / max) * 100, 2)}%"></i></em>
-              <em title="Realizado planejado acumulado ${moneyCents(row.realizadoPlanejadoAcumulado)}"><b style="width:${Math.max((row.realizadoPlanejadoAcumulado / max) * 100, row.realizadoPlanejadoAcumulado ? 2 : 0)}%"></b></em>
-              <em title="Realizado total acumulado ${moneyCents(row.realizadoTotalAcumulado)}"><u style="width:${Math.max((row.realizadoTotalAcumulado / max) * 100, row.realizadoTotalAcumulado ? 2 : 0)}%"></u></em>
-            </div>
-            <strong>${moneyCompact(row.realizadoTotalAcumulado)}</strong>
-          </article>
-        `)
-        .join("")}
-    </div>
-    <div class="chart-legend">
-      <span><i data-tone="blue"></i>Previsto acumulado</span>
-      <span><i data-tone="green"></i>Planejado</span>
-      <span><i data-tone="orange"></i>Total</span>
-    </div>
-  `;
-}
-
-function renderHapcapexDeviationBars(rows) {
-  if (!rows.length) return `<div class="empty-state">Sem desvios para exibir no filtro atual.</div>`;
-  const max = Math.max(...rows.map((row) => Math.abs(row.deviation)), 1);
-  return `
-    <div class="hapcapex-deviation-list">
-      ${rows
-        .map((row) => {
-          const tone = row.status.tone;
-          return `
-            <article data-tone="${tone}">
-              <div>
-                <strong>${row.obraPlano}</strong>
-                <span>${row.categoriaOrc} · ${row.ordemInterna || "sem OI"}</span>
-              </div>
-              <em><i data-tone="${tone}" style="width:${Math.max((Math.abs(row.deviation) / max) * 100, 2)}%"></i></em>
-              <b>${moneyCents(row.deviation)}</b>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function renderHapcapexCategoryStack(rows) {
-  const groups = capexCurveGroupRows(rows, "categoriaOrc", "verba", 10);
-  const total = Math.max(groups.reduce((sum, row) => sum + row.value, 0), 1);
-  return `
-    <div class="hapcapex-stack">
-      <div class="hapcapex-stack-bar">
-        ${groups
-          .map((row, index) => `<span data-index="${index % 5}" style="width:${Math.max((row.value / total) * 100, 1)}%" title="${row.label} ${moneyCents(row.value)}"></span>`)
-          .join("")}
-      </div>
-      <div class="hapcapex-stack-legend">
-        ${groups
-          .map((row, index) => `
-            <article>
-              <i data-index="${index % 5}"></i>
-              <strong>${row.label}</strong>
-              <span>${money(row.value)}</span>
-              <small>${number((row.value / total) * 100, 1)}%</small>
-            </article>
-          `)
-          .join("")}
-      </div>
-    </div>
-  `;
 }
 
 function renderHapcapexRiskPanel(rows) {
@@ -12468,123 +12238,8 @@ function capexMonthlyRows(totalVerba) {
   });
 }
 
-function renderCapexMonthChart(rows) {
-  const max = Math.max(...rows.map((row) => Math.max(row.realizadoPlanejado + row.realizadoNaoPlanejado + row.realizadoOper, row.previsto)), 1);
-  return `
-    <div class="capex-curve-bars">
-      ${rows
-        .map((row) => {
-          const total = row.realizadoPlanejado + row.realizadoNaoPlanejado + row.realizadoOper;
-          const tone = capexDeviationStatus(row.previsto ? ((total - row.previsto) / row.previsto) * 100 : 0).tone;
-          return `
-            <article class="capex-month-row" data-tone="${tone}">
-              <div>
-                <strong>${row.month}</strong>
-                <span>${moneyCompact(total)}</span>
-              </div>
-              <div class="capex-dual-bars">
-                <em title="Previsto ${moneyCents(row.previsto)}"><i style="width:${Math.max((row.previsto / max) * 100, 2)}%"></i></em>
-                <em title="Realizado total ${moneyCents(total)}">
-                  <b data-tone="${tone}" style="width:${Math.max((total / max) * 100, total ? 2 : 0)}%"></b>
-                </em>
-              </div>
-              <small>Previsto ${moneyCompact(row.previsto)}</small>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-    <div class="chart-legend">
-      <span><i data-tone="blue"></i>Previsto</span>
-      <span><i data-tone="green"></i>Dentro da referência</span>
-      <span><i data-tone="orange"></i>Atenção</span>
-      <span><i data-tone="red"></i>Crítico</span>
-    </div>
-  `;
-}
-
-function renderCapexCumulativeChart(rows) {
-  const max = Math.max(...rows.map((row) => Math.max(row.realizadoTotalAcumulado, row.previstoAcumulado)), 1);
-  return `
-    <div class="budget-cumulative-list capex-cumulative-list">
-      ${rows
-        .map((row) => {
-          const deviationPercent = row.previstoAcumulado ? ((row.realizadoTotalAcumulado - row.previstoAcumulado) / row.previstoAcumulado) * 100 : 0;
-          const tone = capexDeviationStatus(deviationPercent).tone;
-          return `
-            <div data-tone="${tone}">
-              <span>${row.month}</span>
-              <em>
-                <i data-tone="${tone}" style="width:${Math.max((row.realizadoTotalAcumulado / max) * 100, row.realizadoTotalAcumulado ? 3 : 0)}%"></i>
-                <b style="left:${Math.min((row.previstoAcumulado / max) * 100, 100)}%"></b>
-              </em>
-              <strong>${moneyCompact(row.realizadoTotalAcumulado)}</strong>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-    <div class="chart-legend">
-      <span><i data-tone="green"></i>Realizado total acumulado</span>
-      <span><i data-tone="orange"></i>Marcador do previsto acumulado</span>
-    </div>
-  `;
-}
-
-function renderCapexMonthlyTable(rows) {
-  return `
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Tabela mensal da curva</h2>
-          <p class="panel-subtitle">Detalhamento com previsto, realizado planejado, não planejado/OPER e desvio</p>
-        </div>
-      </div>
-      <div class="table-wrap capex-table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Mês</th>
-              <th class="numeric">Previsto</th>
-              <th class="numeric">Realizado planejado</th>
-              <th class="numeric">Não planejadas / OPER</th>
-              <th class="numeric">Realizado total</th>
-              <th class="numeric">Desvio</th>
-              <th class="numeric">Desvio %</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map((row) => {
-                const unplanned = row.realizadoNaoPlanejado + row.realizadoOper;
-                const total = row.realizadoPlanejado + unplanned;
-                const deviation = total - row.previsto;
-                const deviationPercent = row.previsto ? (deviation / row.previsto) * 100 : 0;
-                const status = capexDeviationStatus(deviationPercent);
-                return `
-                  <tr>
-                    <td><strong>${row.month}/26</strong></td>
-                    <td class="numeric">${moneyCents(row.previsto)}</td>
-                    <td class="numeric">${moneyCents(row.realizadoPlanejado)}</td>
-                    <td class="numeric">${moneyCents(unplanned)}</td>
-                    <td class="numeric">${moneyCents(total)}</td>
-                    <td class="numeric">${moneyCents(deviation)}</td>
-                    <td class="numeric">${number(deviationPercent, 1)}%</td>
-                    <td><span class="status-pill" data-status="${status.tone === "green" ? "Completo" : status.tone === "orange" ? "Pendente" : "Saldo crítico"}">${status.label}</span></td>
-                  </tr>
-                `;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
 function capexClosedMonthIndex() {
-  const date = new Date(`${TODAY_ISO}T00:00:00`);
+  const date = new Date(`${todayISO()}T00:00:00`);
   const previousMonth = Number.isFinite(date.getMonth()) ? date.getMonth() - 1 : 6;
   return Math.max(0, Math.min(previousMonth, 11));
 }
@@ -12617,29 +12272,39 @@ function flowStep(numberLabel, title, detail) {
   `;
 }
 
-function sicSignedValue(record) {
-  const value = Number(record.valor) || 0;
-  return String(record.movimento || "").toLowerCase().includes("supress") ? -Math.abs(value) : Math.abs(value);
-}
-
 function sicLineRecords() {
-  const imported = (state.sicBi?.records || []).map((record, index) => ({
-    source: "BI SIC",
-    id: record.numeroSic || `BI-${index + 1}`,
-    obra: record.obra,
-    nomeObra: cleanImportedText(record.nomeObra || "Obra não informada"),
-    disciplina: cleanImportedText(record.disciplina || "Não informada"),
-    valor: sicSignedValue(record),
-    motivo: cleanImportedText(record.descricao || record.observacao || "Não informado"),
-    movimento: cleanImportedText(record.movimento || "ADITIVO").toUpperCase(),
-    sprint: record.sprint || "—",
-    estado: cleanImportedText(record.estado || "—"),
-    analista: cleanImportedText(record.analistaSic || record.analistaObra || "Não informado"),
-    tipologia: cleanImportedText(record.tipologia || "Não informada"),
-    grupo: cleanImportedText(record.grupos || "Não informado"),
-    dataPostagem: record.dataPostagem || "",
-    status: "Importado",
-    actionId: "",
+  const imported = evUnifiedRecords().flatMap((record) => (record.items || []).flatMap((item, index) => {
+    const description = cleanImportedText(item.description || "");
+    const normalized = normalizeSearchText(description);
+    const normalizedDiscipline = normalizeSearchText(disciplineById(item.disciplineId).nome);
+    if (/\btaxa\b.*\brisco\b|\brisco\b.*\b5\b/.test(normalized) || /\btaxa\b.*\brisco\b/.test(normalizedDiscipline)) return [];
+    if (!/\bsic\b|\bsics\b|\badt\b|\baditivo\b|\baditivos\b/.test(normalized)) return [];
+    const sicNumber = description.match(/\bSIC(?:'S|S)?\s*[-.:º°]?\s*(\d+(?:\s*(?:,|E)\s*\d+)*)/i)?.[1];
+    const adtNumber = description.match(/\b(?:ADT|ADITIVO)\s*[-.:º°]?\s*(\d+)/i)?.[1];
+    const movement = /\bsupress|\bretirad|\breducao\b/.test(normalized) ? "SUPRESSÃO" : "ADITIVO";
+    const rawValue = Number(item.value || 0);
+    const value = movement === "SUPRESSÃO" ? -Math.abs(rawValue) : Math.abs(rawValue);
+    const stateCode = String(record.project || "").match(/\s-\s([A-Z]{2})\s(?:-|$)/)?.[1] || "—";
+    return [{
+      source: "EV unificado",
+      id: sicNumber ? `SIC ${sicNumber}` : adtNumber ? `ADT ${adtNumber}` : `EV-${record.code || record.id}-${index + 1}`,
+      obra: record.code || record.id,
+      nomeObra: cleanImportedText(record.project || "EV não informado"),
+      disciplina: disciplineById(item.disciplineId).nome,
+      valor: value,
+      motivo: description,
+      movimento: movement,
+      sprint: `EV ${record.year}`,
+      estado: stateCode,
+      analista: "Base histórica EV",
+      tipologia: record.typology || "Não informada",
+      grupo: adtNumber ? "Aditivo do EV" : "SIC do EV",
+      dataPostagem: record.date || "",
+      status: record.sourceKind === "historical" ? "Histórico EV" : "Cadastro atual",
+      actionId: record.id,
+      ano: record.year,
+      item: item.item,
+    }];
   }));
 
   const created = (state.sics || []).flatMap((sic) => {
@@ -12661,10 +12326,14 @@ function sicLineRecords() {
       dataPostagem: sic.dataAprovacao || sic.dataSolicitacao || "",
       status: sic.status,
       actionId: sic.id,
+      ano: String(sic.dataAprovacao || sic.dataSolicitacao || "").slice(0, 4) || "Atual",
     }));
   });
 
-  return [...imported, ...created];
+  return [...imported, ...created].filter((record) => {
+    const text = normalizeSearchText(`${record.disciplina || ""} ${record.motivo || ""}`);
+    return !/\btaxa\b.*\brisco\b|\brisco\b.*\b5\b/.test(text);
+  });
 }
 
 function sicSummaryRows(records = sicLineRecords()) {
@@ -12789,6 +12458,7 @@ function sicApprovalDashboardData() {
 }
 
 function renderSics() {
+  if (sicViewMode === "timeline") sicViewMode = "report";
   const data = sicDashboardData();
   const active = sicViewMeta().find((view) => view.id === sicViewMode) || sicViewMeta()[0];
 
@@ -12806,15 +12476,9 @@ function sicViewMeta() {
   return [
     {
       id: "report",
-      label: "SIC's Report",
-      title: "SIC's Report",
-      subtitle: "Visão consolidada dos principais indicadores estratégicos da operação",
-    },
-    {
-      id: "timeline",
-      label: "Linha do Tempo",
-      title: "Linha do Tempo de SICs",
-      subtitle: "Evolução das solicitações, custo e volume por sprint e postagem",
+      label: "Base unificada",
+      title: "SICs e Aditivos dos EVs",
+      subtitle: "Linhas identificadas diretamente nos EVs por SIC, ADT, aditivo ou aditivos",
     },
     {
       id: "executive",
@@ -12880,7 +12544,7 @@ function sicDashboardData(options = {}) {
     netImpact,
     totalAbs: records.reduce((sum, record) => sum + Math.abs(record.valor), 0),
     impactedWorks: new Set(records.map((record) => `${record.obra}|${record.nomeObra}`)).size,
-    uniqueSics: new Set(records.map((record) => record.id)).size,
+    uniqueSics: new Set(records.map((record) => `${record.obra}|${record.id}`)).size,
     period: sicPeriodLabel(records),
   };
 }
@@ -12903,6 +12567,7 @@ function filterSicRecords(records) {
       record.grupo,
       record.status,
       record.source,
+      record.ano,
     ].join(" "));
     return terms.every((term) => text.includes(term));
   });
@@ -12910,7 +12575,7 @@ function filterSicRecords(records) {
 
 function sicPeriodLabel(records) {
   const dates = records
-    .map((record) => record.dataPostagem)
+    .map((record) => String(record.dataPostagem || "").match(/\d{4}-\d{2}-\d{2}/)?.[0] || String(record.dataPostagem || "").slice(0, 10))
     .filter(Boolean)
     .sort();
   if (!dates.length) return "Período não informado";
@@ -13020,19 +12685,7 @@ function renderSicView(data) {
   return (views[sicViewMode] || renderSicReportView)(data);
 }
 
-function renderSicApprovalView() {
-  return `
-    <section class="sic-approval-exact-shell">
-      <iframe
-        class="sic-approval-dashboard-frame"
-        data-sic-approval-dashboard-frame
-        src="sic-approval-dashboard.html"
-        title="Controle de EVs - Aditivos e Revisões"
-      ></iframe>
-    </section>
-    ${renderSicApprovalSyncedList()}
-  `;
-}
+function renderSicApprovalView() { return `<section id="sicApprovalDashboard"></section>${renderSicApprovalSyncedList()}`; }
 
 function renderSicApprovalSyncedList() {
   const data = sicApprovalDashboardData();
@@ -13126,14 +12779,14 @@ function renderSicApprovalRow(item) {
 }
 
 function renderSicKpis(data, mode = "default") {
-  const totalLabel = mode === "performance" ? "Impacto" : "Previsão de custo";
+  const totalLabel = mode === "performance" ? "Impacto" : "Impacto líquido";
   return `
     <section class="kpi-grid sic-kpi-grid">
-      ${kpi(totalLabel, money(Math.abs(data.netImpact)), "Impacto líquido das SICs", "blue", "", "sicImpact")}
-      ${kpi("Aditivos", money(data.additiveValue), `${data.additions.length} linhas aditivas`, "orange", "", "sicAdditives")}
-      ${kpi("Supressões", `-${money(data.suppressionValue)}`, `${data.suppressions.length} linhas de supressão`, "green", "", "sicSuppressions")}
-      ${kpi("Obras", String(data.impactedWorks), "Projetos impactados", "blue", "", "sicWorks")}
-      ${kpi("SICs", String(data.uniqueSics), `${data.records.length} linhas analisadas`, "blue", "", "sicTotal")}
+      ${kpi(totalLabel, moneyCompact(data.netImpact), `${money(data.netImpact)} · aditivos menos supressões`, "blue", "", "sicImpact")}
+      ${kpi("Aditivos", moneyCompact(data.additiveValue), `${money(data.additiveValue)} · ${data.additions.length} linhas positivas`, "orange", "", "sicAdditives")}
+      ${kpi("Supressões", `-${moneyCompact(data.suppressionValue)}`, `-${money(data.suppressionValue)} · ${data.suppressions.length} linhas negativas`, "green", "", "sicSuppressions")}
+      ${kpi("Obras impactadas", number(data.impactedWorks), `${number((data.impactedWorks / Math.max(evUnifiedRecords().length, 1)) * 100, 1)}% dos EVs unificados`, "blue", "", "sicWorks")}
+      ${kpi("SICs e aditivos", number(data.uniqueSics), `${data.records.length} linhas válidas extraídas dos EVs`, "blue", "", "sicTotal")}
     </section>
   `;
 }
@@ -13275,17 +12928,17 @@ function renderSicExecutiveView(data) {
         ${renderSicStateGrid(sicGroupedRecords(data.records, "estado").slice(0, 12))}
       </section>
     </div>
-    <div class="content-grid">
-      <section class="panel">
+    <div class="sic-summary-priority-layout">
+      <section class="panel sic-compact-summary-panel">
         <div class="panel-header">
           <div>
             <h2>Previsão de custo por tipologia</h2>
-            <p class="panel-subtitle">Maiores impactos financeiros</p>
+            <p class="panel-subtitle">Resumo dos maiores impactos financeiros</p>
           </div>
         </div>
-        ${barList(sicCostRows("tipologia", 10, data.records), "valor", money)}
+        ${barList(sicCostRows("tipologia", 8, data.records), "valor", moneyCompact)}
       </section>
-      ${renderSicTablePanel("Resumo por estado", "Obras, SICs e custo consolidado", sicGroupedRecords(data.records, "estado").slice(0, 15), "Estado", "estado")}
+      ${renderSicTablePanel("Planilha consolidada por estado", "Base principal para análise — clique nos cabeçalhos para ordenar", sicGroupedRecords(data.records, "estado"), "Estado", "estado")}
     </div>
   `;
 }
@@ -13293,40 +12946,53 @@ function renderSicExecutiveView(data) {
 function renderSicDiagnosticView(data) {
   return `
     ${renderSicKpis(data)}
-    <div class="content-grid diagnostic-grid">
-      <section class="panel">
+    <div class="sic-analysis-grid">
+      <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <h2>Nº de SICs e previsão de custo por motivo</h2>
-            <p class="panel-subtitle">Cruzamento de frequência e impacto para causa raiz</p>
+            <span class="panel-eyebrow">CAUSA RAIZ</span>
+            <h2>Motivos com maior impacto financeiro</h2>
+            <p class="panel-subtitle">Ranking por previsão de custo, com acesso ao detalhe</p>
           </div>
         </div>
-        ${renderSicBubbleChart(sicGroupedRecords(data.records, "motivo").slice(0, 11), "motivo")}
+        ${barList(sicCostRows("motivo", 10, data.records), "valor", moneyCompact)}
       </section>
-      <section class="panel">
+      <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <h2>% de SICs por motivo e disciplina</h2>
-            <p class="panel-subtitle">Composição das disciplinas dentro de cada causa</p>
+            <span class="panel-eyebrow">FREQUÊNCIA</span>
+            <h2>Motivos mais recorrentes</h2>
+            <p class="panel-subtitle">Quantidade de SICs únicas por causa identificada</p>
           </div>
         </div>
-        ${renderSicStackedRows(sicStackedRows(data.records, "motivo", "disciplina").slice(0, 9))}
+        ${barList(sicCountRows("motivo", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
       </section>
     </div>
-    <div class="content-grid">
-      <section class="panel">
+    <div class="sic-analysis-grid">
+      <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <h2>% de SICs por motivo e tipologia</h2>
-            <p class="panel-subtitle">Onde cada causa aparece com mais força</p>
+            <span class="panel-eyebrow">DISCIPLINAS</span>
+            <h2>Disciplinas com maior impacto</h2>
+            <p class="panel-subtitle">Custo consolidado das ocorrências vinculadas</p>
           </div>
         </div>
-        ${renderSicStackedRows(sicStackedRows(data.records, "motivo", "tipologia").slice(0, 9))}
+        ${barList(sicCostRows("disciplina", 10, data.records), "valor", moneyCompact)}
       </section>
-      <div class="stacked-panels">
-        ${renderSicTablePanel("Disciplina", "Nº de SICs e custo", sicGroupedRecords(data.records, "disciplina").slice(0, 10), "Disciplina", "disciplina")}
-        ${renderSicTablePanel("Tipologia", "Nº de SICs e custo", sicGroupedRecords(data.records, "tipologia").slice(0, 10), "Tipologia", "tipologia")}
-      </div>
+      <section class="panel sic-ranking-panel">
+        <div class="panel-header">
+          <div>
+            <span class="panel-eyebrow">TIPOLOGIAS</span>
+            <h2>Tipologias com maior impacto</h2>
+            <p class="panel-subtitle">Custo consolidado para comparação executiva</p>
+          </div>
+        </div>
+        ${barList(sicCostRows("tipologia", 10, data.records), "valor", moneyCompact)}
+      </section>
+    </div>
+    <div class="sic-full-table-stack">
+      ${renderSicTablePanel("Resumo por disciplina", "Obras, SICs e custo em uma visão ordenável", sicGroupedRecords(data.records, "disciplina").slice(0, 20), "Disciplina", "disciplina")}
+      ${renderSicTablePanel("Resumo por tipologia", "Comparativo consolidado por tipo de unidade", sicGroupedRecords(data.records, "tipologia").slice(0, 20), "Tipologia", "tipologia")}
     </div>
   `;
 }
@@ -13335,36 +13001,32 @@ function renderSicPerformanceView(data) {
   const groups = sicGroupedRecords(data.records, "grupo");
   return `
     ${renderSicKpis(data, "performance")}
-    <div class="content-grid performance-grid">
-      <section class="panel">
+    <div class="sic-analysis-grid">
+      <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <h2>Performance por grupos</h2>
-            <p class="panel-subtitle">Volume, custo, aditivos e supressões por causa macro</p>
+            <span class="panel-eyebrow">VOLUME</span>
+            <h2>SICs por grupo</h2>
+            <p class="panel-subtitle">Participação quantitativa das causas macro</p>
           </div>
         </div>
-        ${renderSicGroupCards(groups)}
+        ${barList(sicCountRows("grupo", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
       </section>
-      <section class="panel">
+      <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <h2>Nº de SICs e previsão de custo por grupos</h2>
-            <p class="panel-subtitle">Dispersão de volume versus impacto financeiro</p>
+            <span class="panel-eyebrow">IMPACTO FINANCEIRO</span>
+            <h2>Previsão de custo por grupo</h2>
+            <p class="panel-subtitle">Comparação direta entre os grupos da carteira</p>
           </div>
         </div>
-        ${renderSicBubbleChart(groups, "grupo")}
+        ${barList(sicCostRows("grupo", 10, data.records), "valor", moneyCompact)}
       </section>
-      ${renderSicTablePanel("Obras com maior impacto", "Ranking importado do BI de SICs", sicGroupedRecords(data.records, "nomeObra").slice(0, 40), "Obra", "nomeObra")}
     </div>
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>% de SICs por motivo de cada grupo</h2>
-          <p class="panel-subtitle">Composição das causas dentro de Projetos, Obras, Sala Técnica e outros</p>
-        </div>
-      </div>
-      ${renderSicStackedRows(sicStackedRows(data.records, "grupo", "motivo").slice(0, 8))}
-    </section>
+    <div class="sic-full-table-stack">
+      ${renderSicTablePanel("Obras com maior impacto", "Ranking consolidado por custo, com colunas ordenáveis", sicGroupedRecords(data.records, "nomeObra").slice(0, 50), "Obra", "nomeObra")}
+      ${renderSicTablePanel("Performance consolidada por grupo", "Obras, ocorrências e impacto financeiro", groups, "Grupo", "grupo")}
+    </div>
   `;
 }
 
@@ -13500,104 +13162,6 @@ function renderSicStateGrid(rows) {
   `;
 }
 
-function renderSicBubbleChart(rows, field = "motivo") {
-  if (!rows.length) return `<div class="empty-state">Sem dados para diagnóstico.</div>`;
-  const maxCount = Math.max(...rows.map((row) => row.sics), 1);
-  const maxValue = Math.max(...rows.map((row) => row.valor), 1);
-  return `
-    <div class="sic-bubble-chart">
-      ${rows
-        .map((row, index) => {
-          const left = 8 + (row.sics / maxCount) * 76;
-          const bottom = 10 + (row.valor / maxValue) * 72;
-          const size = 34 + (row.valor / maxValue) * 52;
-          return `
-            <article style="left:${left}%; bottom:${bottom}%; width:${size}px; height:${size}px" data-index="${index}" role="button" tabindex="0" data-action="open-sic-slice" data-field="${field}" data-label="${escapeAttribute(row.label)}">
-              <strong>${row.sics}</strong>
-              <span>${row.label}</span>
-            </article>
-          `;
-        })
-        .join("")}
-      <b class="axis-y">Custo</b>
-      <b class="axis-x">Nº de SICs</b>
-    </div>
-  `;
-}
-
-function sicStackedRows(records, primaryField, secondaryField) {
-  const primaryRows = sicGroupedRecords(records, primaryField).slice(0, 10);
-  return primaryRows.map((primary) => {
-    const scoped = records.filter((record) => cleanImportedText(record[primaryField]) === primary.label);
-    const segments = sicGroupedRecords(scoped, secondaryField).slice(0, 6);
-    const total = segments.reduce((sum, segment) => sum + segment.sics, 0) || 1;
-    return {
-      label: primary.label,
-      primaryField,
-      secondaryField,
-      total,
-      segments: segments.map((segment) => ({
-        label: segment.label,
-        valor: segment.sics,
-        percent: (segment.sics / total) * 100,
-      })),
-    };
-  });
-}
-
-function renderSicStackedRows(rows) {
-  if (!rows.length) return `<div class="empty-state">Sem dados para composição.</div>`;
-  const colors = ["#005ca9", "#2f80ed", "#9aaaba", "#f79009", "#24364f", "#42b7b1"];
-  return `
-    <div class="sic-stacked-list">
-      ${rows
-        .map(
-          (row) => `
-            <article role="button" tabindex="0" data-action="open-sic-slice" data-field="${row.primaryField}" data-label="${escapeAttribute(row.label)}">
-              <strong>${row.label}</strong>
-              <div>
-                ${row.segments
-                  .map(
-                    (segment, index) => `
-                      <span title="${segment.label}: ${number(segment.percent, 1)}%" style="width:${Math.max(segment.percent, 2)}%; background:${colors[index % colors.length]}">
-                        ${segment.percent >= 10 ? `${number(segment.percent, 0)}%` : ""}
-                      </span>
-                    `
-                  )
-                  .join("")}
-              </div>
-            </article>
-          `
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function renderSicGroupCards(rows) {
-  if (!rows.length) return `<div class="empty-state">Sem grupos cadastrados.</div>`;
-  return `
-    <div class="sic-group-cards">
-      ${rows
-        .map((row) => {
-          const total = row.additions + row.suppressions || 1;
-          return `
-            <article role="button" tabindex="0" data-action="open-sic-slice" data-field="grupo" data-label="${escapeAttribute(row.label)}">
-              <strong>${row.sics}</strong>
-              <span>Nº SICs</span>
-              <strong>${money(row.valor)}</strong>
-              <span>Total</span>
-              <b>${number((row.additions / total) * 100, 1)}% aditivos</b>
-              <b>${number((row.suppressions / total) * 100, 1)}% supressões</b>
-              <small>${row.label}</small>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
 function renderSicTablePanel(title, subtitle, rows, labelTitle, field = "") {
   return `
     <section class="panel sic-table-panel">
@@ -13611,7 +13175,7 @@ function renderSicTablePanel(title, subtitle, rows, labelTitle, field = "") {
         <table class="data-table">
           <thead>
             <tr>
-              <th>${labelTitle}</th>
+              <th>${labelTitle || "Categoria"}</th>
               <th class="numeric">Obras</th>
               <th class="numeric">SICs</th>
               <th class="numeric">Custo</th>
@@ -13642,15 +13206,16 @@ function renderSicHistoryPanel(rows) {
     <section class="panel">
       <div class="panel-header">
         <div>
-          <h2>Histórico de SICs</h2>
-          <p class="panel-subtitle">Nº de SIC, obra, disciplinas, impacto, status e aprovação</p>
+          <h2>SICs e aditivos unificados dos EVs</h2>
+          <p class="panel-subtitle">Linhas extraídas da descrição original dos EVs, sem utilizar a antiga planilha paralela de SICs</p>
         </div>
       </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
             <tr>
-              <th>SIC</th>
+              <th>SIC / ADT</th>
+              <th>Ano do EV</th>
               <th>Obra</th>
               <th>Movimento</th>
               <th>Disciplinas</th>
@@ -13668,6 +13233,7 @@ function renderSicHistoryPanel(rows) {
                       (sic) => `
                         <tr data-action="open-sic-detail" data-key="${escapeAttribute(sicSummaryKey(sic))}" role="button" tabindex="0">
                           <td><strong>${sic.id}</strong><br /><span class="muted">${sic.motivos.slice(0, 2).join(" | ")}</span></td>
+                          <td><strong>${escapeAttribute(String(sic.ano || sic.dataPostagem?.slice(0, 4) || "—"))}</strong></td>
                           <td><strong>${sic.nomeObra}</strong><br /><span class="muted">${sic.obra} | ${sic.estado}</span></td>
                           <td><span class="status-pill" data-status="${sic.valor < 0 ? "Completo" : "Pendente"}">${sic.movimento}</span></td>
                           <td>${sic.disciplinas.slice(0, 4).map((item) => `<span class="tag">${item}</span>`).join(" ")}${sic.disciplinas.length > 4 ? ` <span class="muted">+${sic.disciplinas.length - 4}</span>` : ""}</td>
@@ -13684,7 +13250,7 @@ function renderSicHistoryPanel(rows) {
                       `
                     )
                     .join("")
-                : `<tr><td colspan="7"><div class="empty-state">Sem SIC histórica importada. O painel já está preparado para registrar aditivos, supressões, causa raiz e impacto financeiro.</div></td></tr>`
+                : `<tr><td colspan="8"><div class="empty-state">Nenhuma linha com SIC, ADT ou aditivo foi encontrada nos EVs do filtro atual.</div></td></tr>`
             }
           </tbody>
         </table>
@@ -13834,41 +13400,6 @@ function renderSicRecordsTable(records) {
     </div>
     </section>
   `;
-}
-
-function sicsByDiscipline() {
-  const map = new Map();
-  sicLineRecords().forEach((sic) => {
-    const label = sic.disciplina || "Não informada";
-    map.set(label, (map.get(label) || 0) + Math.abs(sic.valor || 0));
-  });
-  return [...map.entries()]
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 8);
-}
-
-function sicsByMotivation() {
-  const map = new Map();
-  sicSummaryRows().forEach((sic) => {
-    const label = sic.motivos[0] || "Não informado";
-    map.set(label, (map.get(label) || 0) + 1);
-  });
-  return [...map.entries()]
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor);
-}
-
-function sicsByWork() {
-  const map = new Map();
-  sicLineRecords().forEach((sic) => {
-    const label = sic.nomeObra || "Obra não informada";
-    map.set(label, (map.get(label) || 0) + Math.abs(sic.valor || 0));
-  });
-  return [...map.entries()]
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 8);
 }
 
 function renderAnalytics() {
@@ -14216,24 +13747,7 @@ function uniqueWorkValues(field) {
   return [...new Set(state.works.map((work) => work[field]).filter(Boolean))];
 }
 
-function renderUsersSettingsPanel() { return renderUsersPanel(globalThis.SLT_CLOUD); }
-
-function renderUserAccessCheckboxes(selectedModules = []) {
-  const selected = new Set(selectedModules);
-  return userAccessModules
-    .map(
-      (module) => `
-        <label class="user-access-option">
-          <input name="accessModules" type="checkbox" value="${module.id}" ${selected.has(module.id) ? "checked" : ""} />
-          <span>
-            <strong>${module.label}</strong>
-            <small>${module.detail}</small>
-          </span>
-        </label>
-      `
-    )
-    .join("");
-}
+function renderUsersSettingsPanel() { return renderUsersPanel(globalThis.SLT_CLOUD) + renderBackupsPanel(globalThis.SLT_CLOUD); }
 
 function renderUserAccessChips(user) {
   const modules = normalizeAccessModules(user?.accessModules, user?.perfil);
@@ -14328,24 +13842,9 @@ function renderHistoryItem(item = {}) {
   `;
 }
 
-function capexByDiscipline() {
-  const map = new Map();
-  state.works.forEach((work) => {
-    work.ev.lines.forEach((line) => {
-      if (isRiskLine(line)) return;
-      const values = lineTotals(work, line);
-      const id = canonicalDisciplineId(line.disciplinaId);
-      map.set(id, (map.get(id) || 0) + values.orcado + values.aditivado);
-    });
-  });
-  return [...map.entries()]
-    .map(([id, valor]) => ({ label: disciplineById(id).nome, valor }))
-    .sort((a, b) => b.valor - a.valor);
-}
-
 function capexByTypology() {
   const map = new Map();
-  state.works.forEach((work) => {
+  budgetWorks().forEach((work) => {
     const values = workTotals(work);
     map.set(work.tipologiaObra, (map.get(work.tipologiaObra) || 0) + values.orcado + values.aditivado);
   });
@@ -14354,20 +13853,9 @@ function capexByTypology() {
     .sort((a, b) => b.valor - a.valor);
 }
 
-function capexByRegional() {
-  const map = new Map();
-  state.works.forEach((work) => {
-    const values = workTotals(work);
-    map.set(work.regiao, (map.get(work.regiao) || 0) + values.orcado + values.aditivado);
-  });
-  return [...map.entries()]
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor);
-}
-
 function costPerM2ByDiscipline() {
   const map = new Map();
-  state.works.forEach((work) => {
+  budgetWorks().forEach((work) => {
     work.ev.lines.forEach((line) => {
       if (isRiskLine(line)) return;
       const values = lineTotals(work, line);
@@ -15566,7 +15054,7 @@ function updateSicWorkSearch(input) {
   if (hidden) hidden.value = "";
   if (workCode) workCode.value = "";
   if (workName) workName.value = "";
-  if (results) results.innerHTML = renderSicWorkSearchResults(input.value);
+  if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value));
 }
 
 function openSicDemandModal(workId = "") {
@@ -15659,7 +15147,7 @@ function openSicDemandModal(workId = "") {
             </label>
             <label class="field">
               <span>Entrega prevista</span>
-              <input name="dataPrevistaEntrega" type="date" value="${currentSprint()?.dataFim || TODAY_ISO}" required />
+              <input name="dataPrevistaEntrega" type="date" value="${currentSprint()?.dataFim || todayISO()}" required />
             </label>
             <label class="field">
               <span>Motivo</span>
@@ -15844,22 +15332,14 @@ function attachmentRecordId() {
   return `ATT-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
 
-function openAttachmentDb() { throw new Error('Anexos usam o Supabase Storage.'); }
-
-function transactionDone(transaction) {
-  return new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("Falha na transação de anexos."));
-    transaction.onabort = () => reject(transaction.error || new Error("Transação de anexos cancelada."));
-  });
-}
-
 async function saveAttachmentRecord(record) {
-  const modules = { projects:'projects', works:'budget', maintenance:'maintenance', clinical:'clinical', budget:'finance' };
-  return globalThis.SLT_CLOUD.saveAttachment({ ...record, module: modules[viewModule(currentView)] || 'budget' });
+  const modules = { projects: "projects", works: "budget", maintenance: "maintenance", clinical: "clinical", budget: "finance" };
+    return globalThis.SLT_CLOUD.saveAttachment({ ...record, module: modules[viewModule(currentView)] || "budget" });
 }
 
-async function readAttachmentRecord(id) { return globalThis.SLT_CLOUD.readAttachment(id); }
+async function readAttachmentRecord(id) {
+  return globalThis.SLT_CLOUD.readAttachment(id);
+}
 
 async function storeAttachmentFile(file, context = {}) {
   const id = attachmentRecordId();
@@ -15869,7 +15349,7 @@ async function storeAttachmentFile(file, context = {}) {
     tamanho: file.size,
     tipo: file.type || "arquivo",
     data: todayISO(),
-    storage: "supabase",
+    storage: "indexedDB",
     ...context,
   };
   await saveAttachmentRecord({ ...metadata, blob: file });
@@ -16000,11 +15480,100 @@ function updateEVAreaPreview(form) {
       : Number(form?.dataset.evTotalNoRisk || 0);
   const preview = form?.querySelector("[data-ev-area-preview]");
   if (preview) preview.textContent = areaEquivalente ? `${money(totalNoRisk / areaEquivalente)}/m²` : "—";
+  updateEVHistoricalDeviationAlerts(form);
+}
+
+function evHistoricalDeviationReadings(work, valuesByDiscipline, baseTotal) {
+  if (!baseTotal) return [];
+  const typology = evHistoricalTypologyForWork(work);
+  const source = evHistoricalSourceRecords();
+  const sameTypology = typology ? source.filter((record) => record.typology === typology) : [];
+  const benchmarkRecords = sameTypology.length >= 20 ? sameTypology : source;
+  return Object.entries(valuesByDiscipline)
+    .filter(([id, value]) => value > 0 && !["taxa-risco", "sics", "outras-linhas-ev"].includes(id))
+    .map(([id, value]) => {
+      const benchmark = evHistoricalBenchmark(benchmarkRecords, id);
+      const share = (value / baseTotal) * 100;
+      const zScore = benchmark.stdDev > 0 ? (share - benchmark.mean) / benchmark.stdDev : 0;
+      return { id, value, share, zScore, benchmark, typology: sameTypology.length >= 20 ? typology : "Base geral" };
+    })
+    .filter((reading) => reading.benchmark.count >= 8 && Math.abs(reading.zScore) >= 2)
+    .sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore));
+}
+
+function evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotal) {
+  const readings = evHistoricalDeviationReadings(work, valuesByDiscipline, baseTotal);
+  if (!baseTotal) return `<div class="ev-deviation-empty"><span>σ</span><div><strong>Inteligência histórica aguardando valores</strong><small>Preencha as disciplinas para comparar o EV com a base de 2020 a 2026.</small></div></div>`;
+  if (!readings.length) return `<div class="ev-deviation-ok"><span>✓</span><div><strong>Composição dentro do comportamento histórico</strong><small>Nenhuma disciplina preenchida ultrapassa 2 desvios-padrão da base comparável.</small></div></div>`;
+  return `<div class="ev-deviation-header"><div><span class="eyebrow">Alerta estatístico</span><h3>${readings.length} desvio${readings.length === 1 ? "" : "s"} acima de 2σ</h3><p>Revise os percentuais antes de concluir o EV. O alerta orienta a análise e não bloqueia o salvamento.</p></div><span class="status-pill" data-status="Pendente">Revisão recomendada</span></div><div class="ev-deviation-list">${readings.map((reading) => {
+    const lower = Math.max(0, reading.benchmark.mean - 2 * reading.benchmark.stdDev);
+    const upper = reading.benchmark.mean + 2 * reading.benchmark.stdDev;
+    const direction = reading.zScore > 0 ? "acima" : "abaixo";
+    return `<article class="${Math.abs(reading.zScore) >= 3 ? "is-critical" : ""}"><span class="ev-deviation-sigma">${number(Math.abs(reading.zScore), 1)}σ</span><div><strong>${escapeAttribute(disciplineById(reading.id).nome)}</strong><small>${number(reading.share, 1)}% do EV · ${direction} do intervalo esperado de ${number(lower, 1)}% a ${number(upper, 1)}%</small><em>${reading.benchmark.count} EVs de referência · ${escapeAttribute(reading.typology)} · média ${number(reading.benchmark.mean, 1)}%</em></div></article>`;
+  }).join("")}</div>`;
+}
+
+function evFormDeviationData(form) {
+  const values = {};
+  let baseTotal = 0;
+  form?.querySelectorAll(".ev-line-row").forEach((row) => {
+    const id = row.dataset.disciplineId;
+    const status = normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
+    const value = status === "Não se aplica" ? 0 : parseCurrency(row.querySelector(".ev-value-input")?.value);
+    values[id] = value;
+    if (!isRiskLine({ disciplinaId: id })) baseTotal += value;
+  });
+  return { values, baseTotal };
+}
+
+function updateEVHistoricalDeviationAlerts(form) {
+  const panel = form?.querySelector("[data-ev-deviation-panel]");
+  if (!panel) return;
+  const work = workById(form.dataset.workId);
+  const { values, baseTotal } = evFormDeviationData(form);
+  panel.innerHTML = globalThis.SLT_CLOUD.cleanHTML(evHistoricalDeviationMarkup(work, values, baseTotal));
+}
+
+function showEVHaptecConfirmation(form, mode, readings) {
+  document.querySelector("[data-ev-haptec-confirm]")?.remove();
+  const critical = readings.filter((reading) => Math.abs(reading.zScore) >= 3).length;
+  const overlay = document.createElement("div");
+  overlay.className = "ev-haptec-confirm-backdrop";
+  overlay.dataset.evHaptecConfirm = "true";
+  overlay.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <article class="ev-haptec-confirm-card" role="dialog" aria-modal="true" aria-labelledby="evHaptecConfirmTitle">
+      <header>
+        <div class="ev-haptec-avatar"><span>!</span></div>
+        <div><span class="eyebrow">Haptec360 · validação histórica</span><h2 id="evHaptecConfirmTitle">Averigue os valores antes de confirmar</h2><p>Este EV possui ${readings.length} disciplina${readings.length === 1 ? "" : "s"} fora da faixa histórica${critical ? `, sendo ${critical} crítica${critical === 1 ? "" : "s"}` : ""}.</p></div>
+      </header>
+      <div class="ev-haptec-confirm-list">
+        ${readings.slice(0, 6).map((reading) => {
+          const lower = Math.max(0, reading.benchmark.mean - 2 * reading.benchmark.stdDev);
+          const upper = reading.benchmark.mean + 2 * reading.benchmark.stdDev;
+          return `<article class="${Math.abs(reading.zScore) >= 3 ? "is-critical" : ""}"><b>${number(Math.abs(reading.zScore), 1)}σ</b><div><strong>${escapeAttribute(disciplineById(reading.id).nome)}</strong><small>Informado: ${number(reading.share, 1)}% · faixa histórica: ${number(lower, 1)}% a ${number(upper, 1)}%</small></div></article>`;
+        }).join("")}
+      </div>
+      ${readings.length > 6 ? `<p class="muted">E mais ${readings.length - 6} disciplina${readings.length - 6 === 1 ? "" : "s"} com desvio.</p>` : ""}
+      <label class="ev-haptec-confirm-check"><input type="checkbox" data-ev-haptec-check /> <span>Eu averiguei as informações e confirmo que os valores estão corretos.</span></label>
+      <p class="ev-haptec-confirm-hint" data-ev-haptec-hint>Marque a confirmação para liberar o salvamento final.</p>
+      <footer><button class="secondary-action" type="button" data-action="cancel-ev-deviation-save">Voltar e revisar</button><button class="primary-action" type="button" data-action="confirm-ev-deviation-save" data-mode="${escapeAttribute(mode)}" disabled>Confirmar e salvar EV</button></footer>
+    </article>`);
+  modalRoot.appendChild(overlay);
+  haptecSystemNotice(`Encontrei ${readings.length} divergência${readings.length === 1 ? "" : "s"} relevante${readings.length === 1 ? "" : "s"} neste EV. Averigue os valores e confirme antes de salvar.`, "error_alert", true);
 }
 
 async function handleEVSubmit(form, mode = "final") {
   const work = workById(form.dataset.workId);
   if (!work) return;
+  if (mode === "final" && form.dataset.evDeviationConfirmed !== "true") {
+    const { values, baseTotal } = evFormDeviationData(form);
+    const readings = evHistoricalDeviationReadings(work, values, baseTotal);
+    if (readings.length) {
+      showEVHaptecConfirmation(form, mode, readings);
+      return;
+    }
+  }
+  delete form.dataset.evDeviationConfirmed;
   const previousTotal = workTotals(work).orcado;
   const previousAreaConstruida = Number(work.areaConstruida || 0);
   const previousAreaEquivalente = Number(work.areaEquivalente || 0);
@@ -16049,7 +15618,7 @@ async function handleEVSubmit(form, mode = "final") {
     files = await fileAttachmentMetadata(fileInput, { entidade: "ev", entidadeId: work.ev.id || work.id, workId: work.id });
   } catch (error) {
     console.warn("Falha ao gravar anexos do EV.", error);
-    showFormError("Não consegui salvar os anexos do EV no Supabase. Verifique a conexão, as permissões ou reduza o tamanho dos arquivos.", form);
+    showFormError("Não consegui salvar os anexos do EV no navegador. Tente anexar novamente ou reduza o tamanho dos arquivos.", form);
     return;
   }
   if (files.length) {
@@ -16161,102 +15730,6 @@ function handleSprintSubmit(form) {
   saveState();
   if (form.closest(".modal-card")) closeModal();
   showToast("Sprint global cadastrada para todos os módulos.");
-  render();
-}
-
-function handleUserSubmit(form) {
-  const formData = new FormData(form);
-  const nome = String(formData.get("nome") || "").trim();
-  const email = String(formData.get("email") || "").trim();
-  const senha = String(formData.get("senha") || "").trim();
-  const perfil = String(formData.get("perfil") || "Analista");
-  const accessModules = formData.getAll("accessModules").map(String);
-  const mustChangePassword = formData.get("mustChangePassword") === "on";
-  if (!nome || !email || !senha) {
-    showFormError("Informe nome, e-mail e senha para criar o usuário.", form);
-    return;
-  }
-  if (!accessModules.length) {
-    showFormError("Selecione pelo menos um módulo de acesso para o usuário.", form);
-    return;
-  }
-  if (userByEmail(email)) {
-    showFormError("Já existe um usuário ativo com este e-mail cadastrado.", form);
-    return;
-  }
-  if (senha.length < 6) {
-    showFormError("A senha provisória precisa ter pelo menos 6 caracteres.", form);
-    return;
-  }
-  const user = {
-    id: nextCode("usr", state.users || []),
-    nome,
-    email,
-    senha,
-    perfil: normalizeUserProfile(perfil),
-    accessModules: normalizeAccessModules(accessModules, perfil),
-    accessViews: accessViewsForModules(accessModules),
-    mustChangePassword,
-    senhaProvisoria: mustChangePassword,
-    status: "Ativo",
-    createdAt: new Date().toISOString(),
-  };
-  state.users = [...(state.users || []), user];
-  addHistory({
-    entidade: "usuario",
-    entidadeId: user.id,
-    campo: "criação",
-    valorAnterior: "Não existia",
-    valorNovo: `${user.nome} | ${user.perfil}`,
-  });
-  saveState();
-  showToast(mustChangePassword ? "Usuário criado com senha provisória e troca obrigatória." : "Usuário criado com perfil de acesso.");
-  render();
-}
-
-function handleFirstAccessPasswordSubmit(form) {
-  const user = currentUser();
-  if (!user) return;
-  const formData = new FormData(form);
-  const senhaAtual = String(formData.get("senhaAtual") || "").trim();
-  const novaSenha = String(formData.get("novaSenha") || "").trim();
-  const confirmarSenha = String(formData.get("confirmarSenha") || "").trim();
-  if (!validateUserPassword(user, senhaAtual)) {
-    showFormError("A senha provisória atual não confere.", form);
-    return;
-  }
-  if (novaSenha.length < 8) {
-    showFormError("A nova senha precisa ter pelo menos 8 caracteres.", form);
-    return;
-  }
-  if (novaSenha === senhaAtual) {
-    showFormError("A nova senha não pode ser igual à senha provisória.", form);
-    return;
-  }
-  if (novaSenha !== confirmarSenha) {
-    showFormError("A confirmação não confere com a nova senha.", form);
-    return;
-  }
-  state.users = (state.users || []).map((item) =>
-    item.id === user.id
-      ? {
-          ...item,
-          senha: novaSenha,
-          mustChangePassword: false,
-          senhaProvisoria: false,
-          passwordUpdatedAt: new Date().toISOString(),
-        }
-      : item
-  );
-  addHistory({
-    entidade: "usuario",
-    entidadeId: user.id,
-    campo: "senha",
-    valorAnterior: "Senha provisória",
-    valorNovo: "Senha definitiva cadastrada no primeiro acesso",
-  });
-  saveState();
-  showToast("Senha atualizada. Acesso liberado.");
   render();
 }
 
@@ -17261,6 +16734,7 @@ document.addEventListener("click", async (event) => {
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
+  if (!canMutateUI(action)) { showToast("Seu acesso permite apenas consulta."); return; }
   if (action === "download-attachment") {
     event.preventDefault();
     await downloadStoredAttachment(actionButton.dataset.attachmentId);
@@ -17402,6 +16876,59 @@ document.addEventListener("click", async (event) => {
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
   if (action === "open-ev-modal") openEVModal(actionButton.dataset.id);
+  if (action === "open-historical-ev") {
+    await openHistoricalEVModal(actionButton.dataset.id);
+    return;
+  }
+  if (action === "open-ev-reference-targets") {
+    openEVReferenceTargetsModal();
+    return;
+  }
+  if (action === "clear-strategic-decision-filters") {
+    strategicEVDecisionFilters = { query: "", status: "", targetId: "", year: "" };
+    render();
+    return;
+  }
+  if (action === "save-ev-reference-targets") {
+    saveEVReferenceTargets();
+    return;
+  }
+  if (action === "edit-historical-ev") {
+    editHistoricalEV(actionButton.dataset.id);
+    return;
+  }
+  if (action === "edit-ev-typology") {
+    openEVTypologyModal(actionButton.dataset.id);
+    return;
+  }
+  if (action === "delete-ev-record") {
+    openDeleteEVRecordModal(actionButton.dataset.id);
+    return;
+  }
+  if (action === "confirm-delete-ev-record") {
+    deleteEVRecordEverywhere(actionButton.dataset.id);
+    return;
+  }
+  if (action === "load-ev-incc") {
+    loadUnifiedEVIntoINCC(actionButton.dataset.id);
+    return;
+  }
+  if (action === "cancel-ev-deviation-save") {
+    actionButton.closest("[data-ev-haptec-confirm]")?.remove();
+    document.querySelector("#evForm .ev-value-input")?.focus();
+    return;
+  }
+  if (action === "confirm-ev-deviation-save") {
+    const overlay = actionButton.closest("[data-ev-haptec-confirm]");
+    const confirmed = overlay?.querySelector("[data-ev-haptec-check]")?.checked;
+    if (!confirmed) return;
+    const form = document.querySelector("#evForm");
+    if (!form) return;
+    form.dataset.evDeviationConfirmed = "true";
+    overlay.remove();
+    handleEVSubmit(form, actionButton.dataset.mode || "final");
+    return;
+  }
   if (action === "open-benchmark-detail") openBenchmarkDetailModal(actionButton.dataset.workId, actionButton.dataset.disciplineId);
   if (action === "open-investment-detail") openInvestmentDetailModal(actionButton.dataset.id);
   if (action === "open-sic-detail") openSicDetailModal(actionButton.dataset.key);
@@ -17424,6 +16951,20 @@ document.addEventListener("click", async (event) => {
   if (action === "set-management-filter") {
     managementStatusFilter = actionButton.dataset.filter || "all";
     render();
+  }
+  if (action === "clear-strategic-history") {
+    strategicHistoricalQuery = "";
+    strategicHistoricalFilters = { year: "", region: "", status: "" };
+    render();
+    return;
+  }
+  if (action === "search-historical-work") {
+    strategicHistoricalQuery = actionButton.dataset.code || "";
+    strategicHistoricalFilters = { year: "", region: "", status: "" };
+    render();
+    document.querySelector("[data-strategic-history-search]")?.focus();
+    showToast("Obra localizada na Base Geral.");
+    return;
   }
   if (action === "set-sic-view") {
     sicViewMode = actionButton.dataset.viewMode || "report";
@@ -17524,9 +17065,24 @@ document.addEventListener("click", async (event) => {
     resetMaintenanceFilters();
     render();
   }
+  if (action === "sort-ev-history") {
+    const key = actionButton.dataset.sortKey || "";
+    if (evHistoricalSort.key !== key) evHistoricalSort = { key, direction: "desc" };
+    else if (evHistoricalSort.direction === "desc") evHistoricalSort = { key, direction: "asc" };
+    else if (evHistoricalSort.direction === "asc") evHistoricalSort = { key: "", direction: "" };
+    else evHistoricalSort = { key, direction: "desc" };
+    render();
+    return;
+  }
+  if (action === "sort-generic-table") {
+    sortGenericTable(actionButton);
+    return;
+  }
   if (action === "clear-ev-filters") {
     searchTerm = "";
     evAssistantQuery = "";
+    evHistoricalFilters = { query: "", year: "", typology: "", discipline: "", technician: "" };
+    evHistoricalSort = { key: "", direction: "" };
     selectedWorkId = "all";
     const globalSearch = document.querySelector("#globalSearch");
     if (globalSearch) globalSearch.value = "";
@@ -17631,9 +17187,13 @@ document.addEventListener("click", async (event) => {
     if (actionButton.closest(".demand-modal-card")) openDemandDetailModal(actionButton.dataset.id);
   }
   if (action === "open-work-ev") {
-    selectedWorkId = actionButton.dataset.id;
+    const work = workById(actionButton.dataset.id);
+    if (!work) return;
+    selectedWorkId = work.id;
     closeModal();
     setView("ev");
+    openEVModal(work.id);
+    return;
   }
   if (action === "open-project-plan-detail") {
     openProjectPlanDetail(actionButton.dataset.row);
@@ -17657,7 +17217,7 @@ document.addEventListener("click", async (event) => {
       hidden.value = work.id;
       if (workCode) workCode.value = work.chaveUnica || work.codigoOriginal || "";
       if (workName) workName.value = work.nome || "";
-      if (results) results.innerHTML = renderSicWorkSearchResults(input.value, work.id);
+      if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value, work.id));
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
     }
@@ -17672,10 +17232,20 @@ document.addEventListener("click", async (event) => {
       input.value = sharedUnitSearchLabel(unit);
       hidden.value = unit.id;
       if (form?.id === "workForm") applyUnitToWorkForm(form, unit);
-      if (results) results.innerHTML = maintenanceUnitSearchResults(input.value, unit.id);
+      if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, unit.id));
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
     }
+  }
+  if (action === "select-clinical-equipment") {
+    const form = actionButton.closest("form");
+    const asset = clinicalEquipmentById(actionButton.dataset.id);
+    if (form && asset) {
+      applyClinicalEquipmentToForm(form, asset);
+      const errorBox = form.querySelector("#formError");
+      if (errorBox) errorBox.classList.remove("is-visible");
+    }
+    return;
   }
   if (action === "reset-demo") {
     state = clone(baseState);
@@ -17750,6 +17320,19 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-strategic-decision-filter]")) {
+    strategicEVDecisionFilters[event.target.dataset.strategicDecisionFilter] = event.target.value;
+    setTimeout(() => render(), 30);
+    return;
+  }
+  if (event.target.matches("[data-strategic-history-filter]")) {
+    const key = event.target.dataset.strategicHistoryFilter;
+    if (Object.prototype.hasOwnProperty.call(strategicHistoricalFilters, key)) {
+      strategicHistoricalFilters[key] = event.target.value;
+      render();
+    }
+    return;
+  }
   if (event.target.matches('[name="perfil"]') && event.target.closest("#userForm")) {
     const form = event.target.closest("#userForm");
     const defaults = new Set(defaultAccessModulesForProfile(event.target.value));
@@ -17810,10 +17393,10 @@ document.addEventListener("change", (event) => {
     if (maintenanceSprintId(item) === (nextSprint?.id || "") && previousSprint === nextSprintName) return;
     item.sprintId = nextSprint?.id || "";
     item.sprint = nextSprintName;
-    item.updatedAt = TODAY_ISO;
+    item.updatedAt = todayISO();
     item.historico = [
       ...(item.historico || []),
-      { fase: "Sprint", data: TODAY_ISO, observacao: `Sprint alterada de ${previousSprint} para ${nextSprintName}.` },
+      { fase: "Sprint", data: todayISO(), observacao: `Sprint alterada de ${previousSprint} para ${nextSprintName}.` },
     ];
     addHistory({
       entidade: maintenanceModuleLabels().isClinical ? "clinica" : "manutencao",
@@ -17832,7 +17415,7 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches('[data-action="contract-work-select"]')) {
     const select = document.querySelector("#contractDisciplineSelect");
-    if (select) select.innerHTML = contractDisciplineOptions(event.target.value);
+    if (select) select.innerHTML = globalThis.SLT_CLOUD.cleanHTML(contractDisciplineOptions(event.target.value));
   }
   if (event.target.matches('[data-action="assign-analyst"]')) {
     const demand = state.demands.find((item) => item.id === event.target.dataset.id);
@@ -17884,6 +17467,14 @@ document.addEventListener("change", (event) => {
   if (event.target.matches("[data-investment-plan-filter]")) {
     investmentPlanFilters[event.target.dataset.investmentPlanFilter] = event.target.value;
     render();
+  }
+  if (event.target.matches("[data-ev-history-filter]")) {
+    evHistoricalFilters[event.target.dataset.evHistoryFilter] = event.target.value;
+    render();
+  }
+  if (event.target.matches("[data-slt-incc-period]")) {
+    sltINCCCalculator.basePeriod = event.target.value;
+    updateSLTINCCResults();
   }
   if (event.target.matches(".ev-status-select")) {
     const row = event.target.closest(".ev-line-row");
@@ -17943,21 +17534,12 @@ function hasDemandSubmitFields(form) {
 }
 
 document.addEventListener("submit", async (event) => {
-  if (event.target.id === "loginForm") {
+  if (!globalThis.SLT_CLOUD.canWrite(viewModule(currentView))) {
     event.preventDefault();
-    const email = event.target.elements?.email?.value || "";
-    const senha = event.target.elements?.senha?.value || "";
-    if (!loginWithCredentials(email, senha)) {
-      showFormError("E-mail ou senha inválidos. Confira o cadastro em Configuração.", event.target);
-      return;
-    }
-    showToast(`Bem-vindo ao SLT 360, ${currentUser()?.nome || "usuário"}.`);
-    render();
+    showToast("Seu acesso permite apenas consulta nesta área.");
+    return;
   }
-  if (event.target.id === "firstAccessPasswordForm") {
-    event.preventDefault();
-    handleFirstAccessPasswordSubmit(event.target);
-  }
+
   if (event.target.id === "haptecForm") {
     event.preventDefault();
     const question = event.target.elements?.question?.value || "";
@@ -17973,14 +17555,15 @@ document.addEventListener("submit", async (event) => {
     const mode = event.submitter?.dataset.saveMode || event.target.querySelector('[name="saveMode"]')?.value || "final";
     await handleEVSubmit(event.target, mode);
   }
+  if (event.target.id === "evTypologyForm") {
+    event.preventDefault();
+    handleEVTypologySubmit(event.target);
+  }
   if (event.target.id === "sprintForm" || event.target.id === "sprintInlineForm") {
     event.preventDefault();
     handleSprintSubmit(event.target);
   }
-  if (event.target.id === "userForm") {
-    event.preventDefault();
-    handleUserSubmit(event.target);
-  }
+
   if (event.target.id === "demandWizardStep1") {
     event.preventDefault();
     handleDemandWizardStep1(event.target);
@@ -18022,19 +17605,74 @@ document.addEventListener("submit", async (event) => {
 document.querySelector("#globalSearch").addEventListener("input", (event) => {
   if (!isAuthenticated()) return;
   searchTerm = event.target.value;
-  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "ev", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) render();
+  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "ev", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) scheduleInputRender();
 });
+
+let inputRenderTimer = null;
+
+function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
+  clearTimeout(inputRenderTimer);
+  inputRenderTimer = setTimeout(() => {
+    render();
+    if (!focusSelector) return;
+    const nextInput = document.querySelector(focusSelector);
+    if (!nextInput) return;
+    nextInput.focus({ preventScroll: true });
+    if (typeof nextInput.setSelectionRange === "function") {
+      nextInput.setSelectionRange(value.length, value.length);
+    }
+  }, delay);
+}
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-clinical-park-search]")) {
     const value = event.target.value;
     clinicalParkQuery = value;
-    render();
-    const input = document.querySelector("[data-clinical-park-search]");
-    if (input) {
-      input.focus();
-      input.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-clinical-park-search]", value);
+    return;
+  }
+  if (event.target.matches("[data-clinical-asset-search]")) {
+    const form = event.target.closest("form");
+    const hidden = form?.querySelector('[name="clinicalAssetId"]');
+    if (hidden) hidden.value = "";
+    const results = form?.querySelector("[data-clinical-equipment-results]");
+    if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(clinicalEquipmentSearchResults(event.target.value));
+    return;
+  }
+  if (event.target.matches("[data-strategic-decision-search]")) {
+    const value = event.target.value;
+    strategicEVDecisionFilters.query = value;
+    scheduleInputRender("[data-strategic-decision-search]", value);
+    return;
+  }
+  if (event.target.matches("[data-ev-delete-check]")) {
+    const modal = event.target.closest(".ev-delete-modal");
+    const button = modal?.querySelector('[data-action="confirm-delete-ev-record"]');
+    if (button) button.disabled = !event.target.checked;
+    return;
+  }
+  if (event.target.matches("[data-slt-incc-value]")) {
+    sltINCCCalculator.value = parseCurrency(event.target.value);
+    updateSLTINCCResults();
+    return;
+  }
+  if (event.target.matches("[data-ev-haptec-check]")) {
+    const overlay = event.target.closest("[data-ev-haptec-confirm]");
+    const button = overlay?.querySelector('[data-action="confirm-ev-deviation-save"]');
+    if (button) button.disabled = !event.target.checked;
+    overlay?.querySelector("[data-ev-haptec-hint]")?.classList.toggle("is-confirmed", event.target.checked);
+    return;
+  }
+  if (event.target.matches("[data-ev-history-search]")) {
+    const value = event.target.value;
+    evHistoricalFilters.query = value;
+    scheduleInputRender("[data-ev-history-search]", value);
+    return;
+  }
+  if (event.target.matches("[data-strategic-history-search]")) {
+    const value = event.target.value;
+    strategicHistoricalQuery = value;
+    scheduleInputRender("[data-strategic-history-search]", value);
     return;
   }
   if (event.target.matches("[data-ev-area-input], .ev-value-input")) {
@@ -18059,12 +17697,7 @@ document.addEventListener("input", (event) => {
     const value = event.target.value;
     evAssistantQuery = value;
     selectedWorkId = "all";
-    render();
-    const nextInput = document.querySelector("[data-ev-assistant-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-ev-assistant-search]", value);
     return;
   }
   if (event.target.matches("[data-sic-work-search]")) {
@@ -18074,136 +17707,76 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-portfolio-search]")) {
     const value = event.target.value;
     portfolioQuickFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-portfolio-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-portfolio-search]", value);
     return;
   }
   if (event.target.matches("[data-investment-plan-search]")) {
     const value = event.target.value;
     investmentPlanFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-investment-plan-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-investment-plan-search]", value);
     return;
   }
   if (event.target.matches("[data-project-plan-search]")) {
     const value = event.target.value;
     projectPlanFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-project-plan-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-project-plan-search]", value);
     return;
   }
   if (event.target.matches("[data-project-operational-search]")) {
     const value = event.target.value;
     projectOperationalFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-project-operational-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-project-operational-search]", value);
     return;
   }
   if (event.target.matches("[data-operational-search]")) {
     const value = event.target.value;
     operationalFilters.query = value;
-    render();
-    const nextInput = document.querySelector("[data-operational-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-operational-search]", value);
     return;
   }
   if (event.target.matches("[data-maintenance-search]")) {
     const value = event.target.value;
     maintenanceFiltersForActiveModule().query = value;
-    render();
-    const nextInput = document.querySelector("[data-maintenance-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-maintenance-search]", value);
     return;
   }
   if (event.target.matches("[data-budget-search]")) {
     const value = event.target.value;
     budgetFilters.query = value;
     budgetTransferCheck = null;
-    render();
-    const nextInput = document.querySelector("[data-budget-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-budget-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-tracker-search]")) {
     const value = event.target.value;
     transferTrackerQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-transfer-tracker-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-tracker-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-tracker-search2]")) {
     const value = event.target.value;
     transferTrackerQuery2 = value;
-    render();
-    const nextInput = document.querySelector("[data-transfer-tracker-search2]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-tracker-search2]", value);
     return;
   }
   if (event.target.matches("[data-transfer-all-search]")) {
     const value = event.target.value;
     transferAllSearch = value;
     transferAllPage = 1;
-    render();
-    const nextInput = document.querySelector("[data-transfer-all-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-all-search]", value);
     return;
   }
   if (event.target.matches("[data-transfer-net-search]")) {
     const value = event.target.value;
     transferNetSearch = value;
     transferNetPage = 1;
-    render();
-    const nextInput = document.querySelector("[data-transfer-net-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-transfer-net-search]", value);
     return;
   }
   if (event.target.matches("[data-clinical-equipment-search]")) {
     const value = event.target.value;
     clinicalFilters.equipment = value;
-    render();
-    const nextInput = document.querySelector("[data-clinical-equipment-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-clinical-equipment-search]", value);
     return;
   }
   if (event.target.matches("[data-maintenance-unit-search]")) {
@@ -18221,26 +17794,75 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-sic-search]")) {
     const value = event.target.value;
     sicSearchQuery = value;
-    render();
-    const nextInput = document.querySelector("[data-sic-search]");
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.setSelectionRange(value.length, value.length);
-    }
+    scheduleInputRender("[data-sic-search]", value);
     return;
   }
   if (!event.target.matches("[data-filter-field]")) return;
   const field = event.target.dataset.filterField;
   const value = event.target.value;
   portfolioFilters[field] = value;
-  render();
-  const nextInput = document.querySelector(`[data-filter-field="${field}"]`);
-  if (nextInput) {
-    nextInput.focus();
-    nextInput.setSelectionRange(value.length, value.length);
-  }
+  scheduleInputRender(`[data-filter-field="${field}"]`, value);
 });
 
+function historicalBudgetWorks() {
+  return arrayOrFallback(state.evs).map((record) => {
+    const typology = evTypologyFromProjectName(record?.project) || record?.typology || "Não informada";
+    const area = Number(record?.area || 0);
+    const revisionMatch = String(record?.revision || "").match(/\d+/);
+    const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
+    const lines = Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
+      disciplinaId,
+      valorOrcado: Number(valorOrcado || 0),
+      status: "Orçado",
+    }));
+    return {
+      id: `historical-budget-${record.id}`,
+      chaveUnica: record?.code || "",
+      codigoOriginal: record?.code || "",
+      nome: record?.project || "EV histórico",
+      tipoUnidade: typology,
+      tipologiaObra: typology,
+      areaConstruida: area,
+      areaEquivalente: area,
+      uf: record?.uf || "",
+      regiao: record?.region || "",
+      status: "Histórico",
+      _historicalBudgetWork: true,
+      historicalRecordId: record.id,
+      ev: {
+        id: record.id,
+        versaoAtual: revisionNumber,
+        status: "Completo",
+        lines,
+        versions: [{
+          numero: revisionNumber,
+          data: record?.date || "",
+          origem: "Base histórica",
+          valorTotal: Number(record?.total || 0),
+          custoM2: area ? Number(record?.total || 0) / area : 0,
+        }],
+        demandaIds: [],
+        sicIds: [],
+      },
+    };
+  });
+}
+
+function budgetWorks() {
+  const ids = new Set();
+  for (const demand of state.demands || []) if (demand?.obraId) ids.add(String(demand.obraId));
+  for (const sic of state.sics || []) if (sic?.obraId) ids.add(String(sic.obraId));
+  for (const contract of state.contracts || []) if (contract?.obraId) ids.add(String(contract.obraId));
+  for (const revision of state.budgetRevisions || []) {
+    const id = revision?.obraId || revision?.workId;
+    if (id) ids.add(String(id));
+  }
+  const current = (state.works || []).filter((work) => !work?.ev?._virtualEmptyEV || ids.has(String(work?.id || "")));
+  return [...historicalBudgetWorks(), ...current];
+}
+
+globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };
 mountUsersAdmin(globalThis.SLT_CLOUD, () => render());
+mountBackups(globalThis.SLT_CLOUD);
 globalThis.SLT_CLOUD.acceptInitialState(persistedStatePayload());
 render();

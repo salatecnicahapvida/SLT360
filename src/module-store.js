@@ -46,6 +46,10 @@ export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=
         if(changes.length) {
           onStatus('saving');
           const result=await commit(newRequestId(),changes);
+          const confirmed=new Map((Array.isArray(result)?result:[]).map(r=>[recordKey(r),Number(r.revision)]));
+          if(!Array.isArray(result) || result.length!==changes.length || confirmed.size!==changes.length || changes.some(c=>confirmed.get(recordKey(c))!==Number(c.expected_revision)+1)) {
+            throw new Error('O banco não confirmou todos os registros. Recarregue para conferir o resultado.');
+          }
           for(const row of result) versions.set(recordKey(row),row.revision);
         }
         baseline=new Map([...next,...protectedMissing].map(r=>[recordKey(r),r]));
