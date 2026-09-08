@@ -19739,9 +19739,13 @@ document.addEventListener("click", async (event) => {
     if (actionButton.closest(".demand-modal-card")) openDemandDetailModal(actionButton.dataset.id);
   }
   if (action === "open-work-ev") {
-    selectedWorkId = actionButton.dataset.id;
+    const work = workById(actionButton.dataset.id);
+    if (!work) return;
+    selectedWorkId = work.id;
     closeModal();
     setView("ev");
+    openEVModal(work.id);
+    return;
   }
   if (action === "open-project-plan-detail") {
     openProjectPlanDetail(actionButton.dataset.row);
