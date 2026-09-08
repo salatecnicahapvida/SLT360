@@ -4,7 +4,10 @@ import * as XLSX from 'xlsx';
 
 const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
-  works:[{id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}}],
+  works:[
+    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}},
+    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
+  ],
   evs:[
     {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':950,'taxa-risco':50},items:[]},
     {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
@@ -57,14 +60,14 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
 });
 
-test('portfolio shows only linked works, selectable filters and the single requested KPI',async({page})=>{
+test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras 360'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await expect(page.getByRole('heading',{name:'Portfólio de Obras',exact:true})).toBeVisible();
  const kpis=page.locator('.portfolio-kpis');
  await expect(kpis).toContainText('Obras no portfólio');
- await expect(kpis).toContainText('4');
+ await expect(kpis).toContainText('5');
  await expect(kpis).not.toContainText('Etapas de Projetos');
  await expect(kpis).not.toContainText('Projetos próximos');
  await expect(kpis).not.toContainText('Vínculos com EV');
@@ -78,7 +81,7 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
  await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Norte');
  await page.getByRole('button',{name:'Limpar filtros'}).click();
- await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(4);
+ await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
  await expect(historicalRow.locator('td').nth(3)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(4)).toBeEmpty();
@@ -89,6 +92,8 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(currentRow.locator('td').nth(4)).toHaveText('Clínica');
  await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
  await expect(currentRow.locator('td').nth(6)).toHaveText('Sudeste / SP');
+ const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ await expect(noEvRow).toContainText('Sem EV');
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
  await expect(ambiguousPaRow.locator('td').nth(6)).toBeEmpty();
  await page.locator('[data-view="ev"]').filter({visible:true}).first().click();

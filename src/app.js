@@ -6251,7 +6251,7 @@ function renderPortfolio() {
     `)}
 
     <section class="kpi-grid portfolio-kpis">
-      ${kpi("Obras no portfólio", String(rows.length), rows.length === allRows.length ? "Todas com EV independente vinculado" : `de ${allRows.length} obra(s) cadastrada(s)`, "blue")}
+      ${kpi("Obras no portfólio", String(rows.length), rows.length === allRows.length ? "855 da base oficial + novos cadastros" : `de ${allRows.length} obra(s) cadastrada(s)`, "blue")}
     </section>
 
     <section class="panel portfolio-panel">
@@ -17956,7 +17956,7 @@ function historicalBudgetWorks() {
 function budgetWorks() {
   const historical = historicalBudgetWorks();
   const officialIds = new Set(historical.filter((work) => work._historicalBudgetWork && !String(work.id).startsWith("historical-budget-")).map((work) => String(work.id)));
-  const current = (state.works || []).filter((work) => work?.ev && !work.ev._virtualEmptyEV && !officialIds.has(String(work.id || "")));
+  const current = (state.works || []).filter((work) => !officialIds.has(String(work.id || "")));
   return [...historical, ...current];
 }
 
