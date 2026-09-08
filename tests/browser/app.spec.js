@@ -51,6 +51,10 @@ async function login(page){await page.goto('./');await page.locator('#cloudLogin
 
 test('all active views load, SIC is native, no automatic writes on startup',async({page})=>{
  const b=await backend(page);await login(page);
+ const homeCards=page.locator('.home-launchpad-card');
+ await expect(homeCards).toHaveCount(4);
+ await expect(homeCards.locator('.home-launchpad-card__number')).toHaveText(['01','02','03','04']);
+ await expect(homeCards.locator('.home-launchpad-card__body strong')).toHaveText(['Obras','Manutenção','Eng. Clínica','Controle de Verba']);
  for(const view of ['worksOperational','worksManagement','worksStrategic','portfolio','ev','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
   await page.locator(`[data-view="${view}"]`).filter({visible:true}).first().click();
   await expect(page.locator('#app')).not.toBeEmpty();
@@ -62,7 +66,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
 
 test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
  const b=await backend(page);await login(page);
- await page.getByRole('button',{name:'Abrir Obras 360'}).click();
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await expect(page.getByRole('heading',{name:'Portfólio de Obras',exact:true})).toBeVisible();
  const kpis=page.locator('.portfolio-kpis');

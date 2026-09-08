@@ -218,26 +218,26 @@ const moduleHeaders = {
     tone: "cyan",
   },
   works: {
-    eyebrow: "Módulo 02",
-    label: "Obras 360",
+    eyebrow: "Módulo 01",
+    label: "Obras",
     logo: "assets/module-icon-obras.png",
     tone: "blue",
   },
   maintenance: {
-    eyebrow: "Módulo 03",
-    label: "Manutenção 360",
+    eyebrow: "Módulo 02",
+    label: "Manutenção",
     logo: "assets/module-icon-manutencao.png",
     tone: "orange",
   },
   clinical: {
-    eyebrow: "Módulo 04",
-    label: "Eng. Clínica 360",
+    eyebrow: "Módulo 03",
+    label: "Eng. Clínica",
     logo: "assets/module-icon-clinica.png",
     tone: "green",
   },
   budget: {
-    eyebrow: "Módulo 05",
-    label: "Controle de Verba 360",
+    eyebrow: "Módulo 04",
+    label: "Controle de Verba",
     logo: "assets/module-icon-verbas.png",
     tone: "red",
   },
@@ -254,19 +254,19 @@ const userAccessModules = [
   },
   {
     id: "works",
-    label: "Obras 360",
+    label: "Obras",
     detail: "Portfólio, operacional, EV, SICs, gerencial e estratégica.",
     views: worksViewIds,
   },
   {
     id: "maintenance",
-    label: "Manutenção 360",
+    label: "Manutenção",
     detail: "Início, operacional, BI, linha do tempo e executiva.",
     views: maintenanceViewIds,
   },
   {
     id: "clinical",
-    label: "Eng. Clínica 360",
+    label: "Eng. Clínica",
     detail: "Início, operacional, BI, linha do tempo e executiva.",
     views: clinicalViewIds,
   },
@@ -2189,7 +2189,7 @@ function haptecCurrentContext() {
   if (currentView === "ev") return "EV";
   if (currentView === "sics") return "SICs";
   if (currentView === "maintenanceOperational") return "Operacional de Manutenção";
-  if (maintenanceViewIds.includes(currentView)) return "Manutenção 360";
+  if (maintenanceViewIds.includes(currentView)) return "Manutenção";
   if (currentView === "clinical") return "Engenharia Clínica";
   if (currentView === "budget") return "Controle de Verbas";
   return "SLT 360";
@@ -2204,7 +2204,7 @@ function haptecWelcomeText() {
 
 function haptecViewHelp() {
   if (currentView === "dashboard") {
-    return "Na tela inicial você escolhe o módulo principal: Projetos 360, Obras 360, Manutenção 360, Eng. Clínica 360 ou Controle de Verbas 360. É o hub integrador da Sala Técnica, feito para entrar rápido no fluxo certo.";
+    return "Na tela inicial você escolhe o módulo principal: Obras, Manutenção, Eng. Clínica ou Controle de Verbas. É o hub integrador da Sala Técnica, feito para entrar rápido no fluxo certo.";
   }
   if (projectViewIds.includes(currentView)) {
     return "Em Projetos 360 você acompanha o Plano de Investimento, prazos de entrega de projetos e o Kanban que alimenta o início da orçamentação na Sala Técnica.";
@@ -2213,7 +2213,7 @@ function haptecViewHelp() {
     return "No Portfólio de Obras ficam as obras com EV vinculado. Use a busca e os filtros para localizar a obra e abrir seu EV independente.";
   }
   if (["worksOperational", "kanban"].includes(currentView)) {
-    return "No Operacional de Obras 360 você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
+    return "No Operacional de Obras você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
   }
   if (currentView === "ev") {
     return "Na aba EV você consulta ou preenche o Estudo de Viabilidade por obra. Use a busca assistida, abra o EV e preencha valores por disciplina, inclusive SICs na linha 32.";
@@ -2225,7 +2225,7 @@ function haptecViewHelp() {
     return "No Operacional de Manutenção o Kanban segue as fases Pipefy. Use os filtros de sprint, fase, tipo de despesa, centro de custo e tipologia para limpar a fila.";
   }
   if (maintenanceViewIds.includes(currentView)) {
-    return "Em Manutenção 360 você analisa OS, lead time, valores de proposta, valor Sala Técnica, saving técnico e concentração por unidade, estado, tipologia e centro de custo.";
+    return "Em Manutenção você analisa OS, lead time, valores de proposta, valor Sala Técnica, saving técnico e concentração por unidade, estado, tipologia e centro de custo.";
   }
   if (currentView === "budget") {
     return "No Controle de Verbas você cruza verba aportada, EV, contratação, risco e SICs. É a régua financeira do projeto, antes que algum valor saia do prumo.";
@@ -2235,11 +2235,10 @@ function haptecViewHelp() {
 
 function haptecModuleSummary() {
   return [
-    "Projetos 360: Plano de Investimento, prazos de entrega de projetos, Kanban e gatilho para início da orçamentação.",
-    "Obras 360: portfólio, EV, orçamentação, SICs, planejamento, cronograma e visões gerenciais.",
-    "Manutenção 360: OS, unidades, Kanban, SLA, lead time, valores, saving técnico e desempenho operacional.",
-    "Eng. Clínica 360: parque tecnológico, ativos, OS, demandas assistenciais, qualidade e histórico por equipamento.",
-    "Controle de Verbas 360: FEL, verba aportada, EV, contratação, risco, aditivos, SICs e governança orçamentária."
+    "Obras: portfólio, EV, orçamentação, SICs, planejamento, cronograma e visões gerenciais.",
+    "Manutenção: OS, unidades, Kanban, SLA, lead time, valores, saving técnico e desempenho operacional.",
+    "Eng. Clínica: parque tecnológico, ativos, OS, demandas assistenciais, qualidade e histórico por equipamento.",
+    "Controle de Verbas: FEL, verba aportada, EV, contratação, risco, aditivos, SICs e governança orçamentária."
   ].join("\n");
 }
 
@@ -2252,7 +2251,7 @@ function haptecTopEVWork() {
 
 function haptecTopEVAnswer() {
   const top = haptecTopEVWork();
-  if (!top) return haptecMissingDataMessage("Ainda não encontrei EV com valor preenchido. Caminho sugerido: Obras 360 > EV > Abrir EV.");
+  if (!top) return haptecMissingDataMessage("Ainda não encontrei EV com valor preenchido. Caminho sugerido: Obras > EV > Abrir EV.");
   const area = top.work.areaEquivalente || top.work.areaConstruida || 0;
   const costM2 = area ? top.value / area : 0;
   return [
@@ -2476,7 +2475,7 @@ function haptecNewEVCopilotAnswer(text) {
 
 function haptecINCCAnswer(text) {
   const record = haptecEVRecordFromQuestion(text);
-  if (!record) return `A Calculadora SLT usa o INCC-M oficial da FGV, com atualização composta até ${sltINCCData.latestLabel}. Abra Obras 360 > EV > Calculadoras SLT e informe o valor e o ano-base.`;
+  if (!record) return `A Calculadora SLT usa o INCC-M oficial da FGV, com atualização composta até ${sltINCCData.latestLabel}. Abra Obras > EV > Calculadoras SLT e informe o valor e o ano-base.`;
   if (Number(record.year) >= 2026) return `O EV ${record.project} é de ${record.year}, mesma competência anual da referência atual (${sltINCCData.latestLabel}). Para uma atualização precisa dentro de 2026, informe também o mês-base.`;
   const reading = sltINCCReading(record.total, record.year);
   return `Atualização INCC-M do EV ${record.project}:\nValor original (${record.year}): ${money(record.total)}.\nFator composto até ${sltINCCData.latestLabel}: ${number(reading.factor, 4)}× (${number(reading.percentage, 2)}%).\nCorreção estimada: ${money(reading.correction)}.\nValor atualizado: ${money(reading.updated)}.\nFonte: FGV IBRE. Estimativa gerencial; valide a cláusula contratual aplicável.`;
@@ -2635,11 +2634,11 @@ function haptecAnswerBody(question = "") {
   if (text.includes("verba") || text.includes("saldo") || text.includes("contratado")) return haptecBudgetDataAnswer();
   if (text.includes("modulo") || text.includes("dashboard") || text.includes("inicio")) return haptecModuleSummary();
   if (text.includes("nova demanda") || text.includes("demanda")) {
-    if (maintenanceViewIds.includes(currentView)) return "Para criar demanda de Manutenção: Manutenção 360 > Operacional > + Nova demanda. Busque a unidade, confira CNPJ/endereço, preencha datas, valores e salve para entrar no Kanban.";
-    return "Para criar demanda de Obras: Obras 360 > Operacional > + Nova demanda. Escolha Emissão Inicial, Revisão de Orçamento ou SIC, vincule a obra e salve para entrar na coluna inicial do Kanban.";
+    if (maintenanceViewIds.includes(currentView)) return "Para criar demanda de Manutenção: Manutenção > Operacional > + Nova demanda. Busque a unidade, confira CNPJ/endereço, preencha datas, valores e salve para entrar no Kanban.";
+    return "Para criar demanda de Obras: Obras > Operacional > + Nova demanda. Escolha Emissão Inicial, Revisão de Orçamento ou SIC, vincule a obra e salve para entrar na coluna inicial do Kanban.";
   }
-  if (text.includes("sic")) return "Para SIC: Obras 360 > SICs ou Operacional > + Nova demanda > SIC. Preencha LECOM, obra, título, descrição, disciplinas e anexo. A postagem no EV leva os valores para a linha 32.";
-  if (text.includes("verba") || text.includes("orcamento") || text.includes("custo")) return "Para verba/custo: Controle de Verbas 360 consolida aportes, EV, contratação e SICs. Em Obras, a visão Estratégica mostra CAPEX, metas por m² e maiores investimentos.";
+  if (text.includes("sic")) return "Para SIC: Obras > SICs ou Operacional > + Nova demanda > SIC. Preencha LECOM, obra, título, descrição, disciplinas e anexo. A postagem no EV leva os valores para a linha 32.";
+  if (text.includes("verba") || text.includes("orcamento") || text.includes("custo")) return "Para verba/custo: Controle de Verbas consolida aportes, EV, contratação e SICs. Em Obras, a visão Estratégica mostra CAPEX, metas por m² e maiores investimentos.";
   if (text.includes("kpi") || text.includes("indicador") || text.includes("relatorio")) return "Para indicadores: use as abas Gerencial, Estratégica, BI Manutenção ou Linha do Tempo. Os KPIs clicáveis abrem detalhes, para você sair do número e chegar na causa.";
   if (text.includes("filtro") || text.includes("buscar") || text.includes("pesquisar")) return "Use a busca principal da aba e combine com os selects. No Portfólio busque por obra/cidade; em Manutenção use OS, unidade, centro de custo ou tipologia; em EV use a busca assistida.";
   return "Entendi. Me diga se você quer achar uma obra, criar demanda, abrir EV, analisar SICs ou navegar para um módulo. Eu te passo o caminho mais curto.";
@@ -3138,7 +3137,7 @@ function renderProjectsHome() {
   const metrics = projectMetrics();
   const rows = projectPlanRows(true);
   return `
-    ${renderProjectToolbar("projectsHome", "Projetos 360", "Setor de Projetos como fonte oficial para alimentar Obras 360", `
+    ${renderProjectToolbar("projectsHome", "Projetos 360", "Setor de Projetos como fonte oficial para alimentar Obras", `
       <span class="tag">${metrics.rows.length} linhas no plano</span>
       <button class="secondary-action" type="button" data-view="projectsPortfolio">Abrir portfólio</button>
       <button class="primary-action" type="button" data-view="projectsOperational">Abrir Kanban</button>
@@ -3176,7 +3175,7 @@ function renderProjectsHome() {
         <div class="panel-header">
           <div>
             <h2>Próximas entregas</h2>
-            <p class="panel-subtitle">Fila que alimenta Obras 360</p>
+            <p class="panel-subtitle">Fila que alimenta Obras</p>
           </div>
         </div>
         <div class="alert-list">
@@ -3324,7 +3323,7 @@ function renderProjectsOperational() {
   const filtered = projectOperationalRows(true);
   const allRows = projectOperationalRows(false);
   return `
-    ${renderProjectToolbar("projectsOperational", "Operacional de Projetos", "Kanban de entregas de Projetos que abastecem a esteira de Obras 360", `
+    ${renderProjectToolbar("projectsOperational", "Operacional de Projetos", "Kanban de entregas de Projetos que abastecem a esteira de Obras", `
       <button class="secondary-action" type="button" data-action="clear-project-operational-filters">Limpar filtros</button>
       <button class="primary-action" type="button" data-action="open-project-demand">+ Nova demanda</button>
       <button class="primary-action" type="button" data-view="projectsPortfolio">Abrir portfólio</button>
@@ -3799,7 +3798,7 @@ function openProjectPlanDetail(rowNumber) {
                 <tr><th>Classificação</th><td>${escapeAttribute(row.classificacaoObra || "—")}</td></tr>
                 <tr><th>Tipologia</th><td>${escapeAttribute(row.tipologiaObra || "—")}</td></tr>
                 <tr><th>Observações</th><td>${escapeAttribute(row.observacoes || "—")}</td></tr>
-                <tr><th>Vínculo Obras</th><td>${work ? escapeAttribute(work.nome) : "Sem cadastro vinculado em Obras 360"}</td></tr>
+                <tr><th>Vínculo Obras</th><td>${work ? escapeAttribute(work.nome) : "Sem cadastro vinculado em Obras"}</td></tr>
               </tbody>
             </table>
           </div>
@@ -3813,9 +3812,9 @@ function openProjectPlanDetail(rowNumber) {
                 </select>
               </label>
               <div class="project-handoff-card" data-status="${status.tone}">
-                <span>Integração com Obras 360</span>
+                <span>Integração com Obras</span>
                 <strong>${row.customProjectDemand ? "Demanda interna de Projetos" : budgetDemand ? `${budgetDemand.id} · ${budgetColumn?.label || "Fazer"}` : work ? "Pronto para gerar card" : "Aguardando cadastro em Obras"}</strong>
-                <small>${row.customProjectDemand ? "Use o status para controlar o fluxo de Projetos. As demandas do Plano continuam gerando card em Obras ao entregar para ST." : budgetDemand ? "Card já criado na esteira de Obras." : "Ao salvar como Entregue para ST, será criado um card em Obras 360 > Fazer."}</small>
+                <small>${row.customProjectDemand ? "Use o status para controlar o fluxo de Projetos. As demandas do Plano continuam gerando card em Obras ao entregar para ST." : budgetDemand ? "Card já criado na esteira de Obras." : "Ao salvar como Entregue para ST, será criado um card em Obras > Fazer."}</small>
               </div>
             </div>
             <div class="project-status-actions">
@@ -3901,7 +3900,7 @@ function renderDashboard() {
 }
 
 function renderHomeFlower(modules) {
-  const orderedModules = ["projetos", "orcamento", "manutencao", "clinica", "gestao"]
+  const orderedModules = ["orcamento", "manutencao", "clinica", "gestao"]
     .map((id) => modules.find((module) => module.id === id))
     .filter(Boolean);
   return `
@@ -3909,10 +3908,8 @@ function renderHomeFlower(modules) {
       <div class="home-launchpad-panel">
         <span class="eyebrow">Hub integrador</span>
         <h2>Escolha o módulo de trabalho</h2>
-        <p>Uma entrada única para conectar projetos, obras, manutenção, engenharia clínica e controle de verbas no mesmo fluxo de gestão.</p>
+        <p>Uma entrada única para conectar obras, manutenção, engenharia clínica e controle de verbas no mesmo fluxo de gestão.</p>
         <div class="home-launchpad-flow" aria-label="Fluxo de valor da Sala Técnica">
-          <span>Projetar</span>
-          <i aria-hidden="true"></i>
           <span>Orçar</span>
           <i aria-hidden="true"></i>
           <span>Executar</span>
@@ -3931,7 +3928,6 @@ function renderHomeLaunchpadCard(module) {
   const primary = module.metrics[0] || { label: "Indicador", value: "-" };
   const secondary = module.metrics[1] || null;
   const descriptions = {
-    projetos: "Entrada do plano, marcos de projeto e entregas para a Sala Técnica.",
     orcamento: "Esteira de EVs, sprints, retroanálise e validação orçamentária.",
     manutencao: "Demandas prediais, fluxo operacional, CAPEX/OPEX e indicadores.",
     clinica: "Parque tecnológico, ordens de serviço e desempenho assistencial.",
@@ -4110,8 +4106,6 @@ function renderTeam() {
 }
 
 function moduleSummaries() {
-  const projectPortfolio = projectPlanRows(false);
-  const projectMetricsSummary = projectMetrics(projectPortfolio);
   const worksMetrics = moduleDemandMetrics("works");
   const maintenancePortfolio = maintenanceItemsForModule("maintenance");
   const clinicalPortfolio = maintenanceItemsForModule("clinical");
@@ -4123,27 +4117,13 @@ function moduleSummaries() {
   const historicalEVCount = Array.isArray(globalThis.EV_HISTORICAL_DATA?.records) ? globalThis.EV_HISTORICAL_DATA.records.length : 0;
   const clinicalEquipmentCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.equipment || clinicalEquipmentRecords().length || 0);
   const clinicalUnitCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.units || 0);
-  const projectOperationalCount = projectOperationalRows(false).length;
 
   return [
     {
-      id: "projetos",
-      view: "projectsOverview",
-      eyebrow: "01",
-      title: "Projetos 360",
-      logo: moduleHeaders.projects.logo,
-      tone: "cyan",
-      metrics: [
-        { label: "Projetos no plano", value: String(projectMetricsSummary.projectRows.length) },
-        { label: "Cards operacionais", value: String(projectOperationalCount) },
-        { label: "Atrasados", value: String(projectMetricsSummary.late.length) },
-      ],
-    },
-    {
       id: "orcamento",
       view: "worksOverview",
-      eyebrow: "02",
-      title: "Obras 360",
+      eyebrow: "01",
+      title: "Obras",
       logo: moduleHeaders.works.logo,
       tone: "blue",
       metrics: [
@@ -4155,8 +4135,8 @@ function moduleSummaries() {
     {
       id: "manutencao",
       view: "maintenanceOverview",
-      eyebrow: "03",
-      title: "Manutenção 360",
+      eyebrow: "02",
+      title: "Manutenção",
       logo: moduleHeaders.maintenance.logo,
       tone: "orange",
       metrics: [
@@ -4168,8 +4148,8 @@ function moduleSummaries() {
     {
       id: "clinica",
       view: "clinicalOverview",
-      eyebrow: "04",
-      title: "Eng. Clínica 360",
+      eyebrow: "03",
+      title: "Eng. Clínica",
       logo: moduleHeaders.clinical.logo,
       tone: "green",
       metrics: [
@@ -4181,8 +4161,8 @@ function moduleSummaries() {
     {
       id: "gestao",
       view: "fundsOverview",
-      eyebrow: "05",
-      title: "Controle de Verba 360",
+      eyebrow: "04",
+      title: "Controle de Verba",
       logo: moduleHeaders.budget.logo,
       tone: "red",
       metrics: [
@@ -4817,7 +4797,7 @@ function renderWorksHome() {
   const nearMilestone = rows.filter((row) => row.marcoStatus === "Próximo").length;
 
   return `
-    ${renderWorksToolbar("worksHome", "Obras 360", "Central de orçamentação da Sala Técnica com portfólio, EV, SICs e visões gerenciais", `
+    ${renderWorksToolbar("worksHome", "Obras", "Central de orçamentação da Sala Técnica com portfólio, EV, SICs e visões gerenciais", `
       ${miroButton("Fluxos no Miro")}
       <button class="secondary-action" type="button" data-view="portfolio">Consultar portfólio</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
@@ -7712,7 +7692,7 @@ function maintenanceModuleLabels() {
   if (activeMaintenanceModule() === "clinical") {
     return {
       short: "Eng. Clínica",
-      title: "Eng. Clínica 360",
+      title: "Eng. Clínica",
       homeView: "clinical",
       operationalView: "clinicalOperational",
       reportsView: "clinicalReports",
@@ -7734,7 +7714,7 @@ function maintenanceModuleLabels() {
   }
   return {
     short: "Manutenção",
-    title: "Manutenção 360",
+    title: "Manutenção",
     homeView: "maintenance",
     operationalView: "maintenanceOperational",
     reportsView: "maintenanceReports",
@@ -9009,7 +8989,7 @@ function renderClinicalHomeIntegrated() {
   const os = clinicalItems();
   const metrics = maintenanceMetrics(os);
   return `
-    ${renderMaintenanceContextToolbar("clinical", "Engenharia Clínica 360", `Parque tecnológico unificado · ${number(park.total)} equipamentos · fonte ${escapeAttribute(globalThis.CLINICAL_EQUIPMENT_DATA?.source || "Base de equipamentos")}`, `
+    ${renderMaintenanceContextToolbar("clinical", "Engenharia Clínica", `Parque tecnológico unificado · ${number(park.total)} equipamentos · fonte ${escapeAttribute(globalThis.CLINICAL_EQUIPMENT_DATA?.source || "Base de equipamentos")}`, `
       <button class="secondary-action" type="button" data-view="clinicalSettings">Abrir Parque Tecnológico</button>
       <button class="primary-action" type="button" data-action="open-maintenance-demand">+ Nova demanda</button>`)}
     <section class="kpi-grid">
@@ -10347,7 +10327,7 @@ function renderBudgetTabs() {
 function renderBudgetControl() {
   const subtitle = "Governança de OIs, CAPEX/OPEX, transferências, consumo e curva financeira da Sala Técnica";
   return `
-    ${renderToolbar("Controle de Verba 360", subtitle, ``, moduleHeaders.budget)}
+    ${renderToolbar("Controle de Verba", subtitle, ``, moduleHeaders.budget)}
     ${renderBudgetTabs()}
     ${budgetViewMode === "inicio" ? renderBudgetHome() : ""}
     ${budgetViewMode === "capex" ? renderCapexControlTab() : ""}
@@ -11451,7 +11431,7 @@ function renderCapexCurveTab() {
       <header class="hapcapex-local-header">
         <div>
           <h2>HAPCAPEX - Controle Financeiro de ${scopeTitle}</h2>
-          <p>Curva financeira integrada ao Controle de Verba 360, preservando previsto aprovado, consumo planejado e consumo não planejado.</p>
+          <p>Curva financeira integrada ao Controle de Verba, preservando previsto aprovado, consumo planejado e consumo não planejado.</p>
         </div>
         <button class="hapcapex-badge" type="button" data-action="open-capex-curve-detail" data-detail="governanca">Coordenação Sala Técnica</button>
       </header>
@@ -13635,7 +13615,7 @@ function renderWorksSettings() {
   return `
     ${renderWorksToolbar("worksSettings", "Configurações de Obras", "Legenda da chave e listas de apoio do módulo Obras", `
       <button class="secondary-action" type="button" data-view="settings">Configuração global</button>
-      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras 360</button>
+      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras</button>
     `)}
 
     <div class="content-grid">
@@ -13866,7 +13846,7 @@ function renderSettings() {
   const history = Array.isArray(state.history) ? state.history : [];
   return `
     ${renderToolbar("Configuração", "Sprints, equipe, perfis, dicionários e auditoria global do SLT 360", `
-      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras 360</button>
+      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras</button>
     `)}
     ${renderSprintSettingsPanel()}
     ${renderUsersSettingsPanel()}
@@ -15871,7 +15851,7 @@ function handleWorkSubmit(form) {
     unidadeCnpj: selectedUnit?.cnpj || String(formData.get("cnpj") || "").trim(),
     unidadeMunicipio: selectedUnit?.municipio || [cidade, uf].filter(Boolean).join("/"),
     unidadeCentro: selectedUnit?.centro || "",
-    unidadeSource: selectedUnit?.source || "Obras 360",
+    unidadeSource: selectedUnit?.source || "Obras",
   });
 
   if (!["CAPEX", "OPEX"].includes(tipoVerba) || !ordemInternaSAP || valorVerbaAportada <= 0) {
@@ -16620,14 +16600,14 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
       operationalViewMode = "kanban";
       closeModal();
       setView("worksOperational");
-      showToast(`${existing.id} já estava criado em Obras 360.`);
+      showToast(`${existing.id} já estava criado em Obras.`);
     }
     return existing;
   }
 
   const work = record.obraId ? workById(record.obraId) : planWorkMatch(record);
   if (!work) {
-    const message = "Antes de entregar para ST, cadastre ou vincule este projeto ao Portfólio de Obras 360.";
+    const message = "Antes de entregar para ST, cadastre ou vincule este projeto ao Portfólio de Obras.";
     if (options.form) showFormError(message, options.form);
     else showToast(message);
     return null;
@@ -16681,7 +16661,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     entidadeId: demand.id,
     campo: "criação",
     valorAnterior: "Projeto entregue para ST",
-    valorNovo: `Card criado em Obras 360 > Fazer para ${work.nome}`,
+    valorNovo: `Card criado em Obras > Fazer para ${work.nome}`,
   });
 
   if (options.navigate) {
@@ -16691,7 +16671,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     operationalViewMode = "kanban";
     closeModal();
     setView("worksOperational");
-    showToast(`${demand.id} criado em Obras 360 na etapa Fazer.`);
+    showToast(`${demand.id} criado em Obras na etapa Fazer.`);
   }
   return demand;
 }
@@ -16759,7 +16739,7 @@ function updateProjectStatus(rowNumber, nextStatus, form = null) {
     operationalViewMode = "kanban";
     closeModal();
     setView("worksOperational");
-    showToast(`${budgetDemand.id} criado/vinculado em Obras 360 na etapa Fazer.`);
+    showToast(`${budgetDemand.id} criado/vinculado em Obras na etapa Fazer.`);
     return;
   }
 
@@ -17353,7 +17333,7 @@ document.addEventListener("click", async (event) => {
     state = clone(baseState);
     selectedWorkId = state.works[0]?.id || "";
     saveState();
-    showToast("Base Obras 360 restaurada.");
+    showToast("Base Obras restaurada.");
     render();
   }
 });
