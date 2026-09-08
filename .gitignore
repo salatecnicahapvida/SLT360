@@ -17,3 +17,7 @@ rollback*/
 *-export-*.html
 *-seed.sql
 *-seed.json
+
+/test-results/
+/playwright-report/
+/supabase/.temp/

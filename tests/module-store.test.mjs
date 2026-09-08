@@ -18,6 +18,13 @@ test('não anuncia sucesso quando o banco rejeita; mantém alerta de alteraçõe
  store.save({works:[{id:'w'}]});await assert.rejects(store.flush(),/conflito/);
  assert.equal(store.dirty,true);assert.deepEqual(events,['saving','failed']);
 });
+test('resposta incompleta do servidor não pode ser anunciada como salva',async()=>{
+ const events=[];
+ const store=createModuleStore({records:[],commit:async()=>[],onStatus:s=>events.push(s)});
+ store.save({works:[{id:'w',nome:'Test'}]});
+ await assert.rejects(store.flush(),/não confirmou todos/);
+ assert.deepEqual(events,['saving','failed']);assert.equal(store.dirty,true);
+});
 test('não apaga demanda de orçamento por ausência em snapshot parcial; exclusão explícita continua permitida',async()=>{
  const state={demands:[{id:'DEM-001',titulo:'Demanda protegida'}],deletedDemands:[]};
  const batches=[];

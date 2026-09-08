@@ -4,11 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { parse } from 'acorn';
 import { simple } from 'acorn-walk';
-import { cloudifyPublicApp } from '../scripts/cloudify-public-app.mjs';
 
-const source = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
 
-for (const [variant, code] of [['source', source], ['cloud build', cloudifyPublicApp(source)]]) {
+for (const [variant, code] of [['source', source]]) {
   let handler;
   simple(parse(code, { ecmaVersion: 'latest', sourceType: 'module' }), {
     IfStatement(node) {

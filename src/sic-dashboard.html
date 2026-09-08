@@ -1,0 +1,103 @@
+<header>
+  <div>
+    <h1>🧾 Controle de EVs — Aditivos &amp; Revisões</h1>
+    <div class="subtitle" id="header-sub">Carregando…</div>
+  </div>
+  <div class="badge">Sala Técnica</div>
+</header>
+
+<div class="container">
+  <div class="top-row">
+    <button class="btn-clear" id="btnExport">⭳ Exportar semana (CSV)</button>
+    <button class="btn-add-current" id="btnOpenAddCurrent">＋ Acrescentar à semana vigente</button>
+    <button class="btn-primary" id="btnOpenImport">+ Importar nova semana</button>
+  </div>
+
+  <div class="month-filter-bar">
+    <div class="mf-label">📅 Semana</div>
+    <div class="mf-chips" id="weekChips"></div>
+    <span class="mf-info" id="weekInfo"></span>
+  </div>
+
+  <div class="kpi-grid" id="kpiRow"></div>
+
+  <div class="cards-shell">
+    <div class="section-title"><span class="ic">▦</span> Obras da Semana — Visão Executiva</div>
+    <div class="filter-bar" id="filterBar"></div>
+    <div class="obra-cards-grid" id="obraCardsGrid"></div>
+  </div>
+
+  <footer class="foot">
+    <span id="footStamp"></span>
+    <span>Fonte: planilha de Controle de EVs — dados protegidos e sincronizados no SLT360.</span>
+  </footer>
+</div>
+
+<!-- Side Panel -->
+<div class="obra-overlay" id="obra-overlay" onclick="closePanel()"></div>
+<div class="obra-panel" id="obra-panel">
+  <div class="obra-panel-header">
+    <button class="panel-back" onclick="closePanel()">← Voltar</button>
+    <div class="tipo-tag" id="panel-tag"></div>
+    <div class="obra-title" id="panel-title"></div>
+  </div>
+  <div class="obra-panel-body"><div class="panel-inner" id="panel-body"></div></div>
+</div>
+
+<div class="modal-overlay" id="importOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Importar nova semana</h3>
+      <button class="modal-close" id="btnCloseModal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Planilha da semana (.xlsx, mesmo modelo)</label>
+        <div class="file-drop" id="fileDrop">
+          <label class="file-drop-label" for="fileInput" id="fileDropLabel">Escolher arquivo…</label>
+          <input type="file" id="fileInput" accept=".xlsx,.xls">
+        </div>
+      </div>
+      <div class="field">
+        <label>Rótulo da semana</label>
+        <input type="text" id="weekLabel" placeholder="Ex: Semana 2">
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Início</label><input type="date" id="weekStart"></div>
+        <div class="field"><label>Fim</label><input type="date" id="weekEnd"></div>
+      </div>
+      <div id="importPreview"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-clear" id="btnCancelImport">Cancelar</button>
+      <button class="btn-primary" id="btnConfirmImport" disabled>Importar semana</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal — acrescentar à semana vigente -->
+<div class="modal-overlay" id="addCurrentOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Acrescentar à semana vigente</h3>
+      <button class="modal-close" id="btnCloseAddCurrent">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="preview-box" id="currentWeekTarget" style="margin-bottom:16px"></div>
+      <div class="field">
+        <label>Planilha de acréscimos (.xlsx ou .xls)</label>
+        <div class="file-drop" id="addCurrentFileDrop">
+          <label class="file-drop-label" for="addCurrentFileInput" id="addCurrentFileLabel">Escolher arquivo…</label>
+          <input type="file" id="addCurrentFileInput" accept=".xlsx,.xls">
+        </div>
+      </div>
+      <div id="addCurrentPreview"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-clear" id="btnCancelAddCurrent">Cancelar</button>
+      <button class="btn-primary" id="btnConfirmAddCurrent" disabled>Acrescentar à semana</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
