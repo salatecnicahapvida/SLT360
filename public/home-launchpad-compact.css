@@ -1,0 +1,23 @@
+/* Home: faixa compacta para escolha do módulo */
+.home-launchpad-section {
+  min-height: auto !important;
+  gap: 14px !important;
+  padding: 12px 18px 18px !important;
+}
+
+.home-launchpad-panel {
+  padding: 10px 16px !important;
+}
+
+.home-launchpad-panel > .eyebrow,
+.home-launchpad-panel > p,
+.home-launchpad-panel .home-launchpad-flow {
+  display: none !important;
+}
+
+.home-launchpad-panel h2 {
+  margin: 0 !important;
+  max-width: none !important;
+  font-size: clamp(2rem, 3.5vw, 2.65rem) !important;
+  line-height: 1.05 !important;
+}
