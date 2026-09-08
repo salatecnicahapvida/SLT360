@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[
-    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}},
+    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}},
     {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
@@ -87,19 +87,22 @@ test('portfolio includes works without EV, selectable filters and the single req
  await page.getByRole('button',{name:'Limpar filtros'}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
- await expect(historicalRow.locator('td').nth(3)).toBeEmpty();
+ await expect(historicalRow.locator('td').nth(3)).toHaveText('—');
  await expect(historicalRow.locator('td').nth(4)).toBeEmpty();
- await expect(historicalRow.locator('td').nth(5)).toHaveText('Hospital');
- await expect(historicalRow.locator('td').nth(6)).toHaveText('Norte / AM');
+ await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
+ await expect(historicalRow.locator('td').nth(6)).toHaveText('Hospital');
+ await expect(historicalRow.locator('td').nth(7)).toHaveText('Norte / AM');
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
- await expect(currentRow.locator('td').nth(3)).toBeEmpty();
- await expect(currentRow.locator('td').nth(4)).toHaveText('Clínica');
- await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
- await expect(currentRow.locator('td').nth(6)).toHaveText('Sudeste / SP');
+ await expect(currentRow.locator('td').nth(2)).toHaveText('2026');
+ await expect(currentRow.locator('td').nth(3)).toHaveText('120');
+ await expect(currentRow.locator('td').nth(4)).toBeEmpty();
+ await expect(currentRow.locator('td').nth(5)).toHaveText('Clínica');
+ await expect(currentRow.locator('td').nth(6)).toHaveText('Reforma');
+ await expect(currentRow.locator('td').nth(7)).toHaveText('Sudeste / SP');
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
  await expect(noEvRow).toContainText('Sem EV');
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
- await expect(ambiguousPaRow.locator('td').nth(6)).toBeEmpty();
+ await expect(ambiguousPaRow.locator('td').nth(7)).toBeEmpty();
  await page.locator('[data-view="ev"]').filter({visible:true}).first().click();
  await expect(page.getByRole('heading',{name:'Base oficial de EVs',exact:true})).toBeVisible();
  await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');

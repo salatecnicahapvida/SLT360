@@ -2210,7 +2210,7 @@ function haptecViewHelp() {
     return "Em Projetos 360 você acompanha o Plano de Investimento, prazos de entrega de projetos e o Kanban que alimenta o início da orçamentação na Sala Técnica.";
   }
   if (["portfolio", "investmentPlan"].includes(currentView)) {
-    return "No Portfólio de Obras ficam as obras com EV vinculado. Use a busca e os filtros para localizar a obra e abrir seu EV independente.";
+    return "No Portfólio de Obras ficam todas as obras cadastradas. Use a busca e os filtros para localizar a obra; o EV aparece quando já estiver vinculado.";
   }
   if (["worksOperational", "kanban"].includes(currentView)) {
     return "No Operacional de Obras você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
@@ -6238,7 +6238,7 @@ function renderPortfolio() {
       <div class="panel-heading">
         <div>
           <h2>Carteira oficial de obras e EVs</h2>
-          <p class="panel-subtitle">Cada linha corresponde a uma obra com EV vinculado: a carga inicial da DADOS EVS ou um cadastro novo.</p>
+          <p class="panel-subtitle">Cada linha corresponde a uma obra cadastrada; o EV aparece quando já estiver vinculado.</p>
         </div>
       </div>
       ${renderPortfolioFilters(allRows)}
@@ -6284,6 +6284,7 @@ function renderPortfolioTable(rows) {
             <th>Código</th>
             <th>Nome da obra</th>
             <th>Ano</th>
+            <th class="numeric">Tempo de obra (dias)</th>
             <th>Categoria</th>
             <th>Tipo</th>
             <th>Tipologia</th>
@@ -6300,6 +6301,7 @@ function renderPortfolioTable(rows) {
               <td><strong>${escapeAttribute(row.codigo || "—")}</strong></td>
               <td><strong>${escapeAttribute(row.nome)}</strong><br /><span class="muted">${escapeAttribute(row.origem)}${row.tecnico ? ` · ${escapeAttribute(row.tecnico)}` : ""}</span></td>
               <td>${escapeAttribute(row.year || "—")}</td>
+              <td class="numeric">${escapeAttribute(row.prazo || "—")}</td>
               <td>${escapeAttribute(row.categoria || "")}</td>
               <td>${escapeAttribute(row.tipoUnidade || "")}</td>
               <td>${escapeAttribute(row.tipologia || "")}</td>
@@ -6312,7 +6314,7 @@ function renderPortfolioTable(rows) {
                 ${row.isHistorical ? "" : `<button class="ghost-button compact-action" type="button" data-action="edit-work" data-id="${escapeAttribute(row.id)}">Editar</button>`}
               </div></td>
             </tr>
-          `).join("") || `<tr><td colspan="11"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
+          `).join("") || `<tr><td colspan="12"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
       </table>
     </div>
@@ -6403,7 +6405,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const capex = totals.orcado + totals.aditivado;
     const saldoRatio = totals.saldo / Math.max(capex, 1);
     const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);
-    const year = String(historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
+    const year = String(work.anoObra || historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
     const tipologia = work.tipologiaObra || "";
     const uf = String(work.uf || ufFromWorkName(work.nome) || "").trim().toUpperCase();
     const regional = String(work.regiao || regionFromUf(uf) || "").trim();
@@ -14546,6 +14548,10 @@ function openWorkModal(workId = "") {
               <input name="prazoDias" inputmode="numeric" placeholder="90" value="${fieldValue("prazoDias")}" />
             </label>
             <label class="field">
+              <span>Ano da obra</span>
+              <input name="anoObra" inputmode="numeric" maxlength="4" placeholder="2026" value="${fieldValue("anoObra")}" />
+            </label>
+            <label class="field">
               <span>Classificação</span>
               <input name="classificacaoObra" list="classificacaoOptions" placeholder="Suficiência de rede" value="${fieldValue("classificacaoObra")}" />
             </label>
@@ -15840,6 +15846,7 @@ function handleWorkSubmit(form) {
   const areaEquivalente = parseCurrency(formData.get("areaEquivalente"));
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
+  const anoObra = String(formData.get("anoObra") || "").replace(/[^\d]/g, "").slice(0, 4);
   const tipoVerba = String(formData.get("tipoVerba") || "").trim().toUpperCase();
   const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
   const valorVerbaAportada = parseCurrency(formData.get("valorVerbaAportada"));
@@ -15884,6 +15891,7 @@ function handleWorkSubmit(form) {
     cnpj: String(formData.get("cnpj") || selectedUnit?.cnpj || "").trim(),
     endereco: String(formData.get("endereco") || selectedUnit?.endereco || selectedUnit?.cep || "").trim(),
     prazoDias: Number.isFinite(prazoDias) && prazoDias > 0 ? prazoDias : "",
+    anoObra: anoObra.length === 4 ? anoObra : "",
     ...unitContext,
   };
 
