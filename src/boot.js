@@ -130,9 +130,28 @@ async function clearInvalidLocalSession() {
   } catch {}
 }
 
+async function startupRest(session, path, { method = 'GET', body } = {}) {
+  const headers = {
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+    Authorization: `Bearer ${session.access_token}`,
+    'x-client-info': 'unified-1',
+  };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let result = null;
+  if (text) {
+    try { result = JSON.parse(text); }
+    catch { result = { message: text }; }
+  }
+  return response.ok ? { data: result, error: null } : { data: null, error: result || { message: `HTTP ${response.status}` } };
+}
+
 async function startInternal() {
   cloudWritesEnabled = false;
-  showRestoring('Restaurando sua sessão…');
+  showRestoring('Abrindo o SLT 360…');
 
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   const session = sessionData?.session;
@@ -141,25 +160,42 @@ async function startInternal() {
     return;
   }
 
+  const sessionUserId = session.user?.id;
+  if (!sessionUserId) {
+    await clearInvalidLocalSession();
+    showLogin();
+    return;
+  }
+
+  // O banco valida cada chamada pelo JWT/RLS. A confirmação mais recente do Auth,
+  // a carga dos dados, as permissões e o backup podem ocorrer juntos, evitando
+  // somar várias viagens de rede ao tempo de abertura.
+  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto'), import('echarts/theme/v5.js')]);
+  // Start the independent Data API calls immediately with the already validated
+  // session token. Supabase's regular client remains responsible for session
+  // refresh and every operation after startup.
+  const encodedUserId = encodeURIComponent(sessionUserId);
+  const profilePromise = startupRest(session, `slt360_profiles?select=id%2Cnome%2Cperfil%2Cativo%2Cmust_change_password%2Canalyst_id%2Crevision&id=eq.${encodedUserId}&limit=1`);
+  const modulePromise = startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: {} });
+  const grantsPromise = startupRest(session, `slt_core_module_access?select=module%2Ccan_read%2Ccan_write&user_id=eq.${encodedUserId}`);
+  const directoryPromise = startupRest(session, 'slt_core_analysts?select=id%2Cnome&order=nome.asc');
+  const backupPromise = startupRest(session, 'rpc/slt_backup_daily', { method: 'POST', body: {} });
+  const authPromise = client.auth.getUser(session.access_token);
+  const [authResponse, profileResponse, moduleResponse, grants, directory, dailyBackup] = await Promise.all([
+    authPromise, profilePromise, modulePromise, grantsPromise, directoryPromise, backupPromise,
+  ]);
+
   // A sessão persistida pode existir no navegador mesmo quando o token já não é válido.
-  // Confirma o usuário no Supabase antes de consultar perfil/RLS para não confundir
-  // uma sessão antiga com uma conta inativa.
-  const { data: authData, error: authError } = await client.auth.getUser();
+  const { data: authData, error: authError } = authResponse;
   const authUser = authData?.user;
-  if (authError || !authUser) {
+  if (authError || !authUser || authUser.id !== sessionUserId) {
     await clearInvalidLocalSession();
     showLogin('Sua sessão anterior expirou. Entre novamente uma vez para manter este dispositivo conectado.');
     return;
   }
 
-  showRestoring('Carregando e validando os dados da nuvem…');
-  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto'), import('echarts/theme/v5.js')]);
-  const [profileResponse, moduleResponse] = await Promise.all([
-    client.from('slt360_profiles').select('id,nome,perfil,ativo,must_change_password,analyst_id,revision').eq('id', authUser.id).maybeSingle(),
-    client.rpc('slt_module_load'),
-  ]);
-
-  const { data: profile, error: profileError } = profileResponse;
+  const profile = profileResponse.data?.[0];
+  const profileError = profileResponse.error;
   if (profileError) {
     showAccessError('Não foi possível confirmar seu perfil agora. Recarregue a página ou tente novamente em instantes.');
     return;
@@ -187,30 +223,20 @@ async function startInternal() {
     return;
   }
 
-  showRestoring('Conferindo o backup automático…');
-  const dailyBackup = await client.rpc('slt_backup_daily');
   if (dailyBackup.error) {
     showAccessError('Não foi possível confirmar o backup automático. Para proteger os dados, o sistema não liberou alterações. Recarregue e tente novamente.');
     return;
   }
 
-  const [grants, directory, teamResponse] = await Promise.all([
-    client.from('slt_core_module_access').select('module,can_read,can_write').eq('user_id', profile.id),
-    client.from('slt_core_analysts').select('id,nome').order('nome'),
-    profile.perfil === 'Admin' ? client.rpc('slt_admin_users') : Promise.resolve({ data: null, error: null }),
-  ]);
-
   if (grants.error || directory.error) {
     showAccessError('Não foi possível conferir as permissões. Tente entrar novamente.');
     return;
   }
-  if (teamResponse.error) {
-    showAccessError('Não foi possível carregar a gestão de acessos.');
-    return;
-  }
 
   const currentProfile = decorateProfile({ ...profile, email: authUser.email, access: grants.data || [] });
-  const team = teamResponse.data;
+  // A lista administrativa é consultada somente quando necessária e não atrasa
+  // a abertura da aplicação para todos os usuários.
+  const team = null;
 
   queue = createModuleStore({
     records: row.records,
