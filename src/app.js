@@ -6323,7 +6323,7 @@ function renderPortfolioTable(rows) {
               <td>${escapeAttribute(row.categoria || "")}</td>
               <td>${escapeAttribute(row.tipoUnidade || "")}</td>
               <td>${escapeAttribute(row.tipologia || "")}</td>
-              <td>${escapeAttribute([row.regional, row.uf].filter(Boolean).join(" / ") || "—")}</td>
+              <td>${escapeAttribute([row.regional, row.uf].filter(Boolean).join(" / "))}</td>
               <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : "—"}</td>
               <td class="numeric"><strong>${money(row.capex)}</strong></td>
               <td><span class="status-pill" data-status="${escapeAttribute(row.evStatus)}">${escapeAttribute(row.evStatus)}</span><br /><span class="muted">${escapeAttribute(row.evId)}</span></td>
@@ -6425,14 +6425,16 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);
     const year = String(historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
     const tipologia = work.tipologiaObra || "";
+    const uf = String(work.uf || ufFromWorkName(work.nome) || "").trim().toUpperCase();
+    const regional = String(work.regiao || regionFromUf(uf) || "").trim();
     return {
       id: work.id,
       idApp: work.chaveUnica,
       codigo: work.codigoOriginal,
       nome: work.nome,
-      regional: work.regiao,
-      uf: work.uf,
-      cidadeUf: `${work.cidade}/${work.uf}`,
+      regional,
+      uf,
+      cidadeUf: [work.cidade, uf].filter(Boolean).join(" / "),
       tipoUnidade: work.tipoUnidade,
       tipologia,
       classificacao: work.classificacaoObra,
@@ -9168,6 +9170,14 @@ function splitUnitMunicipioUf(value = "") {
   const match = text.match(/^(.+?)\s*(?:\/|-)\s*([A-Z]{2})$/i);
   if (!match) return { cidade: text, uf: "" };
   return { cidade: match[1].trim(), uf: match[2].toUpperCase() };
+}
+
+function ufFromWorkName(value = "") {
+  const text = String(value || "").trim().toUpperCase();
+  const match = text.match(
+    /(?:^|[-_/]\s*)(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)(?=(?:[\s_/-]+(?:TEC\s*\d+|20\d{2}))*[\s_/.\-]*$)/
+  );
+  return match?.[1] || "";
 }
 
 function regionFromUf(uf = "") {

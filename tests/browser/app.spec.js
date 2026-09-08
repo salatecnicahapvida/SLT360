@@ -6,8 +6,9 @@ const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[{id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}}],
   evs:[
-    {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':950,'taxa-risco':50},items:[]},
-    {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
+    {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':950,'taxa-risco':50},items:[]},
+    {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
+    {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
   demands:[{id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]}],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
@@ -63,7 +64,7 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(page.getByRole('heading',{name:'Portfólio de Obras',exact:true})).toBeVisible();
  const kpis=page.locator('.portfolio-kpis');
  await expect(kpis).toContainText('Obras no portfólio');
- await expect(kpis).toContainText('3');
+ await expect(kpis).toContainText('4');
  await expect(kpis).not.toContainText('Etapas de Projetos');
  await expect(kpis).not.toContainText('Projetos próximos');
  await expect(kpis).not.toContainText('Vínculos com EV');
@@ -71,21 +72,25 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(8);
  await expect(page.getByRole('button',{name:'Limpar filtros'})).toBeVisible();
  await page.locator('[data-portfolio-quick-filter="origem"]').selectOption('Histórico');
- await expect(kpis).toContainText('2');
- await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(2);
+ await expect(kpis).toContainText('3');
+ await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
  await page.locator('[data-portfolio-search]').fill('Norte');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
  await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Norte');
  await page.getByRole('button',{name:'Limpar filtros'}).click();
- await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
+ await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(4);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
  await expect(historicalRow.locator('td').nth(3)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(4)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(5)).toHaveText('Hospital');
+ await expect(historicalRow.locator('td').nth(6)).toHaveText('Norte / AM');
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
  await expect(currentRow.locator('td').nth(3)).toBeEmpty();
  await expect(currentRow.locator('td').nth(4)).toHaveText('Clínica');
  await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
+ await expect(currentRow.locator('td').nth(6)).toHaveText('Sudeste / SP');
+ const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
+ await expect(ambiguousPaRow.locator('td').nth(6)).toBeEmpty();
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
