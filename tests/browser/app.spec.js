@@ -78,6 +78,14 @@ test('portfolio shows only linked works, selectable filters and the single reque
  await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Norte');
  await page.getByRole('button',{name:'Limpar filtros'}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
+ const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
+ await expect(historicalRow.locator('td').nth(3)).toBeEmpty();
+ await expect(historicalRow.locator('td').nth(4)).toBeEmpty();
+ await expect(historicalRow.locator('td').nth(5)).toHaveText('Hospital');
+ const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
+ await expect(currentRow.locator('td').nth(3)).toBeEmpty();
+ await expect(currentRow.locator('td').nth(4)).toHaveText('Clínica');
+ await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });

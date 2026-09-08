@@ -6320,9 +6320,9 @@ function renderPortfolioTable(rows) {
               <td><strong>${escapeAttribute(row.codigo || "—")}</strong></td>
               <td><strong>${escapeAttribute(row.nome)}</strong><br /><span class="muted">${escapeAttribute(row.origem)}${row.tecnico ? ` · ${escapeAttribute(row.tecnico)}` : ""}</span></td>
               <td>${escapeAttribute(row.year || "—")}</td>
-              <td>${escapeAttribute(row.categoria || "—")}</td>
-              <td>${escapeAttribute(row.tipoUnidade || "—")}</td>
-              <td>${escapeAttribute(row.tipologia || "—")}</td>
+              <td>${escapeAttribute(row.categoria || "")}</td>
+              <td>${escapeAttribute(row.tipoUnidade || "")}</td>
+              <td>${escapeAttribute(row.tipologia || "")}</td>
               <td>${escapeAttribute([row.regional, row.uf].filter(Boolean).join(" / ") || "—")}</td>
               <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : "—"}</td>
               <td class="numeric"><strong>${money(row.capex)}</strong></td>
@@ -6424,7 +6424,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const saldoRatio = totals.saldo / Math.max(capex, 1);
     const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);
     const year = String(historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
-    const tipologia = evTypologyFromProjectName(work.nome) || work.tipologiaObra || work.tipoUnidade || "Não informada";
+    const tipologia = work.tipologiaObra || "";
     return {
       id: work.id,
       idApp: work.chaveUnica,
@@ -6436,7 +6436,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       tipoUnidade: work.tipoUnidade,
       tipologia,
       classificacao: work.classificacaoObra,
-      categoria: work.classificacaoObra || tipologia,
+      categoria: work.classificacaoObra || "",
       year,
       origem: work._historicalBudgetWork ? "Histórico" : "Atual",
       tecnico: historicalRecord?.technician || "",
@@ -17894,7 +17894,7 @@ document.addEventListener("input", (event) => {
 
 function historicalBudgetWorks() {
   return arrayOrFallback(state.evs).map((record) => {
-    const typology = evTypologyFromProjectName(record?.project) || record?.typology || "Não informada";
+    const typology = record?.typology || "";
     const area = Number(record?.area || 0);
     const revisionMatch = String(record?.revision || "").match(/\d+/);
     const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
@@ -17908,7 +17908,7 @@ function historicalBudgetWorks() {
       chaveUnica: record?.code || "",
       codigoOriginal: record?.code || "",
       nome: record?.project || "EV histórico",
-      tipoUnidade: typology,
+      tipoUnidade: "",
       tipologiaObra: typology,
       areaConstruida: area,
       areaEquivalente: area,
