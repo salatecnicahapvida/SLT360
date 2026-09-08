@@ -17,6 +17,8 @@ export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=
         const snapshot=pending; pending=undefined;
         const next=flattenPayload({state:snapshot},{writableOnly:true}).filter(r=>canWrite(ENTITY_BY_NAME.get(r.entity)));
         const nextMap=new Map(next.map(r=>[recordKey(r),r]));
+        const explicitlyArchivedDemandKeys=new Set(next.filter(r=>r.entity==='budget_archived_demands').map(r=>r.key));
+        const protectedMissing=[];
         const changes=[];
         for(let i=0;i<next.length;i++) {
           const row=next[i],key=recordKey(row),old=baseline.get(key);
@@ -28,7 +30,17 @@ export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=
           }
           if(!old || content(old)!==content(row)) changes.push({...row,expected_revision:versions.get(key)||0,operation:'upsert'});
         }
-        const removed=[...baseline.values()].filter(r=>!nextMap.has(recordKey(r))).reverse().map(r=>({...r,expected_revision:versions.get(recordKey(r))||0,operation:'delete'}));
+        const removed=[...baseline.values()].filter(r=>{
+          if(nextMap.has(recordKey(r))) return false;
+          // Demandas de Orçamento só podem ser excluídas por uma ação explícita,
+          // que também cria o registro correspondente na lixeira/arquivo.
+          // Um snapshot parcial nunca é autorização para apagar uma demanda.
+          if(r.entity==='budget_demands' && !explicitlyArchivedDemandKeys.has(r.key)) {
+            protectedMissing.push(r);
+            return false;
+          }
+          return true;
+        }).reverse().map(r=>({...r,expected_revision:versions.get(recordKey(r))||0,operation:'delete'}));
         // Delete children first; ordinary upserts remain parent-first.
         changes.unshift(...removed);
         if(changes.length) {
@@ -36,7 +48,7 @@ export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=
           const result=await commit(newRequestId(),changes);
           for(const row of result) versions.set(recordKey(row),row.revision);
         }
-        baseline=new Map(next.map(r=>[recordKey(r),r]));
+        baseline=new Map([...next,...protectedMissing].map(r=>[recordKey(r),r]));
       }
       onStatus('saved');
     } catch(error) { failure=error; onStatus('failed',error); }
