@@ -1,0 +1,80 @@
+/* Ajustes temporários de escopo e suporte - 2026-09-08 */
+
+/* Suporte360 mais compacto */
+.haptec-launcher {
+  min-height: 58px !important;
+  gap: 8px !important;
+  padding: 6px 13px 6px 8px !important;
+}
+
+.haptec-launcher .haptec-robot.is-launcher {
+  --robot-scale: 0.68 !important;
+}
+
+.haptec-launcher small {
+  display: none !important;
+}
+
+.haptec-launcher strong {
+  font-size: 0 !important;
+  line-height: 1 !important;
+}
+
+.haptec-launcher strong::after {
+  content: "Suporte360";
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.haptec-title strong {
+  font-size: 0 !important;
+}
+
+.haptec-title strong::after {
+  content: "Suporte360";
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+/* Renomeia o KPI sem alterar o cálculo */
+.kpi-card[data-kpi="capexConsolidated"] > small {
+  font-size: 0 !important;
+}
+
+.kpi-card[data-kpi="capexConsolidated"] > small::after {
+  content: "Total orçado";
+  font-size: 0.78rem;
+}
+
+/* Orçamento: remove a aba Início */
+.module-tabs[aria-label="Navegação interna de Orçamento"] [data-view="worksHome"] {
+  display: none !important;
+}
+
+/* Projetos fica oculto por enquanto, sem apagar dados */
+.top-nav [data-module="projects"],
+.sidebar [data-view^="projects"],
+.home-launchpad-card--projetos,
+.home-launchpad-card[data-view^="projects"],
+.module-tabs[aria-label="Navegação interna de Projetos"],
+.module-tab[data-view^="projects"] {
+  display: none !important;
+}
+
+/* A home passa a ter quatro módulos visíveis */
+.home-launchpad-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1100px) {
+  .home-launchpad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .home-launchpad-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
