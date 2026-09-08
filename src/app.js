@@ -15983,6 +15983,10 @@ async function handleDemandSubmit(form) {
   }
 
   const linkedWork = workById(obraId);
+  if (!linkedWork) {
+    showFormError("A obra vinculada não está ativa. Selecione uma obra cadastrada no portfólio antes de salvar a demanda.", form);
+    return;
+  }
   const unidadeModo = formData.get("unidadeModo") === "existente" ? "existente" : "nova";
   const selectedUnit = unidadeModo === "existente" ? maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca")) : null;
   if (unidadeModo === "existente" && !selectedUnit) {

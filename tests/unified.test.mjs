@@ -32,12 +32,20 @@ test('EV settings, hidden historical IDs and SIC state round-trip without losing
  for(const key of Object.keys(state)) assert.deepEqual(result[key],state[key],key);
 });
 
-test('all migrations: private SIC/settings, atomic saves, explicit archive, backup and restore',async()=>{
+test('all migrations: private SIC/settings, atomic saves, explicit archive, backup, restore and work links',async()=>{
  const db=await database();
  try{
-  await seed(db,{state:{works:[{id:'w',nome:'Test'}],demands:[{id:'d',obraId:'w',titulo:'Test'}]},datasets:{}});
+  await seed(db,{state:{works:[{id:'w',nome:'Test'},{id:'inactive-work',nome:'Inactive'}],demands:[{id:'d',obraId:'w',titulo:'Test'}]},datasets:{}});
   const migrations=(await fs.readdir(new URL('../supabase/migrations/',import.meta.url))).filter(n=>n>='202608310005').sort();
   for(const name of migrations)await db.exec(await fs.readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  await db.query("update slt_projects_works set deleted_at=now() where record_key='inactive-work'");
+  for(const type of ['EmissaoInicial','ReemissaoCompleta','SIC']){
+   await assert.rejects(
+    db.query("insert into slt_budget_demands(record_key,work_id,type) values($1,'inactive-work',$2)",[`invalid-${type}`,type]),
+    {code:'23503'}
+   );
+  }
+  await assert.rejects(db.query("update slt_projects_works set deleted_at=now() where record_key='w'"),{code:'23503'});
   const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role '+role);};
   let request=1;
   const commit=changes=>db.query('select slt_commit_changes($1,$2) result',[`00000000-0000-4000-8000-${String(request++).padStart(12,'0')}`,JSON.stringify(changes)]);
