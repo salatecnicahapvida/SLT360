@@ -1,0 +1,120 @@
+name: Ajustar cabeçalho e navegação
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-header-nav.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: aplicar ajuste visual do cabeçalho'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Aplicar ajuste visual
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('public/styles.css')
+          css = path.read_text(encoding='utf-8')
+          marker = '/* SLT360 header-nav-fix 2026-09-08 */'
+          if marker in css:
+              raise SystemExit(0)
+
+          override = r'''
+
+/* SLT360 header-nav-fix 2026-09-08 */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 14px;
+  align-items: center;
+  overflow: visible;
+}
+
+.brand {
+  gap: 12px;
+}
+
+.brand-logo--slt {
+  width: clamp(210px, 16vw, 245px);
+  height: auto;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: 0 10px 24px rgba(0, 56, 109, 0.12);
+}
+
+.brand-logo--hapvida {
+  width: clamp(104px, 8.5vw, 126px);
+}
+
+.top-nav {
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  overflow-x: visible;
+  overflow-y: visible;
+  padding: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.top-nav::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.top-nav__item {
+  min-height: 40px;
+  padding-inline: 7px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1180px) {
+  .app-header {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .top-nav {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+  }
+
+  .top-nav::-webkit-scrollbar {
+    display: none;
+  }
+}
+'''
+          path.write_text(css.rstrip() + override + '\n', encoding='utf-8')
+          PY
+
+      - name: Publicar ajuste
+        shell: bash
+        run: |
+          if git diff --quiet -- public/styles.css; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/styles.css
+          git commit -m "fix: ajusta logo e navegação fixa do cabeçalho"
+          git push origin HEAD:main
