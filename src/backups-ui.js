@@ -4,7 +4,7 @@ export function renderBackupsPanel(cloud) {
   if (cloud.profile.perfil !== 'Admin') return '';
   return `<section class="panel" data-backup-panel>
     <div class="panel-header"><div><h2>Backup dos registros</h2>
-      <p class="panel-subtitle">Cópia ao acessar após 24 horas sem backup. Histórico disponível por 14 dias.</p></div></div>
+      <p class="panel-subtitle">Cópia somente após 24 horas sem nenhum backup. Mantemos os 2 pontos de recuperação mais recentes.</p></div></div>
     <p>Restaura os registros de negócio. Arquivos anexos, contas e permissões exigem recuperação separada.</p>
     <div class="users-actions">
       <button class="secondary-action" data-backup-action="refresh">Consultar backups</button>

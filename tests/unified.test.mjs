@@ -61,8 +61,11 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   for(const key of Object.keys(state))assert.deepEqual(hydrateRecords(loaded.records).state[key],state[key]);
   await assert.rejects(commit([{entity:'budget_demands',key:'d',operation:'delete',expected_revision:1}]),{code:'22023'});
   const backup=(await db.query("select slt_backup_manual('test') result")).rows[0].result;
+  const daily=(await db.query('select slt_backup_daily() result')).rows[0].result;
+  assert.equal(daily.created,false,'a manual backup suppresses a redundant daily copy for 24 hours');
   await commit([{...changes.find(c=>c.entity==='budget_approval_works'),document:{id:'aw',descricao:'Changed'},expected_revision:1}]);
   await db.query('select slt_backup_restore($1)',[backup.id]);
+  assert.ok((await db.query('select count(*)::integer total from slt_backup_list()')).rows[0].total<=2);
   assert.equal((await db.query('select description from slt_budget_approval_works')).rows[0].description,'Approval');
   await assert.rejects(commit([{...changes.find(c=>c.entity==='budget_approval_works'),expected_revision:2}]),{code:'40001'});
   assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,1);
