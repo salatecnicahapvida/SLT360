@@ -25,7 +25,7 @@ async function backend(page,role='Admin',malicious=false){
   let data=[];
   if(p==='/auth/v1/token')data={access_token:token,refresh_token:'test-refresh',expires_in:3600,token_type:'bearer',user};
   else if(p==='/auth/v1/user')data=user;
-  else if(p.endsWith('/slt360_profiles'))data=profile;
+  else if(p.endsWith('/slt360_profiles'))data=[profile];
   else if(p.endsWith('/slt_core_module_access'))data=grants;
   else if(p.endsWith('/slt_admin_users'))data={users:[{...profile,email:user.email,access:grants}],analysts:[]};
   else if(p.endsWith('/slt_module_load'))data={schema_version:2,records};
@@ -50,6 +50,24 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-team-action="create"]')).toBeVisible();
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
+});
+
+test('session validation, data, permissions and backup start together',async({page})=>{
+ await page.addInitScript(()=>{
+  const original=window.fetch.bind(window);window.__fetchStarts=[];
+  window.fetch=(...args)=>{
+   const url=String(args[0]?.url||args[0]);window.__fetchStarts.push({url,at:performance.now()});
+   if(url.includes('/auth/v1/token'))return original(...args);
+   return new Promise(resolve=>setTimeout(resolve,180)).then(()=>original(...args));
+  };
+ });
+ const b=await backend(page);await login(page);
+ const expected=['/auth/v1/user','/rest/v1/slt360_profiles','/rest/v1/rpc/slt_module_load','/rest/v1/slt_core_module_access','/rest/v1/slt_core_analysts','/rest/v1/rpc/slt_backup_daily'];
+ const initiated=await page.evaluate(()=>window.__fetchStarts);
+ const starts=expected.map(path=>initiated.find(entry=>new URL(entry.url).pathname===path)?.at);
+ expect(starts.every(Number.isFinite)).toBe(true);
+ expect(Math.max(...starts)-Math.min(...starts),JSON.stringify(initiated)).toBeLessThan(100);
+ expect(b.errors).toEqual([]);
 });
 
 test('SIC approval persists to the same cloud queue and survives reload',async({page})=>{
