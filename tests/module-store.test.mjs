@@ -18,3 +18,17 @@ test('não anuncia sucesso quando o banco rejeita; mantém alerta de alteraçõe
  store.save({works:[{id:'w'}]});await assert.rejects(store.flush(),/conflito/);
  assert.equal(store.dirty,true);assert.deepEqual(events,['saving','failed']);
 });
+test('não apaga demanda de orçamento por ausência em snapshot parcial; exclusão explícita continua permitida',async()=>{
+ const state={demands:[{id:'DEM-001',titulo:'Demanda protegida'}],deletedDemands:[]};
+ const batches=[];
+ const store=createModuleStore({records:flattenPayload({state}).map(r=>({...r,revision:1})),commit:async(_,changes)=>{batches.push(changes);return changes.map(c=>({...c,revision:c.expected_revision+1}));}});
+ store.acceptInitialState(state);
+ const partial={demands:[],deletedDemands:[]};
+ store.save(partial);await store.flush();
+ assert.equal(batches.length,0);
+ const explicit={demands:[],deletedDemands:[{id:'DEM-001',titulo:'Demanda protegida',justificativaExclusao:'Teste'}]};
+ store.save(explicit);await store.flush();
+ assert.equal(batches.length,1);
+ assert.equal(batches[0].some(c=>c.entity==='budget_demands'&&c.operation==='delete'&&c.key==='DEM-001'),true);
+ assert.equal(batches[0].some(c=>c.entity==='budget_archived_demands'&&c.operation==='upsert'&&c.key==='DEM-001'),true);
+});
