@@ -6,13 +6,13 @@
 
 O piloto armazenava toda a operação em um único documento JSON. Isso permitiu recuperar o legado com segurança, mas fazia uma alteração em qualquer módulo concorrer com todas as demais alterações. Também dificultava vínculos, pesquisa, permissões e auditoria por registro.
 
-O SLT360 passa a usar um monólito modular no PostgreSQL do Supabase. Projetos, Orçamento, Manutenção, Engenharia Clínica e Controle de Verbas possuem tabelas físicas independentes. Unidades, fornecedores, sprints, acessos e auditoria formam o núcleo compartilhado. Essa abordagem mantém uma transação única para fluxos que atravessam módulos, sem criar vários serviços e bancos antes de existir essa necessidade operacional.
+O SLT360 passa a usar um monólito modular no PostgreSQL do Supabase. Projetos, Obras, Manutenção, Engenharia Clínica e Controle de Verbas possuem tabelas físicas independentes. Unidades, fornecedores, sprints, acessos e auditoria formam o núcleo compartilhado. Essa abordagem mantém uma transação única para fluxos que atravessam módulos, sem criar vários serviços e bancos antes de existir essa necessidade operacional.
 
 Há 54 tabelas de negócio. Os campos de identidade, vínculo, fase, data e valor são colunas tipadas. A coluna `extra` guarda somente extensões legadas ainda não promovidas a campos oficiais; ela não substitui as colunas principais. Linhas de EV, versões, eventos de OS e itens de SIC são registros filhos com chaves estrangeiras.
 
 ## Integridade, concorrência e segurança
 
-- Cada registro possui sua própria revisão. Uma alteração em Manutenção não conflita com uma alteração independente em Orçamento.
+- Cada registro possui sua própria revisão. Uma alteração em Manutenção não conflita com uma alteração independente em Obras.
 - Um lote relacionado é atômico: ou todas as linhas são gravadas, ou nenhuma é.
 - Uma chave idempotente impede a repetição acidental da mesma operação.
 - Chaves estrangeiras preservam os vínculos entre obra, demanda, contrato, fundo, unidade, ativo e seus registros filhos.

@@ -11,7 +11,7 @@ Base analisada: `0db2359`. Escopo: fonte efetiva, build, permissões, persistên
 | Credenciais e formulários locais antigos sobrepostos ao Auth | Removidos os fluxos sem uso; autenticação fica no boot e contas no módulo administrativo. |
 | Ajustes feitos por MutationObservers e scripts paralelos | Navegação e nomes incorporados à fonte; gestão administrativa nativa. |
 | Referência fixa a 03/08/2026 | Calendário de São Paulo consultado em cada operação. |
-| Tipologias, metas e exclusões históricas não persistidas | Quatro entidades novas com revisão e RLS de Orçamento. |
+| Tipologias, metas e exclusões históricas não persistidas | Quatro entidades novas com revisão e RLS de Obras. |
 | Regras antigas de perfil contrariavam permissões | Consulta/edição guiadas pelos grants efetivos do Supabase; controles de consulta bloqueiam mutações. |
 | Resposta incompleta poderia anunciar salvamento | A fila exige confirmação de cada chave e revisão do lote. |
 | Restauração poderia intercalar com gravações | Bloqueio comum entre commit, snapshot e restauração. |
@@ -26,7 +26,7 @@ Foram removidas 94 funções de topo sem referências, além da cópia standalon
 
 ## Estruturas novas
 
-`budget_ev_typologies`, `budget_ev_targets`, `budget_strategic_targets`, `budget_hidden_estimates`, `budget_approval_works`, `budget_approval_weeks`, `budget_approval_snapshots`. O catálogo passa de 54 para 61 entidades. O painel de acompanhamento SAP e os cards de SIC mantêm seus registros e fluxos próprios, ambos protegidos pelo módulo Orçamento; não foi criado vínculo automático por nomes ou códigos ambíguos.
+`budget_ev_typologies`, `budget_ev_targets`, `budget_strategic_targets`, `budget_hidden_estimates`, `budget_approval_works`, `budget_approval_weeks`, `budget_approval_snapshots`. O catálogo passa de 54 para 61 entidades. O painel de acompanhamento SAP e os cards de SIC mantêm seus registros e fluxos próprios, ambos protegidos pelo módulo Obras; não foi criado vínculo automático por nomes ou códigos ambíguos.
 
 ## Evidências e limites
 

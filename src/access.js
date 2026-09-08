@@ -1,6 +1,6 @@
 export const MODULE_OPTIONS = [
  {id:'projects',ui:'projects',label:'Projetos'},
- {id:'budget',ui:'works',label:'Orçamento'},
+ {id:'budget',ui:'works',label:'Obras'},
  {id:'maintenance',ui:'maintenance',label:'Manutenção'},
  {id:'clinical',ui:'clinical',label:'Engenharia Clínica'},
  {id:'finance',ui:'budget',label:'Controle de Verba'},

@@ -11,7 +11,7 @@ Gestores e analistas só recebem os módulos explicitamente selecionados; Admin 
 tudo, inclusive a administração de contas. Os registros são compartilhados entre as
 pessoas autorizadas ao módulo: o vínculo de analista não restringe a leitura às próprias
 demandas. Unidades, fornecedores e sprints são referências compartilhadas de consulta.
-O cadastro de obras é editável por Projetos e Orçamento e consultável pelo Controle de
+O cadastro de obras é editável por Projetos e Obras e consultável pelo Controle de
 Verba; demandas, EVs, ordens de serviço e dados financeiros mantêm escopos próprios.
 
 Após criar, guarde a senha provisória exibida uma única vez e entregue por canal seguro.

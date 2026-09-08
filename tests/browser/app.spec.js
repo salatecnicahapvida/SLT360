@@ -59,7 +59,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
 
 test('portfolio shows only linked works, selectable filters and the single requested KPI',async({page})=>{
  const b=await backend(page);await login(page);
- await page.getByRole('button',{name:'Abrir Orçamento 360'}).click();
+ await page.getByRole('button',{name:'Abrir Obras 360'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await expect(page.getByRole('heading',{name:'Portfólio de Obras',exact:true})).toBeVisible();
  const kpis=page.locator('.portfolio-kpis');

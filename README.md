@@ -1,6 +1,6 @@
 # SLT360 — Sala Técnica
 
-Aplicativo de Orçamento, EV, SIC, Manutenção, Engenharia Clínica e Controle de Verbas. Interface estática no GitHub Pages; autenticação, dados e arquivos no Supabase.
+Aplicativo de Obras, EV, SIC, Manutenção, Engenharia Clínica e Controle de Verbas. Interface estática no GitHub Pages; autenticação, dados e arquivos no Supabase.
 
 ## Desenvolvimento
 

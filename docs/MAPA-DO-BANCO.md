@@ -6,7 +6,7 @@ Cada linha abaixo representa uma tabela física no Supabase. Dados operacionais 
 |---|---:|
 | Cadastros compartilhados | 5 |
 | Projetos | 8 |
-| Orçamento | 20 |
+| Obras | 20 |
 | Manutenção | 7 |
 | Engenharia Clínica | 5 |
 | Controle de Verbas | 16 |
@@ -34,9 +34,9 @@ Cada linha abaixo representa uma tabela física no Supabase. Dados operacionais 
 | `slt_projects_source_investment_plan_data` | Metadados da origem / atributos do registro | — |
 | `slt_projects_source_commission_obras_data` | Metadados da origem / atributos do registro | — |
 
-## Orçamento
+## Obras
 
-Em 08/09/2026 foram acrescentadas sete entidades; o catálogo totaliza 61. São `slt_budget_ev_typologies`, `slt_budget_ev_targets`, `slt_budget_strategic_targets`, `slt_budget_hidden_estimates`, `slt_budget_approval_works`, `slt_budget_approval_weeks` e `slt_budget_approval_snapshots`. As quatro primeiras persistem ajustes de EV; as três últimas guardam o acompanhamento SIC/SAP antes local. Todas usam revisão por registro, RLS de Orçamento e gravação pela RPC central. `slt_budget_historical_ev_details` é uma tabela auxiliar privada de composição histórica fora do catálogo, consultada pela RPC autorizada.
+Em 08/09/2026 foram acrescentadas sete entidades; o catálogo totaliza 61. São `slt_budget_ev_typologies`, `slt_budget_ev_targets`, `slt_budget_strategic_targets`, `slt_budget_hidden_estimates`, `slt_budget_approval_works`, `slt_budget_approval_weeks` e `slt_budget_approval_snapshots`. As quatro primeiras persistem ajustes de EV; as três últimas guardam o acompanhamento SIC/SAP antes local. Todas usam revisão por registro, RLS de Obras e gravação pela RPC central. `slt_budget_historical_ev_details` é uma tabela auxiliar privada de composição histórica fora do catálogo, consultada pela RPC autorizada.
 
 | Tabela | Campos principais | Vínculos |
 |---|---|---|
