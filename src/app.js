@@ -1170,7 +1170,9 @@ function maintenanceDemandsFromImportedData(records = []) {
 }
 
 function maintenanceDemandKey(item) {
-  return normalizeSearchText([item?.id, item?.ordemServico, item?.titulo, item?.unidadeNome].filter(Boolean).join("|"));
+  const id = String(item?.id || "").trim();
+  if (id) return `id:${normalizeSearchText(id)}`;
+  return `fallback:${normalizeSearchText([item?.ordemServico, item?.titulo, item?.unidadeNome].filter(Boolean).join("|"))}`;
 }
 
 function mergeMaintenanceDemands(savedDemands = [], baseDemands = []) {

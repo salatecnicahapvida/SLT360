@@ -21,9 +21,19 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false}={}){
  const input=structuredClone(payload);
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
+ if(maintenanceSourceOverlap){
+  input.state.maintenanceDemands=[
+   {id:'MAN-0001',titulo:'Reparo predial atualizado',ordemServico:'OS-MAN-1',unidadeNome:'Hospital A',centroCusto:'MANUTENÇÃO PREDIAL',coluna:'andamento',historico:[{fase:'Andamento',data:'2026-09-01',observacao:'Histórico preservado'}]},
+   {id:'MAN-0002',titulo:'Autoclave atualizada',ordemServico:'OS-CLI-2',unidadeNome:'Hospital B',centroCusto:'ENG CLINICA',coluna:'validacao',historico:[{fase:'Validação',data:'2026-09-02',observacao:'Histórico clínico preservado'}]},
+  ];
+  input.datasets.MAINTENANCE_DATA={source:'Teste de sobreposição',records:[
+   {'NOME DA OBRA':'Reparo predial original','NOME DA UNIDADE':'Hospital A','CENTRO DE CUSTO':'MANUTENÇÃO PREDIAL','Fase atual':'NÃO INICIADO'},
+   {'NOME DA OBRA':'Autoclave original','NOME DA UNIDADE':'Hospital B','CENTRO DE CUSTO':'ENG CLINICA','Fase atual':'NÃO INICIADO'},
+  ]};
+ }
  let records=flattenPayload(input).map(r=>({...r,revision:1}));
  let analysts=[];
  const requests=[]; const errors=[];
@@ -110,6 +120,18 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(settingsHistory.getByText('Recolher')).toBeVisible();
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
+});
+
+test('module switching keeps one service order per id when source and database versions overlap',async({page})=>{
+ const b=await backend(page,'Admin',false,{maintenanceSourceOverlap:true});await login(page);
+ await page.locator('[data-module="maintenance"]').click();
+ await expect(page.getByRole('heading',{name:'Manutenção',exact:true})).toBeVisible();
+ await page.locator('[data-module="clinical"]').click();
+ await expect(page.getByRole('heading',{name:'Engenharia Clínica',exact:true})).toBeVisible();
+ await page.locator('[data-module="maintenance"]').click();
+ await expect(page.getByRole('heading',{name:'Manutenção',exact:true})).toBeVisible();
+ expect(b.errors).toEqual([]);
+ await expect(page.getByText(/Identificador duplicado/)).toHaveCount(0);
 });
 
 test('kanban horizontal scrollbar stays above the column names',async({page})=>{
