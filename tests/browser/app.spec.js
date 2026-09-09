@@ -219,6 +219,9 @@ test('portfolio includes works without EV, selectable filters and the single req
  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
+ await expect(historicalRow.locator('td').nth(1)).toHaveText('Obra histórica Norte - AM');
+ await expect(historicalRow).not.toContainText('Histórico');
+ await expect(historicalRow).not.toContainText('Técnico A');
  await expect(historicalRow.locator('td').nth(2)).toHaveText('AM');
  await expect(historicalRow.locator('td').nth(3)).toHaveText('Norte');
  await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
@@ -227,6 +230,9 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(historicalRow.locator('td').nth(11)).toHaveText('R$ 1.000,00');
  await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 5,00');
  await expect(historicalRow.getByRole('button',{name:'Abrir EV'})).toBeVisible();
+ await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
+ await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
+ await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
  await expect(currentRow.locator('td').nth(2)).toHaveText('SP');
  await expect(currentRow.locator('td').nth(3)).toHaveText('Sudeste');
@@ -245,6 +251,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(ambiguousPaRow.locator('td').nth(2)).toBeEmpty();
  await expect(ambiguousPaRow.locator('td').nth(3)).toBeEmpty();
  await expect(page.getByRole('heading',{name:'Todos os EVs oficiais em uma única visão',exact:true})).toBeVisible();
+ await expect(page.locator('[data-ev-history-filter="technician"]')).toHaveCount(0);
  await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');
  await expect(page.locator('.ev-history-heading')).toContainText('DADOS EVS');
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});

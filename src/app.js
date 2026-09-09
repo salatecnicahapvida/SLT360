@@ -6368,7 +6368,7 @@ function renderPortfolioFilters(rows) {
     <div class="portfolio-filter-bar">
       <label class="field portfolio-search-field">
         <span>Buscar obra</span>
-        <input data-portfolio-search value="${escapeAttribute(portfolioQuickFilters.query)}" placeholder="Nome, código, cidade, região ou técnico..." />
+        <input data-portfolio-search value="${escapeAttribute(portfolioQuickFilters.query)}" placeholder="Nome, código, cidade ou região..." />
       </label>
       <label class="field"><span>Ano</span><select data-portfolio-quick-filter="year">${portfolioFilterOptions(rows, "year", portfolioQuickFilters.year, "Todos os anos")}</select></label>
       <label class="field"><span>Categoria</span><select data-portfolio-quick-filter="categoria">${portfolioFilterOptions(rows, "categoria", portfolioQuickFilters.categoria, "Todas")}</select></label>
@@ -6409,7 +6409,7 @@ function renderPortfolioTable(rows) {
           ${rows.map((row) => `
             <tr>
               <td><strong>${escapeAttribute(row.codigo || "")}</strong></td>
-              <td><strong>${escapeAttribute(row.nome)}</strong><br /><span class="muted">${escapeAttribute(row.origem)}${row.tecnico ? ` · ${escapeAttribute(row.tecnico)}` : ""}</span></td>
+              <td><strong>${escapeAttribute(row.nome)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
               <td>${escapeAttribute(row.regional || "")}</td>
               <td>${escapeAttribute(row.year || "")}</td>
@@ -6567,7 +6567,7 @@ function portfolioRowMatchesQuickFilters(row) {
   const terms = normalizeSearchText([searchTerm, portfolioQuickFilters.query].filter(Boolean).join(" ")).trim();
   const searchable = normalizeSearchText([
     row.idApp, row.codigo, row.nome, row.cidadeUf, row.regional, row.uf, row.tipoUnidade,
-    row.tipologia, row.categoria, row.year, row.evStatus, row.origem, row.tecnico,
+    row.tipologia, row.categoria, row.year, row.evStatus, row.origem,
   ].join(" "));
   if (terms && !terms.split(/\s+/).every((term) => searchable.includes(term))) return false;
   return ["year", "categoria", "tipoUnidade", "tipologia", "regional", "uf", "evStatus", "origem"]
@@ -6927,9 +6927,8 @@ function evHistoricalFilteredRecords({ ignoreDiscipline = false } = {}) {
   return evUnifiedRecords().filter((record) => {
     if (evHistoricalFilters.year && String(record.year) !== evHistoricalFilters.year) return false;
     if (evHistoricalFilters.typology && record.typology !== evHistoricalFilters.typology) return false;
-    if (evHistoricalFilters.technician && record.technician !== evHistoricalFilters.technician) return false;
     if (!ignoreDiscipline && evHistoricalFilters.discipline && !Number(record.disciplines?.[evHistoricalFilters.discipline] || 0)) return false;
-    const haystack = normalizeSearchText(`${record.code || ""} ${record.project} ${record.revision} ${record.typology} ${record.technician || ""} ${record.searchAliases || ""}`);
+    const haystack = normalizeSearchText(`${record.code || ""} ${record.project} ${record.revision} ${record.typology} ${record.searchAliases || ""}`);
     return !terms.length || terms.every((term) => haystack.includes(term));
   });
 }
@@ -7023,7 +7022,6 @@ function renderEVHistoricalIntelligence() {
         <label class="field ev-history-search"><span>Buscar EV histórico</span><input data-ev-history-search value="${escapeAttribute(evHistoricalFilters.query)}" placeholder="Código ou nome do projeto..." /></label>
         <label class="field"><span>Ano</span><select data-ev-history-filter="year">${evHistoricalFilterOptions(source.map((r) => String(r.year)), evHistoricalFilters.year, "Todos os anos")}</select></label>
         <label class="field"><span>Tipologia</span><select data-ev-history-filter="typology">${evHistoricalFilterOptions(source.map((r) => r.typology), evHistoricalFilters.typology, "Todas as tipologias")}</select></label>
-        <label class="field"><span>Técnico</span><select data-ev-history-filter="technician">${evHistoricalFilterOptions(source.map((r) => r.technician), evHistoricalFilters.technician, "Todos os técnicos")}</select></label>
         <label class="field"><span>Disciplina</span><select data-ev-history-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((d) => d.id), evHistoricalFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
       </div>
       <div class="ev-history-kpis">
