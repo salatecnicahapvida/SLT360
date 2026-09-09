@@ -57,6 +57,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(homeCards.locator('.home-launchpad-card__body strong')).toHaveText(['Obras','Manutenção','Eng. Clínica','Controle de Verba']);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Sprints globais',exact:true})).toHaveCount(0);
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
  await expect(worksTabs).toHaveCount(5);
  await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);

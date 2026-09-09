@@ -4876,7 +4876,6 @@ function renderWorksOperational() {
 
   return `
     ${renderWorksToolbar("worksOperational", "Visão Operacional", "Planejamento, fluxo de trabalho e controle dos marcos de entrega por sprint", `
-      <button class="secondary-action" type="button" data-view="settings">Sprints globais</button>
       <button class="secondary-action" type="button" data-action="export-works-operational">Exportar relatório</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
     `)}
