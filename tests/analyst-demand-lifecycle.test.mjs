@@ -18,7 +18,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       ],
     }, datasets: {} };
     await seed(db, payload);
-    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909173207_restrict_analyst_demand_lifecycle.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909174742_restrict_analyst_demand_lifecycle.sql', import.meta.url), 'utf8'));
     await db.query('insert into auth.users(id) values($1)', [analyst]);
     await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false)", [analyst]);
     for (const module of ['projects', 'budget', 'maintenance', 'clinical']) {
