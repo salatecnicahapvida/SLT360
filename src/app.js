@@ -1907,9 +1907,9 @@ function demandTypeKey(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalized.includes("emissao")) return "EmissaoInicial";
+  if (normalized === "sic" || normalized.startsWith("sic ") || normalized.startsWith("sic-") || normalized.includes("solicitacao de informacao")) return "SIC";
   if (normalized.includes("reemissao") || normalized.includes("revisao")) return "ReemissaoCompleta";
-  if (normalized === "sic") return "SIC";
+  if (normalized.includes("emissao") || normalized.includes("demanda inicial") || normalized.includes("novo orcamento")) return "EmissaoInicial";
   return value;
 }
 

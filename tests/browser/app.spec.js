@@ -14,7 +14,7 @@ const payload={state:{
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
   demands:[
-    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
+    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC - Solicitação de Informação',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
     {id:'test-budget-demand',obraId:'test-work',titulo:'Orçamento de teste',tipo:'EmissaoInicial',coluna:'validacaoObras',sicIds:[],anexos:[]},
   ],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
@@ -94,7 +94,13 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('#globalSearch')).toHaveCount(0);
  await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
- await expect(page.locator('[data-operational-filter="type"] option[value="SIC"]')).toHaveText('SIC');
+ await expect(page.locator('[data-operational-filter="type"] option')).toHaveText([
+  'Todas','Emissão Inicial','Revisão completa do EV','SIC',
+ ]);
+ await page.locator('[data-operational-filter="type"]').selectOption('SIC');
+ await expect(page.locator('.operational-board-panel article[data-id="test-demand"]')).toBeVisible();
+ await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
+ await page.locator('[data-operational-filter="type"]').selectOption('');
  await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
   'Todas','Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
   'Aguardando Aprovação Diretoria','Concluído','Cancelado',
