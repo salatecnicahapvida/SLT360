@@ -563,6 +563,7 @@ const app = document.querySelector("#app");
 const modalRoot = document.querySelector("#modalRoot");
 const toast = document.querySelector("#toast");
 const sortableTableObserver = typeof MutationObserver !== "undefined" ? new MutationObserver(() => enhanceSortableTables()) : null;
+let kanbanScrollObservers = [];
 sortableTableObserver?.observe(modalRoot, { childList: true, subtree: true });
 
 function loadState() {
@@ -2029,6 +2030,7 @@ function render() {
   app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
   applyRolePermissions();
   enhanceSortableTables();
+  mountKanbanTopScrollbars();
   scheduleDashboardCharts();
 }
 
@@ -2046,6 +2048,97 @@ function enhanceSortableTables() {
       header.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<button type="button" data-action="sort-generic-table" data-column-index="${columnIndex}" title="Clique: maior para menor; segundo clique: menor para maior; terceiro clique: ordem original"><span>${escapeAttribute(label)}</span><i>↕</i></button>`);
     });
   });
+}
+
+function mountKanbanTopScrollbars() {
+  kanbanScrollObservers.forEach((observer) => observer.disconnect());
+  kanbanScrollObservers = [];
+
+  document.querySelectorAll("[data-kanban-top-scroll]").forEach((topScroll) => {
+    const board = topScroll.nextElementSibling;
+    const track = topScroll.querySelector("[data-kanban-scroll-track]");
+    const thumb = topScroll.querySelector("[data-kanban-scroll-thumb]");
+    if (!board?.matches("[data-kanban-scroll-board]") || !track || !thumb) return;
+
+    let maxScroll = 0;
+    let thumbTravel = 0;
+    let dragOffset = 0;
+    let dragging = false;
+
+    const syncTop = () => {
+      const progress = maxScroll ? board.scrollLeft / maxScroll : 0;
+      thumb.style.transform = `translateX(${Math.min(thumbTravel, Math.max(0, progress * thumbTravel))}px)`;
+      topScroll.setAttribute("aria-valuenow", String(Math.round(board.scrollLeft)));
+    };
+    const updateWidth = () => {
+      maxScroll = Math.max(0, board.scrollWidth - board.clientWidth);
+      const trackWidth = track.clientWidth;
+      const innerTrackWidth = Math.max(0, trackWidth - 4);
+      const visibleRatio = board.scrollWidth ? board.clientWidth / board.scrollWidth : 1;
+      const thumbWidth = Math.min(innerTrackWidth, Math.max(56, innerTrackWidth * visibleRatio));
+      thumb.style.width = `${thumbWidth}px`;
+      thumbTravel = Math.max(0, innerTrackWidth - thumbWidth);
+      topScroll.hidden = maxScroll <= 1;
+      topScroll.setAttribute("aria-valuemax", String(Math.round(maxScroll)));
+      syncTop();
+    };
+    const moveFromPointer = (clientX) => {
+      const trackBox = track.getBoundingClientRect();
+      const thumbLeft = Math.min(thumbTravel, Math.max(0, clientX - trackBox.left - dragOffset));
+      board.scrollLeft = thumbTravel ? (thumbLeft / thumbTravel) * maxScroll : 0;
+      syncTop();
+    };
+
+    board.addEventListener("scroll", syncTop, { passive: true });
+    track.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const thumbBox = thumb.getBoundingClientRect();
+      const insideThumb = event.clientX >= thumbBox.left && event.clientX <= thumbBox.right;
+      dragOffset = insideThumb ? event.clientX - thumbBox.left : thumbBox.width / 2;
+      dragging = true;
+      track.setPointerCapture(event.pointerId);
+      moveFromPointer(event.clientX);
+    });
+    track.addEventListener("pointermove", (event) => {
+      if (dragging) moveFromPointer(event.clientX);
+    });
+    const endDrag = () => { dragging = false; };
+    track.addEventListener("pointerup", endDrag);
+    track.addEventListener("pointercancel", endDrag);
+    topScroll.addEventListener("keydown", (event) => {
+      const step = event.key === "PageDown" || event.key === "PageUp" ? board.clientWidth * 0.8 : 80;
+      if (event.key === "Home") board.scrollLeft = 0;
+      else if (event.key === "End") board.scrollLeft = maxScroll;
+      else if (event.key === "ArrowRight" || event.key === "PageDown") board.scrollLeft += step;
+      else if (event.key === "ArrowLeft" || event.key === "PageUp") board.scrollLeft -= step;
+      else return;
+      event.preventDefault();
+      syncTop();
+    });
+    topScroll.addEventListener("wheel", (event) => {
+      board.scrollLeft += event.deltaX || event.deltaY;
+      event.preventDefault();
+      syncTop();
+    }, { passive: false });
+    updateWidth();
+    window.requestAnimationFrame?.(updateWidth);
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(updateWidth);
+      observer.observe(board);
+      kanbanScrollObservers.push(observer);
+    }
+  });
+}
+
+function renderKanbanTopScrollbar() {
+  return `
+    <div class="kanban-top-scroll" data-kanban-top-scroll role="scrollbar" aria-label="Rolagem horizontal do Kanban" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0">
+      <div class="kanban-top-scroll-track" data-kanban-scroll-track>
+        <div class="kanban-top-scroll-thumb" data-kanban-scroll-thumb></div>
+      </div>
+    </div>
+  `;
 }
 
 function genericTableSortValue(cell) {
@@ -5009,7 +5102,8 @@ function renderOperationalFilterBanner() {
 
 function renderKanbanBoard(filtered) {
   return `
-    <div class="kanban-board">
+    ${renderKanbanTopScrollbar()}
+    <div class="kanban-board" data-kanban-scroll-board>
       ${columns
         .map((column) => {
           const demands = filtered.filter((demand) => demand.coluna === column.id);
@@ -8227,7 +8321,8 @@ function renderMaintenanceFilters() {
 
 function renderMaintenanceKanbanBoard(filtered) {
   return `
-    <div class="kanban-board maintenance-kanban-board">
+    ${renderKanbanTopScrollbar()}
+    <div class="kanban-board maintenance-kanban-board" data-kanban-scroll-board>
       ${maintenanceColumns
         .map((column) => {
           const items = filtered.filter((item) => item.coluna === column.id);

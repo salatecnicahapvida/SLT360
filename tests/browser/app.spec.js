@@ -91,6 +91,35 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
 });
 
+test('kanban horizontal scrollbar stays above the column names',async({page})=>{
+ await backend(page);await login(page);
+
+ const expectTopScrollbar=async()=>{
+  const topScroll=page.locator('[data-kanban-top-scroll]');
+  const board=page.locator('[data-kanban-scroll-board]');
+  await expect(topScroll).toBeVisible();
+  const positions=await Promise.all([
+   topScroll.boundingBox(),
+   board.locator('.kanban-column header').first().boundingBox(),
+  ]);
+  expect(positions[0].y+positions[0].height).toBeLessThanOrEqual(positions[1].y);
+  await topScroll.press('ArrowRight');
+  await expect.poll(()=>board.evaluate(element=>element.scrollLeft)).toBe(80);
+  await expect(topScroll).toHaveAttribute('aria-valuenow','80');
+  await expect.poll(()=>board.evaluate(element=>getComputedStyle(element).scrollbarWidth)).toBe('none');
+ };
+
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expectTopScrollbar();
+ await page.getByRole('button',{name:'Manutenção',exact:true}).click();
+ await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
+ await expectTopScrollbar();
+ await page.getByRole('button',{name:'Eng. Clínica',exact:true}).click();
+ await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
+ await expectTopScrollbar();
+ await page.screenshot({path:'outputs/clinical-kanban-top-scroll.png',fullPage:false});
+});
+
 test('analyst directory is separate from users and feeds every analyst filter',async({page})=>{
  const b=await backend(page);await login(page);
  await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
