@@ -4974,7 +4974,7 @@ function renderOperationalFilters() {
           <span>Tipo de atividade</span>
           <select data-operational-filter="type">
             <option value="">Todas</option>
-            ${["EmissaoInicial", "ReemissaoCompleta", "SIC"].map((type) => `<option value="${type}" ${operationalFilters.type === type ? "selected" : ""}>${demandTypeLabel(type)}</option>`).join("")}
+            ${["EmissaoInicial", "ReemissaoCompleta", "SIC"].map((type) => `<option value="${type}" ${operationalFilters.type === type ? "selected" : ""}>${type === "SIC" ? "SIC" : demandTypeLabel(type)}</option>`).join("")}
           </select>
         </label>
         <label class="field">
