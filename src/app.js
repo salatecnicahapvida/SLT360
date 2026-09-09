@@ -7167,8 +7167,11 @@ async function openHistoricalEVModal(recordId) {
   const sicPercentage = additives.percentage === null ? "—" : `${number(additives.percentage, 2)}%`;
   const sicLimitStatus = additives.percentage === null
     ? "Sem base de comparação"
-    : additives.exceedsLimit ? "Acima de 5%" : "Dentro de 5%";
-  const sicAlertClass = additives.exceedsLimit ? "mini-metric--alert" : "";
+    : additives.threshold === "alert" ? "Acima de 5%"
+      : additives.threshold === "warning" ? "Atenção: entre 3% e 5%" : "Abaixo de 3%";
+  const sicThresholdClass = additives.threshold === "alert"
+    ? "mini-metric--alert"
+    : additives.threshold === "warning" ? "mini-metric--warning" : "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
@@ -7184,9 +7187,8 @@ async function openHistoricalEVModal(recordId) {
             ${miniMetric("Taxa de risco", money(risk))}
             ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
             ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
-            ${miniMetric("SICs / Aditivos", moneyCents(sicTotal))}
-            ${miniMetric("Percentual sobre o EV original", sicPercentage, sicAlertClass)}
-            ${miniMetric("Flag de SICs / Aditivos", sicLimitStatus, sicAlertClass)}
+            ${miniMetric("SICs / Aditivos", moneyCents(sicTotal), sicThresholdClass)}
+            ${miniMetric("Flag de SICs / Aditivos", sicLimitStatus, sicThresholdClass)}
           </section>
           <details class="ev-additive-audit">
             <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>

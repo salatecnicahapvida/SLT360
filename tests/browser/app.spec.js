@@ -10,7 +10,7 @@ const payload={state:{
   ],
   evs:[
     {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':800,'taxa-risco':50,sics:150},items:[]},
-    {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
+    {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:520,baseTotal:500,disciplines:{'adequacoes-civis':500,sics:20},items:[]},
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
   demands:[
@@ -217,10 +217,10 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await expect(metric('Valor total do EV')).toContainText('R$ 1.000');
  await expect(metric('Valor do EV original (sem SICs)')).toContainText('R$ 850');
  await expect(metric('SICs / Aditivos')).toContainText('R$ 150');
- await expect(metric('Percentual sobre o EV original')).toContainText('17,65%');
  await expect(metric('Flag de SICs / Aditivos')).toContainText('Acima de 5%');
- await expect(metric('Percentual sobre o EV original')).toHaveClass(/mini-metric--alert/);
+ await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
  await expect(metric('Flag de SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
+ await expect(metric('Percentual sobre o EV original')).toHaveCount(0);
  await expect(modal.locator('.ev-historical-summary')).not.toContainText('Filhas da coluna F');
  const title=modal.locator('#historicalEVTitle');
  await title.click(); // Also checks that the site header does not cover the title.
@@ -228,10 +228,10 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Sul'});
  await safeRow.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await expect(metric('Percentual sobre o EV original')).toContainText('0,00%');
- await expect(metric('Flag de SICs / Aditivos')).toContainText('Dentro de 5%');
- await expect(metric('Percentual sobre o EV original')).not.toHaveClass(/mini-metric--alert/);
- await expect(metric('Flag de SICs / Aditivos')).not.toHaveClass(/mini-metric--alert/);
+ await expect(metric('SICs / Aditivos')).toContainText('R$ 20');
+ await expect(metric('Flag de SICs / Aditivos')).toContainText('Atenção: entre 3% e 5%');
+ await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
+ await expect(metric('Flag de SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.setViewportSize({width:390,height:844});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();

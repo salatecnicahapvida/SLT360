@@ -13,12 +13,16 @@ export function evAdditiveSummary(record, items = []) {
     : Math.round(Number(record.disciplines?.sics || 0) * 100);
   const originalCents = Math.round(Number(record.total || 0) * 100) - cents;
   const percentage = originalCents > 0 ? (cents / originalCents) * 100 : null;
+  const threshold = percentage !== null && percentage > 5
+    ? "alert"
+    : percentage !== null && percentage >= 3 ? "warning" : "normal";
   return {
     included,
     total: cents / 100,
     original: originalCents / 100,
     percentage,
     exceedsLimit: percentage !== null && percentage > 5,
+    threshold,
     detailed: items.length > 0,
   };
 }
