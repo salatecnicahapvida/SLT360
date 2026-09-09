@@ -15,8 +15,28 @@ test('counts SICs in all disciplines once and preserves negative amounts and cen
  assert.equal(result.total,160.25);
  assert.equal(result.original,1005);
  assert.equal(result.included.length,4);
+ assert.ok(Math.abs(result.percentage-(160.25/1165.25*100))<Number.EPSILON);
+ assert.equal(result.exceedsLimit,true);
+ assert.equal(result.threshold,'alert');
 });
 test('detailed zero overrides stale aggregate, ordinary words are not SICs',()=>{
  const result=evAdditiveSummary({total:123,disciplines:{sics:90}},[{description:'Físico básico',value:123}]);
  assert.equal(result.total,0);assert.equal(result.original,123);
+ assert.equal(result.percentage,0);assert.equal(result.exceedsLimit,false);
+ assert.equal(result.threshold,'normal');
+});
+test('uses warning from three through five percent and alert only above five percent',()=>{
+ const belowWarning=evAdditiveSummary({total:1000,disciplines:{sics:29.99}},[]);
+ assert.equal(belowWarning.threshold,'normal');
+ const atWarning=evAdditiveSummary({total:1000,disciplines:{sics:30}},[]);
+ assert.equal(atWarning.percentage,3);
+ assert.equal(atWarning.threshold,'warning');
+ const atLimit=evAdditiveSummary({total:1000,disciplines:{sics:50}},[]);
+ assert.equal(atLimit.percentage,5);
+ assert.equal(atLimit.exceedsLimit,false);
+ assert.equal(atLimit.threshold,'warning');
+ const aboveLimit=evAdditiveSummary({total:1000,disciplines:{sics:50.01}},[]);
+ assert.ok(aboveLimit.percentage>5);
+ assert.equal(aboveLimit.exceedsLimit,true);
+ assert.equal(aboveLimit.threshold,'alert');
 });

@@ -8211,6 +8211,28 @@ button.alert-item {
   font-size: 1.2rem;
 }
 
+.mini-metric--alert {
+  border-color: #dc2626;
+  background: #fff1f2;
+  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.12);
+}
+
+.mini-metric--alert small,
+.mini-metric--alert strong {
+  color: #b91c1c;
+}
+
+.mini-metric--warning {
+  border-color: #eab308;
+  background: #fefce8;
+  box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.16);
+}
+
+.mini-metric--warning small,
+.mini-metric--warning strong {
+  color: #a16207;
+}
+
 .ev-master-panel,
 .ev-version-panel {
   border: 1px solid var(--line);
