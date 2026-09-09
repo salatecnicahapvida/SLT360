@@ -6489,10 +6489,12 @@ function renderPortfolioTable(rows) {
               <td class="numeric">${row.prazo ? escapeAttribute(row.prazo) : ""}</td>
               <td class="numeric">${row.hasAssociatedEV ? `<strong>${moneyCents(row.capex)}</strong>` : ""}</td>
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
-              <td>${row.hasAssociatedEV
-                ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
-                : `<span class="muted">Sem EV</span>`}
-              </td>
+              <td><div class="table-actions portfolio-actions">
+                ${row.hasAssociatedEV
+                  ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
+                  : `<span class="muted">Sem EV</span>`}
+                <button class="ghost-button compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
+              </div></td>
             </tr>
           `).join("") || `<tr><td colspan="14"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
@@ -6516,10 +6518,24 @@ function openPortfolioWorkOptions(workId) {
           ${row.hasAssociatedEV ? `<p>EV vinculado · ${escapeAttribute(row.evStatus || "")} · ${moneyCents(row.capex)}</p>
           <button class="primary-action full-width" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
           : `<p class="empty-state">Esta obra ainda não possui EV vinculado.</p>`}
+          <button class="secondary-action full-width" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
         </div>
       </article>
     </div>`);
   modalRoot.querySelector('button')?.focus();
+}
+
+function openPortfolioWorkEditor(workId) {
+  const row = portfolioRows(false, false).find((item) => item.id === workId);
+  if (!row) return;
+  const registeredWork = state.works.find((work) => work.id === row.id);
+  workModalReturnMode = "";
+  workModalPlanDraft = null;
+  if (registeredWork) {
+    openWorkModal(registeredWork.id);
+    return;
+  }
+  openWorkModal("", { historicalRecordId: row.openId });
 }
 
 function renderPortfolioInvestmentPlanTable(rows) {
@@ -6949,9 +6965,14 @@ function evTypologyFromProjectName(value) {
 function evUnifiedWorkForHistorical(record) {
   const linkedById = record?.workId ? workById(record.workId) : null;
   if (linkedById) return linkedById;
+  const linkedBySource = state.works.find((work) => work.sourceHistoricalRecordId === record?.id);
+  if (linkedBySource) return linkedBySource;
+  const candidates = state.works.filter((work) =>
+    !work.sourceHistoricalRecordId || work.sourceHistoricalRecordId === record?.id
+  );
   const recordCode = evUnifiedCode(record.code);
   if (recordCode) {
-    const byCode = state.works.find((work) =>
+    const byCode = candidates.find((work) =>
       [work.chaveUnica, work.codigoOriginal, work.idApp].some((value) => evUnifiedCode(value) === recordCode) &&
       evUnifiedNamesCompatible(record.project, work.nome)
     );
@@ -6959,7 +6980,7 @@ function evUnifiedWorkForHistorical(record) {
   }
   const recordName = evUnifiedName(record.project);
   if (recordName.length < 10) return null;
-  return state.works.find((work) => {
+  return candidates.find((work) => {
     const workName = evUnifiedName(work.nome);
     return evUnifiedNamesCompatible(recordName, workName);
   }) || null;
@@ -7198,6 +7219,7 @@ function ensureEditableHistoricalEV(recordId) {
   const uf = String(record.project || "").match(/\s-\s([A-Z]{2})\s(?:-|$)/)?.[1] || "";
   const work = {
     id: `historical-work-${record.id}`,
+    sourceHistoricalRecordId: record.id,
     chaveUnica: record.code && record.code !== "0000" ? record.code : record.id,
     codigoOriginal: record.code || record.id,
     nome: record.project,
@@ -14679,10 +14701,30 @@ function openSprintModal() {
   `);
 }
 
-function openWorkModal(workId = "") {
-  const work = workById(workId);
-  const isEditing = Boolean(work);
-  const draft = isEditing ? null : workModalPlanDraft;
+function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
+  const work = state.works.find((item) => item.id === workId) || null;
+  const historicalRecord = historicalRecordId ? arrayOrFallback(state.evs).find((record) => record.id === historicalRecordId) : null;
+  const historicalUf = String(historicalRecord?.uf || ufFromWorkName(historicalRecord?.project) || "").trim().toUpperCase();
+  const historicalDraft = historicalRecord ? {
+    sourceHistoricalRecordId: historicalRecord.id,
+    chaveUnica: historicalRecord.code && historicalRecord.code !== "0000" ? historicalRecord.code : historicalRecord.id,
+    codigoOriginal: historicalRecord.code || "0000",
+    nome: historicalRecord.project || "",
+    tipoUnidade: historicalRecord.typology || "Não informada",
+    cidade: "",
+    uf: historicalUf,
+    regiao: historicalRecord.region || regionFromUf(historicalUf) || "",
+    classificacaoObra: "Histórico importado",
+    tipologiaObra: historicalRecord.typology || "Não informada",
+    areaConstruida: Number(historicalRecord.area || 0),
+    areaEquivalente: Number(historicalRecord.area || 0),
+    tipoVerba: "CAPEX",
+    valorVerbaAportada: Number(historicalRecord.total || 0),
+    valorEstimado: Number(historicalRecord.total || 0),
+    anoObra: String(historicalRecord.year || "").slice(0, 4),
+  } : null;
+  const isEditing = Boolean(work || historicalRecord);
+  const draft = work ? null : historicalDraft || workModalPlanDraft;
   const fieldValue = (field, fallback = "") => escapeAttribute(work?.[field] ?? draft?.[field] ?? fallback ?? "");
   const currencyFieldValue = (value) => escapeAttribute(currencyInputValue(value));
   const tipoVerbaValue = String(work?.tipoVerba ?? work?.origemVerba ?? draft?.tipoVerba ?? draft?.origemVerba ?? "CAPEX").toUpperCase() === "OPEX" ? "OPEX" : "CAPEX";
@@ -14697,10 +14739,11 @@ function openWorkModal(workId = "") {
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card work-modal-card" id="workForm" aria-labelledby="workTitle">
         <input type="hidden" name="workId" value="${fieldValue("id")}" />
+        <input type="hidden" name="sourceHistoricalRecordId" value="${fieldValue("sourceHistoricalRecordId")}" />
         <header>
           <div>
             <h2 id="workTitle">${isEditing ? "Editar obra" : "Nova obra"}</h2>
-            <p class="muted">${isEditing ? "Atualize os dados cadastrais do portfólio sem perder o EV vinculado." : "Cadastre a demanda do plano de investimento e vincule automaticamente um EV rascunho."}</p>
+            <p class="muted">${historicalRecord ? "Complete os dados cadastrais desta obra histórica; o EV existente será preservado e vinculado sem duplicidade." : isEditing ? "Atualize os dados cadastrais do portfólio sem perder o EV vinculado." : "Cadastre a demanda do plano de investimento e vincule automaticamente um EV rascunho."}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
@@ -14755,7 +14798,7 @@ function openWorkModal(workId = "") {
             </label>
             <label class="field">
               <span>Região *</span>
-              <input name="regiao" list="regiaoOptions" required placeholder="Nordeste" value="${fieldValue("regiao")}" />
+              <input name="regiao" list="regiaoOptions" required placeholder="Nordeste" value="${fieldValue("regiao", regionFromUf(work?.uf || draft?.uf))}" />
             </label>
             <label class="field">
               <span>Prazo (dias)</span>
@@ -14796,12 +14839,12 @@ function openWorkModal(workId = "") {
               </select>
             </label>
             <label class="field">
-              <span>SAP / OI *</span>
-              <input name="ordemInternaSAP" required placeholder="Número da Ordem Interna" value="${fieldValue("ordemInternaSAP")}" />
+              <span>SAP / OI${isEditing ? "" : " *"}</span>
+              <input name="ordemInternaSAP" ${isEditing ? "" : "required"} placeholder="Número da Ordem Interna" value="${fieldValue("ordemInternaSAP")}" />
             </label>
             <label class="field">
-              <span>Valor da verba aportada *</span>
-              <input name="valorVerbaAportada" required inputmode="decimal" placeholder="0,00" value="${currencyFieldValue(verbaAportadaValue)}" />
+              <span>Valor da verba aportada${isEditing ? "" : " *"}</span>
+              <input name="valorVerbaAportada" ${isEditing ? "" : "required"} inputmode="decimal" placeholder="0,00" value="${currencyFieldValue(verbaAportadaValue)}" />
             </label>
             <label class="field">
               <span>Valor estimado</span>
@@ -16107,6 +16150,8 @@ function handleWorkSubmit(form) {
   }
 
   const existingWork = workById(formData.get("workId"));
+  const sourceHistoricalRecordId = String(formData.get("sourceHistoricalRecordId") || "").trim();
+  const isPortfolioEdit = Boolean(existingWork || sourceHistoricalRecordId);
   const areaEquivalente = parseCurrency(formData.get("areaEquivalente"));
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
@@ -16125,12 +16170,13 @@ function handleWorkSubmit(form) {
     unidadeSource: selectedUnit?.source || "Obras",
   });
 
-  if (!["CAPEX", "OPEX"].includes(tipoVerba) || !ordemInternaSAP || valorVerbaAportada <= 0) {
+  if (!["CAPEX", "OPEX"].includes(tipoVerba) || (!isPortfolioEdit && (!ordemInternaSAP || valorVerbaAportada <= 0))) {
     showFormError("Informe a origem da verba (CAPEX/OPEX), o número da OI e o valor da verba aportada.", form);
     return;
   }
 
   const workFields = {
+    sourceHistoricalRecordId,
     chaveUnica: String(formData.get("chaveUnica") || "").trim(),
     codigoOriginal: String(formData.get("codigoOriginal") || "").trim() || "0000",
     nome,
@@ -16177,7 +16223,7 @@ function handleWorkSubmit(form) {
     saveState();
     closeModal();
     workModalPlanDraft = null;
-    showToast("Dados da obra e verba atualizados no portfólio e no Controle de Verbas.");
+    showToast("Dados da obra atualizados no portfólio.");
     render();
     return;
   }
@@ -16189,7 +16235,15 @@ function handleWorkSubmit(form) {
     ...workFields,
     chaveUnica: workFields.chaveUnica || generatedKey,
     status: "Planejada",
-    ev: {
+    ev: sourceHistoricalRecordId ? {
+      id: `ev-${id.toLowerCase()}`,
+      versaoAtual: 0,
+      status: "Sem EV",
+      lines: [],
+      versions: [],
+      anexos: [],
+      _virtualEmptyEV: true,
+    } : {
       id: `ev-${id.toLowerCase()}`,
       versaoAtual: 0,
       status: "Rascunho",
@@ -16220,7 +16274,9 @@ function handleWorkSubmit(form) {
     return;
   }
   closeModal();
-  showToast("Obra cadastrada no portfólio com EV rascunho e verba integrada ao Controle de Verbas.");
+  showToast(sourceHistoricalRecordId
+    ? "Dados da obra histórica atualizados no portfólio sem duplicar o EV."
+    : "Obra cadastrada no portfólio com EV rascunho e verba integrada ao Controle de Verbas.");
   render();
 }
 
@@ -17208,6 +17264,10 @@ document.addEventListener("click", async (event) => {
     workModalReturnMode = "";
     workModalPlanDraft = null;
     openWorkModal(actionButton.dataset.id);
+  }
+  if (action === "edit-portfolio-work") {
+    openPortfolioWorkEditor(actionButton.dataset.id);
+    return;
   }
   if (action === "open-work-from-plan") openWorkFromInvestmentPlan(actionButton.dataset.row);
   if (action === "open-project-demand") {
@@ -18237,13 +18297,13 @@ function historicalBudgetWorkFromRecord(record, linkedWork = null) {
     status: linkedWork?.status || "Histórico",
     _historicalBudgetWork: true,
     historicalRecordId: record.id,
-    ev: linkedWork?.ev || historicalEV,
+    ev: linkedWork?.ev && !linkedWork.ev._virtualEmptyEV ? linkedWork.ev : historicalEV,
   };
 }
 
 function historicalBudgetWorks() {
   return arrayOrFallback(state.evs).map((record) => {
-    const linkedWork = record?.workId ? state.works.find((work) => work.id === record.workId) : null;
+    const linkedWork = evUnifiedWorkForHistorical(record);
     return historicalBudgetWorkFromRecord(record, linkedWork);
   });
 }
