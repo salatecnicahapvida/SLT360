@@ -2,7 +2,6 @@ import { csvCell } from './csv.js';
 import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 import { renderBackupsPanel, mountBackups } from './backups-ui.js';
-import { mountSicDashboard } from './sic-dashboard.js';
 const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
 
 const MIRO_FLOW_URL = "https://miro.com/app/board/uXjVKxg3MFc=/";
@@ -78,7 +77,7 @@ function strategicTargetById(id) {
   return effectiveStrategicCostTargets().find((target) => target.id === id) || null;
 }
 
-const hapcapexReference = (globalThis.HAPCAPEX_REFERENCE || {capexInicial:0, contingenciamentos:0, aportesExtras:0, capexAtual:0, previstoHistorico:{}});
+let hapcapexReference = globalThis.HAPCAPEX_REFERENCE || {capexInicial:0, contingenciamentos:0, aportesExtras:0, capexAtual:0, previstoHistorico:{}};
 
 const columns = [
   { id: "fazer", label: "Fazer" },
@@ -360,34 +359,37 @@ const defaultState = {
   evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: []
 };
 
-const importedState = globalThis.TRACO_IMPORTED_STATE || {};
-const IMPORT_SIGNATURE = [
-  importedState.storageKey || STORAGE_KEY,
-  importedState.source || "base-interna",
-  importedState.sourceSheet || "",
-  importedState.schemaSource || "",
-  importedState.version || "",
-  importedState.works?.length || 0,
-  importedState.history?.[0]?.timestamp || "",
-]
-  .filter(Boolean)
-  .join("|");
-const baseState = {
-  ...defaultState,
-  ...importedState,
-  importSignature: IMPORT_SIGNATURE,
-  users: importedState.users || defaultState.users,
-  activeRole: importedState.activeRole || defaultState.activeRole,
-  sicBi: globalThis.SIC_BI_DATA || { records: [], demandSummary: [] },
-  investmentPlan: globalThis.INVESTMENT_PLAN_DATA || { source: "", sheet: "", records: [] },
-  unitRegistry: globalThis.UNIT_REGISTRY_DATA || { source: "", sheet: "", records: [] },
-  maintenanceBi: globalThis.MAINTENANCE_DATA || { source: "", sheet: "", records: [] },
-  capexControl: globalThis.CAPEX_CONTROL_DATA || { source: "", baseOi: [], dePara: [], transferencias: [], consumo: {} },
-  commissionObras: globalThis.COMMISSION_OBRAS_DATA || { source: "", sheet: "", summary: {}, records: [] },
-  maintenanceDemands:
-    importedState.maintenanceDemands ||
-    maintenanceDemandsFromImportedData(globalThis.MAINTENANCE_DATA?.records || []),
-};
+function importSignature(imported = {}) {
+  return [
+    imported.storageKey || STORAGE_KEY,
+    imported.source || "base-interna",
+    imported.sourceSheet || "",
+    imported.schemaSource || "",
+    imported.version || "",
+    imported.works?.length || 0,
+    imported.history?.[0]?.timestamp || "",
+  ].filter(Boolean).join("|");
+}
+
+function createBaseState(imported = {}) {
+  const importedMaintenance = maintenanceDemandsFromImportedData(globalThis.MAINTENANCE_DATA?.records || []);
+  return {
+    ...defaultState,
+    ...imported,
+    importSignature: importSignature(imported),
+    users: imported.users || defaultState.users,
+    activeRole: imported.activeRole || defaultState.activeRole,
+    sicBi: globalThis.SIC_BI_DATA || { records: [], demandSummary: [] },
+    investmentPlan: globalThis.INVESTMENT_PLAN_DATA || { source: "", sheet: "", records: [] },
+    unitRegistry: globalThis.UNIT_REGISTRY_DATA || { source: "", sheet: "", records: [] },
+    maintenanceBi: globalThis.MAINTENANCE_DATA || { source: "", sheet: "", records: [] },
+    capexControl: globalThis.CAPEX_CONTROL_DATA || { source: "", baseOi: [], dePara: [], transferencias: [], consumo: {} },
+    commissionObras: globalThis.COMMISSION_OBRAS_DATA || { source: "", sheet: "", summary: {}, records: [] },
+    maintenanceDemands: mergeMaintenanceDemands(imported.maintenanceDemands || [], importedMaintenance),
+  };
+}
+
+let baseState = createBaseState(globalThis.TRACO_IMPORTED_STATE || {});
 
 const demandFormQueryKeys = [
   "analistaResponsavel",
@@ -421,6 +423,7 @@ cleanLeakedDemandQueryParams();
 let state = loadState();
 let authSession = loadAuthSession();
 let currentView = "dashboard";
+let viewNavigationRequest = 0;
 let selectedWorkId = state.works[0]?.id || "";
 let searchTerm = "";
 let operationalViewMode = "kanban";
@@ -465,6 +468,7 @@ let capexCurveScope = "obras";
 let capexCurveMonthFilter = [];
 let transferEchartInstances = {};
 let hapcapexChartInstances = {};
+let sicDashboardModulePromise = null;
 let maintenanceViewMode = "kanban";
 let maintenanceFilters = {
   query: "",
@@ -717,8 +721,9 @@ function clone(value) {
 }
 
 function saveState() {
-  if (!globalThis.SLT_CLOUD.canWrite(viewModule(currentView))) { showToast("Seu acesso permite apenas consulta nesta área."); return; }
-  return globalThis.SLT_CLOUD.save(persistedStatePayload());
+  const module = dataUIModuleForView(currentView);
+  if (!globalThis.SLT_CLOUD.canWrite(module)) { showToast("Aguarde o carregamento completo do banco ou confira sua permissão de edição."); return; }
+  return globalThis.SLT_CLOUD.save(module, persistedStatePayload());
 }
 
 function persistedStatePayload() {
@@ -844,6 +849,12 @@ function viewModule(view) {
   if (normalized === "budget") return "budget";
   if (["settings", "team", "analytics", "suppliers"].includes(normalized)) return "settings";
   return "home";
+}
+
+function dataUIModuleForView(view) {
+  const normalized = viewAliases[view] || view;
+  if (["worksSettings", "analytics"].includes(normalized)) return "works";
+  return viewModule(normalized);
 }
 
 function money(value) {
@@ -1936,7 +1947,7 @@ function canAccessView(view) { const module = viewModule(viewAliases[view] || vi
 function canMutateUI(action) {
   const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets"].includes(action);
   if (!writeAction) return true;
-  const module = /sprint|supplier/.test(action) ? "settings" : viewModule(currentView);
+  const module = /sprint|supplier/.test(action) ? "settings" : dataUIModuleForView(currentView);
   return globalThis.SLT_CLOUD.canWrite(module);
 }
 
@@ -1967,14 +1978,7 @@ function applyRolePermissions() {
   if (logoutButton) logoutButton.hidden = !user;
 }
 
-function setView(view) {
-  if (view === "investmentPlan" || view === "projectsPlan") view = "projectsPortfolio";
-  view = viewAliases[view] || view;
-  if (!canAccessView(view)) {
-    showToast("Seu perfil não possui acesso a esta visão.");
-    view = "dashboard";
-  }
-  currentView = view;
+function updateViewNavigation(view) {
   document.querySelectorAll("[data-view]").forEach((button) => {
     const isTopProjects = button.dataset.module === "projects" && projectViewIds.includes(view);
     const isTopWorks = button.dataset.module === "works" && worksViewIds.includes(view);
@@ -1983,6 +1987,47 @@ function setView(view) {
     const aliasedButtonView = viewAliases[button.dataset.view] || button.dataset.view;
     button.classList.toggle("is-active", aliasedButtonView === view || isTopProjects || isTopWorks || isTopMaintenance || isTopClinical);
   });
+}
+
+function renderModuleLoading(view) {
+  const labels = { works: "Obras", maintenance: "Manutenção", clinical: "Engenharia Clínica", budget: "Controle de Verba", settings: "Configurações" };
+  const module = dataUIModuleForView(view);
+  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <section class="panel module-loading-panel" aria-live="polite" aria-busy="true">
+      <span class="eyebrow">Carregando banco</span>
+      <h1>${labels[module] || "Módulo"}</h1>
+      <p>Buscando e conferindo os dados antes de liberar consultas e inserções…</p>
+    </section>
+  `);
+}
+
+async function setView(view) {
+  if (view === "investmentPlan" || view === "projectsPlan") view = "projectsPortfolio";
+  view = viewAliases[view] || view;
+  if (!canAccessView(view)) {
+    showToast("Seu perfil não possui acesso a esta visão.");
+    view = "dashboard";
+  }
+  const request = ++viewNavigationRequest;
+  const previousView = currentView;
+  const dataModule = dataUIModuleForView(view);
+  updateViewNavigation(view);
+  if (dataModule !== "home" && !globalThis.SLT_CLOUD.isModuleLoaded(dataModule)) {
+    renderModuleLoading(view);
+    try {
+      await globalThis.SLT_CLOUD.ensureModule(dataModule);
+    } catch (error) {
+      if (request !== viewNavigationRequest) return;
+      currentView = previousView;
+      updateViewNavigation(previousView);
+      render();
+      showToast(error.message || "Não foi possível carregar os dados deste módulo.");
+      return;
+    }
+  }
+  if (request !== viewNavigationRequest) return;
+  currentView = view;
+  updateViewNavigation(view);
   render();
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   document.querySelector(".app-shell")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
@@ -2183,6 +2228,15 @@ function sortGenericTable(button) {
 
 function scheduleDashboardCharts() {
   const callback = () => {
+    const needsCharts = document.querySelector("#sankeyChart, #monthlyChart, #sendersChart, #receiversChart, #chartLine, #chartAcumulado, #chartDesvio, #chartStacked");
+    if (needsCharts && (!globalThis.echarts || !globalThis.Chart)) {
+      globalThis.SLT_CLOUD.ensureCharts().then(() => {
+        if (needsCharts.isConnected) callback();
+      }).catch(() => {
+        if (needsCharts.isConnected) renderTransferChartEmpty(needsCharts.id, "Não foi possível carregar a biblioteca de gráficos.");
+      });
+      return;
+    }
     renderTransferDashboardCharts();
     renderHapcapexDashboardCharts();
     mountSicApprovalView();
@@ -2197,17 +2251,23 @@ function scheduleDashboardCharts() {
 function mountSicApprovalView() {
   const host = document.querySelector('#sicApprovalDashboard');
   if (!host) return;
-  mountSicDashboard(host, {
-    cleanHTML: globalThis.SLT_CLOUD.cleanHTML,
-    canWrite: () => globalThis.SLT_CLOUD.canWrite('works'),
-    load: () => ({obras: structuredClone(state.sicApprovalWorks || []), weeks: structuredClone(state.sicApprovalWeeks || []), snapshots: structuredClone(state.sicApprovalSnapshots || [])}),
-    async save({obras, weeks, snapshots}) {
-      if (!globalThis.SLT_CLOUD.canWrite('works')) throw new Error('Seu acesso permite apenas consulta.');
-      state.sicApprovalWorks = structuredClone(obras);
-      state.sicApprovalWeeks = structuredClone(weeks);
-      state.sicApprovalSnapshots = structuredClone(snapshots);
-      await globalThis.SLT_CLOUD.saveAndWait(persistedStatePayload());
-    },
+  if (!sicDashboardModulePromise) sicDashboardModulePromise = import('./sic-dashboard.js');
+  sicDashboardModulePromise.then(({ mountSicDashboard }) => {
+    if (!host.isConnected) return;
+    mountSicDashboard(host, {
+      cleanHTML: globalThis.SLT_CLOUD.cleanHTML,
+      canWrite: () => globalThis.SLT_CLOUD.canWrite('works'),
+      load: () => ({obras: structuredClone(state.sicApprovalWorks || []), weeks: structuredClone(state.sicApprovalWeeks || []), snapshots: structuredClone(state.sicApprovalSnapshots || [])}),
+      async save({obras, weeks, snapshots}) {
+        if (!globalThis.SLT_CLOUD.canWrite('works')) throw new Error('Seu acesso permite apenas consulta.');
+        state.sicApprovalWorks = structuredClone(obras);
+        state.sicApprovalWeeks = structuredClone(weeks);
+        state.sicApprovalSnapshots = structuredClone(snapshots);
+        await globalThis.SLT_CLOUD.saveAndWait('works', persistedStatePayload());
+      },
+    });
+  }).catch(() => {
+    if (host.isConnected) host.innerHTML = '<div class="empty-state">Não foi possível carregar o painel de SICs.</div>';
   });
 }
 
@@ -4199,17 +4259,27 @@ function renderTeam() {
 }
 
 function moduleSummaries() {
-  const worksMetrics = moduleDemandMetrics("works");
-  const maintenancePortfolio = maintenanceItemsForModule("maintenance");
-  const clinicalPortfolio = maintenanceItemsForModule("clinical");
-  const maintenancePortfolioMetrics = moduleDemandMetrics("maintenance");
-  const clinicalPortfolioMetrics = moduleDemandMetrics("clinical");
-  const fundsBalance = positiveFundsBalanceTotal();
-  const totals = allTotals();
-  const pendingEvs = budgetWorks().filter((work) => work.ev?.status !== "Completo").length;
-  const historicalEVCount = Array.isArray(globalThis.EV_HISTORICAL_DATA?.records) ? globalThis.EV_HISTORICAL_DATA.records.length : 0;
-  const clinicalEquipmentCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.equipment || clinicalEquipmentRecords().length || 0);
-  const clinicalUnitCount = Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.units || 0);
+  const summary = globalThis.SLT_HOME_SUMMARY || {};
+  const worksLoaded = globalThis.SLT_CLOUD.isModuleLoaded("works");
+  const maintenanceLoaded = globalThis.SLT_CLOUD.isModuleLoaded("maintenance");
+  const clinicalLoaded = globalThis.SLT_CLOUD.isModuleLoaded("clinical");
+  const financeLoaded = globalThis.SLT_CLOUD.isModuleLoaded("budget");
+  const worksMetrics = worksLoaded ? moduleDemandMetrics("works") : null;
+  const maintenancePortfolio = maintenanceLoaded ? maintenanceItemsForModule("maintenance") : null;
+  const maintenancePortfolioMetrics = maintenanceLoaded ? moduleDemandMetrics("maintenance") : null;
+  const clinicalPortfolioMetrics = clinicalLoaded ? moduleDemandMetrics("clinical") : null;
+  const fundsBalance = financeLoaded ? positiveFundsBalanceTotal() : Number(summary.finance?.availableBalance || 0);
+  const totals = worksLoaded ? allTotals() : { contratado: Number(summary.works?.contracted || 0) };
+  const pendingEvs = worksLoaded ? budgetWorks().filter((work) => work.ev?.status !== "Completo").length : Number(summary.works?.pendingEVCount || 0);
+  const historicalEVCount = worksLoaded
+    ? arrayOrFallback(globalThis.EV_HISTORICAL_DATA?.records).length
+    : Number(summary.works?.historicalEVCount || 0);
+  const clinicalEquipmentCount = clinicalLoaded
+    ? Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.equipment || clinicalEquipmentRecords().length || 0)
+    : Number(summary.clinical?.equipmentCount || 0);
+  const clinicalUnitCount = clinicalLoaded
+    ? Number(globalThis.CLINICAL_EQUIPMENT_DATA?.summary?.units || 0)
+    : Number(summary.clinical?.unitCount || 0);
 
   return [
     {
@@ -4221,7 +4291,7 @@ function moduleSummaries() {
       tone: "blue",
       metrics: [
         { label: "EVs históricos", value: number(historicalEVCount) },
-        { label: "Cards operacionais", value: String(worksMetrics.active.length) },
+        { label: "Cards operacionais", value: String(worksMetrics?.active.length ?? Number(summary.works?.activeCount || 0)) },
         { label: "EVs pendentes", value: String(pendingEvs) },
       ],
     },
@@ -4233,9 +4303,9 @@ function moduleSummaries() {
       logo: moduleHeaders.maintenance.logo,
       tone: "orange",
       metrics: [
-        { label: "Cards operacionais", value: String(maintenancePortfolio.length) },
-        { label: "Em fluxo", value: String(maintenancePortfolioMetrics.active.length) },
-        { label: "Atrasadas", value: String(maintenancePortfolioMetrics.overdue.length) },
+        { label: "Cards operacionais", value: String(maintenancePortfolio?.length ?? Number(summary.maintenance?.totalCount || 0)) },
+        { label: "Em fluxo", value: String(maintenancePortfolioMetrics?.active.length ?? Number(summary.maintenance?.activeCount || 0)) },
+        { label: "Atrasadas", value: String(maintenancePortfolioMetrics?.overdue.length ?? Number(summary.maintenance?.overdueCount || 0)) },
       ],
     },
     {
@@ -4248,7 +4318,7 @@ function moduleSummaries() {
       metrics: [
         { label: "Equipamentos", value: number(clinicalEquipmentCount) },
         { label: "Unidades", value: number(clinicalUnitCount) },
-        { label: "OS em fluxo", value: String(clinicalPortfolioMetrics.active.length) },
+        { label: "OS em fluxo", value: String(clinicalPortfolioMetrics?.active.length ?? Number(summary.clinical?.activeCount || 0)) },
       ],
     },
     {
@@ -4259,7 +4329,7 @@ function moduleSummaries() {
       logo: moduleHeaders.budget.logo,
       tone: "red",
       metrics: [
-        { label: "Verbas", value: String(state.funds?.length || 0) },
+        { label: "Verbas", value: String(financeLoaded ? state.funds?.length || 0 : Number(summary.finance?.fundCount || 0)) },
         { label: "Saldo disponível", value: moneyCompact(fundsBalance) },
         { label: "Contratado", value: moneyCompact(totals.contratado) },
       ],
@@ -17017,7 +17087,7 @@ document.addEventListener("click", async (event) => {
   if (viewButton) {
     if (viewButton.closest(".modal-card")) closeModal();
     if (viewButton.dataset.view === "ev" && !viewButton.closest(".modal-card")) selectedWorkId = "all";
-    setView(viewButton.dataset.view);
+    await setView(viewButton.dataset.view);
     return;
   }
 
@@ -17829,7 +17899,7 @@ function hasDemandSubmitFields(form) {
 }
 
 document.addEventListener("submit", async (event) => {
-  if (!globalThis.SLT_CLOUD.canWrite(viewModule(currentView))) {
+  if (!globalThis.SLT_CLOUD.canWrite(dataUIModuleForView(currentView))) {
     event.preventDefault();
     showToast("Seu acesso permite apenas consulta nesta área.");
     return;
@@ -18152,8 +18222,22 @@ function budgetWorks() {
   return [...historical, ...current];
 }
 
+function receiveCloudModulePayload(payload) {
+  baseState = createBaseState({
+    ...(payload.state || {}),
+    users: [globalThis.SLT_CLOUD.profile],
+    activeRole: globalThis.SLT_CLOUD.profile.perfil,
+  });
+  hapcapexReference = globalThis.HAPCAPEX_REFERENCE || {capexInicial:0, contingenciamentos:0, aportesExtras:0, capexAtual:0, previstoHistorico:{}};
+  state = loadState();
+  authSession = loadAuthSession();
+  if (!state.works.some((work) => work.id === selectedWorkId)) selectedWorkId = state.works[0]?.id || "";
+  globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };
+  return persistedStatePayload();
+}
+
 globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };
+globalThis.SLT_CLOUD.registerModuleReceiver(receiveCloudModulePayload);
 mountUsersAdmin(globalThis.SLT_CLOUD, () => render());
 mountBackups(globalThis.SLT_CLOUD);
-globalThis.SLT_CLOUD.acceptInitialState(persistedStatePayload());
 render();

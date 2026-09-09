@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {flattenPayload} from '../../src/module-model.js';
+import {flattenPayload,ENTITY_BY_NAME} from '../../src/module-model.js';
 import * as XLSX from 'xlsx';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -45,7 +45,16 @@ async function backend(page,role='Admin',malicious=false){
    const body=req.postDataJSON();const analyst={id:'22222222-2222-4222-8222-222222222222',nome:body.analyst_name,created_at:'2026-09-09T12:00:00Z'};
    analysts=[...analysts,analyst];data=analyst;
   }
-  else if(p.endsWith('/slt_module_load'))data={schema_version:2,records};
+  else if(p.endsWith('/slt_home_summary'))data={schema_version:2,works:{totalWorks:5,historicalEVCount:3,activeCount:2,pendingEVCount:1,contracted:0},maintenance:{totalCount:0,activeCount:0,overdueCount:0},clinical:{equipmentCount:0,unitCount:0,totalCount:0,activeCount:0},finance:{fundCount:0,availableBalance:0}};
+  else if(p.endsWith('/slt_module_load')){
+   const module=req.postDataJSON()?.module_key;
+   const dependencies=new Set([
+    ...(['budget','maintenance','clinical','projects'].includes(module)?['core_units','core_sprints','core_source_unit_registry_data']:[]),
+    ...(module==='budget'?['core_suppliers']:[]),
+    ...(['budget','finance','projects'].includes(module)?['projects_works']:[]),
+   ]);
+   data={schema_version:2,records:module?records.filter(row=>ENTITY_BY_NAME.get(row.entity)?.module===module||dependencies.has(row.entity)):records};
+  }
   else if(p.endsWith('/slt_backup_daily'))data={created:false};
   else if(p.endsWith('/slt_commit_changes')){
    const body=req.postDataJSON();requests.push(body);
@@ -288,7 +297,7 @@ test('only SICs enter director approval after Works validation',async({page})=>{
  expect(b.errors).toEqual([]);
 });
 
-test('session validation, data, permissions and backup start together',async({page})=>{
+test('startup loads only home counters and a module stays read-only until its database snapshot arrives',async({page})=>{
  await page.addInitScript(()=>{
   const original=window.fetch.bind(window);window.__fetchStarts=[];
   window.fetch=(...args)=>{
@@ -298,11 +307,20 @@ test('session validation, data, permissions and backup start together',async({pa
   };
  });
  const b=await backend(page);await login(page);
- const expected=['/auth/v1/user','/rest/v1/slt360_profiles','/rest/v1/rpc/slt_module_load','/rest/v1/slt_core_module_access','/rest/v1/slt_core_analysts','/rest/v1/rpc/slt_backup_daily'];
+ const expected=['/auth/v1/user','/rest/v1/slt360_profiles','/rest/v1/rpc/slt_home_summary','/rest/v1/slt_core_module_access','/rest/v1/slt_core_analysts','/rest/v1/rpc/slt_backup_daily'];
  const initiated=await page.evaluate(()=>window.__fetchStarts);
  const starts=expected.map(path=>initiated.find(entry=>new URL(entry.url).pathname===path)?.at);
  expect(starts.every(Number.isFinite)).toBe(true);
  expect(Math.max(...starts)-Math.min(...starts),JSON.stringify(initiated)).toBeLessThan(100);
+ expect(initiated.some(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toBe(false);
+ expect(await page.evaluate(()=>({echarts:Boolean(window.echarts),chart:Boolean(window.Chart)}))).toEqual({echarts:false,chart:false});
+ expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(false);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>window.SLT_CLOUD.isModuleLoaded('works'))).toBe(true);
+ expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ const afterModule=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toHaveLength(1);
  expect(b.errors).toEqual([]);
 });
 

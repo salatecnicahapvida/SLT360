@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import DOMPurify from 'dompurify';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { decorateProfile, moduleAllowed, entityWritable, MODULE_OPTIONS } from './access.js';
-import { createModuleStore } from './module-store.js';
+import { createLazyModuleStore, dataModuleForUI } from './lazy-module-store.js';
 
 function createPersistentAuthStorage() {
   const persistent = globalThis.localStorage;
@@ -54,11 +54,28 @@ const shell = document.querySelector('#legacyShell');
 const loginForm = document.querySelector('#cloudLogin');
 const firstAccess = document.querySelector('#firstAccess');
 const signOutButton = document.querySelector('#cloudSignOut');
-let queue;
+let lazyStore;
 let loaded = false;
 let starting = null;
 let cloudWritesEnabled = false;
+let chartLibrariesPromise = null;
 shell.inert = true;
+
+async function ensureChartLibraries() {
+  if (globalThis.echarts && globalThis.Chart) return;
+  if (!chartLibrariesPromise) {
+    chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto'), import('echarts/theme/v5.js')])
+      .then(([echarts, chart]) => {
+        globalThis.echarts = echarts;
+        globalThis.Chart = chart.default;
+      })
+      .catch(error => {
+        chartLibrariesPromise = null;
+        throw error;
+      });
+  }
+  await chartLibrariesPromise;
+}
 
 function cleanHTML(html) {
   return DOMPurify.sanitize(String(html), {
@@ -167,22 +184,18 @@ async function startInternal() {
     return;
   }
 
-  // O banco valida cada chamada pelo JWT/RLS. A confirmação mais recente do Auth,
-  // a carga dos dados, as permissões e o backup podem ocorrer juntos, evitando
-  // somar várias viagens de rede ao tempo de abertura.
-  const chartLibrariesPromise = Promise.all([import('echarts'), import('chart.js/auto'), import('echarts/theme/v5.js')]);
-  // Start the independent Data API calls immediately with the already validated
-  // session token. Supabase's regular client remains responsible for session
-  // refresh and every operation after startup.
+  // A abertura carrega apenas identidade, permissões, diretório e contadores.
+  // Dados operacionais são buscados somente ao entrar no respectivo módulo.
   const encodedUserId = encodeURIComponent(sessionUserId);
   const profilePromise = startupRest(session, `slt360_profiles?select=id%2Cnome%2Cperfil%2Cativo%2Cmust_change_password%2Canalyst_id%2Crevision&id=eq.${encodedUserId}&limit=1`);
-  const modulePromise = startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: {} });
+  const homePromise = startupRest(session, 'rpc/slt_home_summary', { method: 'POST', body: {} });
   const grantsPromise = startupRest(session, `slt_core_module_access?select=module%2Ccan_read%2Ccan_write&user_id=eq.${encodedUserId}`);
   const directoryPromise = startupRest(session, 'slt_core_analysts?select=id%2Cnome&order=nome.asc');
-  const backupPromise = startupRest(session, 'rpc/slt_backup_daily', { method: 'POST', body: {} });
+  const backupPromise = startupRest(session, 'rpc/slt_backup_daily', { method: 'POST', body: {} })
+    .catch(error => ({ data: null, error }));
   const authPromise = client.auth.getUser(session.access_token);
-  const [authResponse, profileResponse, moduleResponse, grants, directory, dailyBackup] = await Promise.all([
-    authPromise, profilePromise, modulePromise, grantsPromise, directoryPromise, backupPromise,
+  const [authResponse, profileResponse, homeResponse, grants, directory] = await Promise.all([
+    authPromise, profilePromise, homePromise, grantsPromise, directoryPromise,
   ]);
 
   // A sessão persistida pode existir no navegador mesmo quando o token já não é válido.
@@ -217,14 +230,8 @@ async function startInternal() {
     return;
   }
 
-  const { data: row, error: dataError } = moduleResponse;
-  if (dataError || row?.schema_version !== 2) {
-    showAccessError('A base modular não está acessível. Verifique a conexão e a liberação do acesso; nenhum dado local será usado.');
-    return;
-  }
-
-  if (dailyBackup.error) {
-    showAccessError('Não foi possível confirmar o backup automático. Para proteger os dados, o sistema não liberou alterações. Recarregue e tente novamente.');
+  if (homeResponse.error || !homeResponse.data || homeResponse.data.schema_version !== 2) {
+    showAccessError('Não foi possível carregar os indicadores iniciais. Recarregue a página ou tente novamente em instantes.');
     return;
   }
 
@@ -238,9 +245,13 @@ async function startInternal() {
   // a abertura da aplicação para todos os usuários.
   const team = null;
 
-  queue = createModuleStore({
-    records: row.records,
-    canWrite: entity => entityWritable(currentProfile, entity),
+  lazyStore = createLazyModuleStore({
+    async load(module) {
+      const response = await startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: { module_key: module } });
+      if (response.error) throw new Error(response.error.message || `Não foi possível carregar o módulo ${module}.`);
+      return response.data;
+    },
+    canWriteEntity: entity => entityWritable(currentProfile, entity),
     async commit(request_id, changes) {
       if (!cloudWritesEnabled) throw new Error('Os dados da nuvem ainda não foram confirmados para edição.');
       const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
@@ -255,20 +266,43 @@ async function startInternal() {
     },
   });
 
-  const payload = queue.payload;
-  for (const key of ['SIC_BI_DATA','INVESTMENT_PLAN_DATA','UNIT_REGISTRY_DATA','MAINTENANCE_DATA','CAPEX_CONTROL_DATA','COMMISSION_OBRAS_DATA','HAPCAPEX_REFERENCE']) {
-    if (Object.hasOwn(payload.datasets || {}, key)) globalThis[key] = payload.datasets[key];
-  }
+  const dataModule = uiModule => dataModuleForUI(uiModule);
+  const readyForWrite = uiModule => {
+    const module = dataModule(uiModule);
+    return Boolean(cloudWritesEnabled && module && lazyStore.hasLoaded(module) && moduleAllowed(currentProfile, module, true));
+  };
 
-  globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: currentProfile.perfil };
+  globalThis.SLT_HOME_SUMMARY = homeResponse.data;
+  globalThis.TRACO_IMPORTED_STATE = { users: [currentProfile], activeRole: currentProfile.perfil };
   globalThis.SLT_CLOUD = {
     profile: currentProfile,
     analysts: directory.data || [],
     team,
     cleanHTML,
     canRead: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core'),
-    canWrite: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core', true),
-    readyForWrites: () => cloudWritesEnabled,
+    canWrite: readyForWrite,
+    readyForWrites: uiModule => readyForWrite(uiModule),
+    isModuleLoaded(uiModule) {
+      if (uiModule === 'home') return true;
+      const module = dataModule(uiModule);
+      return Boolean(module && lazyStore.hasLoaded(module));
+    },
+    async ensureModule(uiModule) {
+      if (uiModule === 'home') return;
+      const module = dataModule(uiModule);
+      if (!module || !moduleAllowed(currentProfile, module)) throw new Error('Seu perfil não possui acesso a este módulo.');
+      await lazyStore.ensure(module);
+    },
+    registerModuleReceiver(receiver) {
+      lazyStore.registerReceiver(async (payload, module) => {
+        for (const key of ['SIC_BI_DATA','INVESTMENT_PLAN_DATA','UNIT_REGISTRY_DATA','MAINTENANCE_DATA','CAPEX_CONTROL_DATA','COMMISSION_OBRAS_DATA','HAPCAPEX_REFERENCE']) {
+          if (Object.hasOwn(payload.datasets || {}, key)) globalThis[key] = payload.datasets[key];
+        }
+        globalThis.TRACO_IMPORTED_STATE = { ...payload.state, users: [currentProfile], activeRole: currentProfile.perfil };
+        return receiver(payload, module);
+      });
+    },
+    ensureCharts: ensureChartLibraries,
     async adminUsers() {
       const r = await client.rpc('slt_admin_users');
       if (r.error) throw r.error;
@@ -324,7 +358,7 @@ async function startInternal() {
     },
     async restoreBackup(backup_id) {
       if (currentProfile.perfil !== 'Admin') throw new Error('Somente Admin pode restaurar um backup.');
-      await queue.flush();
+      await lazyStore.flush();
       cloudWritesEnabled = false;
       shell.inert = true;
       const r = await client.rpc('slt_backup_restore', { backup_id });
@@ -336,26 +370,23 @@ async function startInternal() {
       location.reload();
       return r.data;
     },
-    save: snapshot => {
-      if (!cloudWritesEnabled) return;
-      queue.save(snapshot);
+    save: (uiModule, snapshot) => {
+      if (!readyForWrite(uiModule)) throw new Error('Aguarde o carregamento completo do banco antes de inserir ou alterar dados.');
+      lazyStore.save(dataModule(uiModule), snapshot);
     },
-    async saveAndWait(snapshot) {
-      if (!cloudWritesEnabled) throw new Error('A edição ainda não foi liberada.');
-      queue.save(snapshot);
-      await queue.flush();
-    },
-    acceptInitialState: snapshot => {
-      queue.acceptInitialState(snapshot);
-      cloudWritesEnabled = true;
+    async saveAndWait(uiModule, snapshot) {
+      if (!readyForWrite(uiModule)) throw new Error('Aguarde o carregamento completo do banco antes de inserir ou alterar dados.');
+      await lazyStore.saveAndWait(dataModule(uiModule), snapshot);
     },
     async logout() {
-      try { await queue.flush(); } catch { return; }
+      try { await lazyStore.flush(); } catch { return; }
       cloudWritesEnabled = false;
       await client.auth.signOut();
       location.reload();
     },
     async saveAttachment(record) {
+      const uiModule = MODULE_OPTIONS.find(item => item.id === record.module)?.ui;
+      if (!readyForWrite(uiModule)) throw new Error('Aguarde o carregamento completo do banco antes de inserir anexos.');
       if (record.blob.size > 10485760) throw new Error('O limite por anexo é 10 MB.');
       const result = await client.from('slt360_attachments').insert({ id: record.id, nome: record.nome, tipo: record.tipo, tamanho: record.tamanho, module: record.module });
       if (result.error) throw result.error;
@@ -371,19 +402,18 @@ async function startInternal() {
     },
   };
 
-  const [echarts, chart] = await chartLibrariesPromise;
-  globalThis.echarts = echarts;
-  globalThis.Chart = chart.default;
-
   try {
     await import('./app.js');
-    if (!cloudWritesEnabled) throw new Error('O estado inicial da nuvem não foi confirmado pelo aplicativo.');
+    cloudWritesEnabled = true;
     loaded = true;
     gate.hidden = true;
     gate.classList.remove('is-ready');
     gate.removeAttribute('aria-busy');
     shell.hidden = false;
     shell.inert = false;
+    backupPromise.then(({ error }) => {
+      if (error) console.warn('O backup automático em segundo plano não foi confirmado.', error);
+    });
   } catch (error) {
     cloudWritesEnabled = false;
     shell.hidden = true;
@@ -464,7 +494,7 @@ document.querySelector('#firstAccessForm').addEventListener('submit', async even
 });
 
 window.addEventListener('beforeunload', event => {
-  if (queue?.dirty) {
+  if (lazyStore?.dirty) {
     event.preventDefault();
     event.returnValue = '';
   }

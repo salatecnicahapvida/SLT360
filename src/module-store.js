@@ -1,7 +1,7 @@
 import { ENTITIES, ENTITY_BY_NAME, flattenPayload, hydrateRecords, recordKey } from './module-model.js';
 const canonical = value => JSON.stringify(value,(_,v)=>v && typeof v==='object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])) : v);
 const content = r => canonical([r.document,r.child_fields,r.parent_key]);
-export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=>{},newRequestId=()=>crypto.randomUUID()}) {
+export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=>{},onCommitted=()=>{},newRequestId=()=>crypto.randomUUID()}) {
   let baseline=new Map(records.filter(r=>!ENTITY_BY_NAME.get(r.entity)?.readonly && canWrite(ENTITY_BY_NAME.get(r.entity))).map(r=>[recordKey(r),r]));
   const versions=new Map(records.map(r=>[recordKey(r),r.revision]));
   let pending,active=false,failure=null,saving=Promise.resolve();
@@ -51,6 +51,7 @@ export function createModuleStore({records,commit,canWrite=()=>true,onStatus=()=
             throw new Error('O banco não confirmou todos os registros. Recarregue para conferir o resultado.');
           }
           for(const row of result) versions.set(recordKey(row),row.revision);
+          onCommitted(changes,result);
         }
         baseline=new Map([...next,...protectedMissing].map(r=>[recordKey(r),r]));
       }

@@ -59,6 +59,10 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   await db.query("select set_config('request.headers',$1,false)", [JSON.stringify({'x-client-info':'unified-1'})]);
   const loaded=(await db.query('select slt_module_load() result')).rows[0].result;
   for(const key of Object.keys(state))assert.deepEqual(hydrateRecords(loaded.records).state[key],state[key]);
+  const home=(await db.query('select slt_home_summary() result')).rows[0].result;
+  assert.equal(home.schema_version,2);
+  assert.equal(Number(home.works.totalWorks),1);
+  assert.equal(Number(home.works.activeCount),1);
   await assert.rejects(commit([{entity:'budget_demands',key:'d',operation:'delete',expected_revision:1}]),{code:'22023'});
   const backup=(await db.query("select slt_backup_manual('test') result")).rows[0].result;
   const daily=(await db.query('select slt_backup_daily() result')).rows[0].result;
