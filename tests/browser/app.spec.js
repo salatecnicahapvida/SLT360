@@ -307,12 +307,14 @@ test('startup loads only home counters and a module stays read-only until its da
   };
  });
  const b=await backend(page);await login(page);
- const expected=['/auth/v1/user','/rest/v1/slt360_profiles','/rest/v1/rpc/slt_home_summary','/rest/v1/slt_core_module_access','/rest/v1/slt_core_analysts','/rest/v1/rpc/slt_backup_daily'];
+ const expected=['/auth/v1/user','/rest/v1/slt360_profiles','/rest/v1/rpc/slt_home_summary','/rest/v1/slt_core_module_access'];
  const initiated=await page.evaluate(()=>window.__fetchStarts);
  const starts=expected.map(path=>initiated.find(entry=>new URL(entry.url).pathname===path)?.at);
  expect(starts.every(Number.isFinite)).toBe(true);
  expect(Math.max(...starts)-Math.min(...starts),JSON.stringify(initiated)).toBeLessThan(100);
  expect(initiated.some(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toBe(false);
+ expect(initiated.some(entry=>new URL(entry.url).pathname.endsWith('/slt_core_analysts'))).toBe(false);
+ expect(initiated.some(entry=>new URL(entry.url).pathname.endsWith('/slt_backup_daily'))).toBe(false);
  expect(await page.evaluate(()=>({echarts:Boolean(window.echarts),chart:Boolean(window.Chart)}))).toEqual({echarts:false,chart:false});
  expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(false);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -321,6 +323,7 @@ test('startup loads only home counters and a module stays read-only until its da
  expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const afterModule=await page.evaluate(()=>window.__fetchStarts);
  expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toHaveLength(1);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_core_analysts'))).toHaveLength(1);
  expect(b.errors).toEqual([]);
 });
 

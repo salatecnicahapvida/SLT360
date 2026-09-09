@@ -190,12 +190,9 @@ async function startInternal() {
   const profilePromise = startupRest(session, `slt360_profiles?select=id%2Cnome%2Cperfil%2Cativo%2Cmust_change_password%2Canalyst_id%2Crevision&id=eq.${encodedUserId}&limit=1`);
   const homePromise = startupRest(session, 'rpc/slt_home_summary', { method: 'POST', body: {} });
   const grantsPromise = startupRest(session, `slt_core_module_access?select=module%2Ccan_read%2Ccan_write&user_id=eq.${encodedUserId}`);
-  const directoryPromise = startupRest(session, 'slt_core_analysts?select=id%2Cnome&order=nome.asc');
-  const backupPromise = startupRest(session, 'rpc/slt_backup_daily', { method: 'POST', body: {} })
-    .catch(error => ({ data: null, error }));
   const authPromise = client.auth.getUser(session.access_token);
-  const [authResponse, profileResponse, homeResponse, grants, directory] = await Promise.all([
-    authPromise, profilePromise, homePromise, grantsPromise, directoryPromise,
+  const [authResponse, profileResponse, homeResponse, grants] = await Promise.all([
+    authPromise, profilePromise, homePromise, grantsPromise,
   ]);
 
   // A sessão persistida pode existir no navegador mesmo quando o token já não é válido.
@@ -235,7 +232,7 @@ async function startInternal() {
     return;
   }
 
-  if (grants.error || directory.error) {
+  if (grants.error) {
     showAccessError('Não foi possível conferir as permissões. Tente entrar novamente.');
     return;
   }
@@ -244,6 +241,26 @@ async function startInternal() {
   // A lista administrativa é consultada somente quando necessária e não atrasa
   // a abertura da aplicação para todos os usuários.
   const team = null;
+  let analystDirectory = null;
+  let analystDirectoryPromise = null;
+
+  async function ensureAnalystDirectory() {
+    if (analystDirectory) return analystDirectory;
+    if (!analystDirectoryPromise) {
+      analystDirectoryPromise = startupRest(session, 'slt_core_analysts?select=id%2Cnome&order=nome.asc')
+        .then(response => {
+          if (response.error) throw new Error(response.error.message || 'Não foi possível carregar os analistas.');
+          analystDirectory = response.data || [];
+          if (globalThis.SLT_CLOUD) globalThis.SLT_CLOUD.analysts = analystDirectory;
+          return analystDirectory;
+        })
+        .catch(error => {
+          analystDirectoryPromise = null;
+          throw error;
+        });
+    }
+    return analystDirectoryPromise;
+  }
 
   lazyStore = createLazyModuleStore({
     async load(module) {
@@ -276,7 +293,7 @@ async function startInternal() {
   globalThis.TRACO_IMPORTED_STATE = { users: [currentProfile], activeRole: currentProfile.perfil };
   globalThis.SLT_CLOUD = {
     profile: currentProfile,
-    analysts: directory.data || [],
+    analysts: [],
     team,
     cleanHTML,
     canRead: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core'),
@@ -291,7 +308,7 @@ async function startInternal() {
       if (uiModule === 'home') return;
       const module = dataModule(uiModule);
       if (!module || !moduleAllowed(currentProfile, module)) throw new Error('Seu perfil não possui acesso a este módulo.');
-      await lazyStore.ensure(module);
+      await Promise.all([ensureAnalystDirectory(), lazyStore.ensure(module)]);
     },
     registerModuleReceiver(receiver) {
       lazyStore.registerReceiver(async (payload, module) => {
@@ -411,9 +428,13 @@ async function startInternal() {
     gate.removeAttribute('aria-busy');
     shell.hidden = false;
     shell.inert = false;
-    backupPromise.then(({ error }) => {
-      if (error) console.warn('O backup automático em segundo plano não foi confirmado.', error);
-    });
+    setTimeout(() => {
+      startupRest(session, 'rpc/slt_backup_daily', { method: 'POST', body: {} })
+        .then(({ error }) => {
+          if (error) console.warn('O backup automático em segundo plano não foi confirmado.', error);
+        })
+        .catch(error => console.warn('O backup automático em segundo plano não foi confirmado.', error));
+    }, 1500);
   } catch (error) {
     cloudWritesEnabled = false;
     shell.hidden = true;
