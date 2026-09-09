@@ -198,6 +198,34 @@ test('initial budget demand is optional, shows work year and accepts every portf
  expect(b.errors).toEqual([]);
 });
 
+test('portfolio rows open options for the exact current or historical EV and handle works without EV',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const rows=page.locator('.portfolio-works-table tbody tr');
+ await rows.filter({hasText:'Obra histórica Norte'}).locator('td').nth(1).click();
+ const options=page.getByRole('dialog');
+ await expect(options).toContainText('Obra histórica Norte - AM');
+ await options.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
+ await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
+ const current=rows.filter({hasText:'Obra de teste'});
+ await current.focus();await current.press('Enter');
+ await expect(options).toContainText('Obra de teste');
+ await options.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
+ await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).press('Enter');
+ const empty=rows.filter({hasText:'Obra nova sem EV'});
+ await empty.focus();await empty.press('Space');
+ await expect(options).toContainText('Esta obra ainda não possui EV vinculado.');
+ await expect(options.getByRole('button',{name:'Abrir EV'})).toHaveCount(0);
+ await options.getByRole('button',{name:'Fechar'}).click();
+ await current.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
+ await expect(options).toHaveCount(0);
+ expect(b.errors).toEqual([]);
+});
+
 test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();

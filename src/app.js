@@ -6477,7 +6477,7 @@ function renderPortfolioTable(rows) {
         </thead>
         <tbody>
           ${rows.map((row) => `
-            <tr>
+            <tr class="portfolio-work-row" tabindex="0" data-action="open-portfolio-work-options" data-id="${escapeAttribute(row.id)}" aria-label="Opções da obra ${escapeAttribute(row.nome)}">
               <td><strong>${escapeAttribute(row.codigo || "")}</strong></td>
               <td><strong>${escapeAttribute(row.nome)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
@@ -6501,6 +6501,27 @@ function renderPortfolioTable(rows) {
       </table>
     </div>
   `;
+}
+
+function openPortfolioWorkOptions(workId) {
+  const row = portfolioRows(false, false).find((item) => item.id === workId);
+  if (!row) return;
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <article class="modal-card portfolio-work-options" role="dialog" aria-modal="true" aria-labelledby="portfolioWorkOptionsTitle">
+        <header class="modal-header">
+          <div><span class="eyebrow">Opções da obra</span><h2 id="portfolioWorkOptionsTitle">${escapeAttribute(row.nome)}</h2>
+          <p class="muted">${escapeAttribute(row.codigo || "Sem código")} · ${escapeAttribute(row.cidadeUf || row.uf || "")}</p></div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          ${row.hasAssociatedEV ? `<p>EV vinculado · ${escapeAttribute(row.evStatus || "")} · ${moneyCents(row.capex)}</p>
+          <button class="primary-action full-width" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
+          : `<p class="empty-state">Esta obra ainda não possui EV vinculado.</p>`}
+        </div>
+      </article>
+    </div>`);
+  modalRoot.querySelector('button')?.focus();
 }
 
 function renderPortfolioInvestmentPlanTable(rows) {
@@ -17237,6 +17258,10 @@ document.addEventListener("click", async (event) => {
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
   if (action === "open-ev-modal") openEVModal(actionButton.dataset.id);
+  if (action === "open-portfolio-work-options") {
+    openPortfolioWorkOptions(actionButton.dataset.id);
+    return;
+  }
   if (action === "open-historical-ev") {
     await openHistoricalEVModal(actionButton.dataset.id);
     return;
@@ -17663,6 +17688,11 @@ document.addEventListener("pointerup", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.target.matches('.portfolio-work-row') && ["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    event.target.click();
+    return;
+  }
   if (isTextEditingTarget(event.target)) return;
   const moduleCard = event.target.closest('[role="button"][data-view], [role="button"][data-action]');
   if (!moduleCard || !["Enter", " "].includes(event.key)) return;
