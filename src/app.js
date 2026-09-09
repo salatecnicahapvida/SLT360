@@ -4888,7 +4888,6 @@ function renderWorksOperational() {
     `)}
     <section class="status-line module-status-line">
       <span class="tag">Sprint atual: ${activeSprint?.nome || "Sem sprint ativa"}</span>
-      <span class="tag">Busca global aplicada: ${searchTerm || "sem filtro"}</span>
       <span class="tag">Pendências de cotação: ${state.works.filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo").length}</span>
     </section>
 
@@ -17282,8 +17281,6 @@ document.addEventListener("click", async (event) => {
     evHistoricalFilters = { query: "", year: "", typology: "", discipline: "", technician: "" };
     evHistoricalSort = { key: "", direction: "" };
     selectedWorkId = "all";
-    const globalSearch = document.querySelector("#globalSearch");
-    if (globalSearch) globalSearch.value = "";
     showToast("Filtros do EV limpos.");
     render();
   }
@@ -17803,12 +17800,6 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     showToast("Envio protegido: revise o modal e use o botão de salvar novamente.");
   }
-});
-
-document.querySelector("#globalSearch").addEventListener("input", (event) => {
-  if (!isAuthenticated()) return;
-  searchTerm = event.target.value;
-  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) scheduleInputRender();
 });
 
 let inputRenderTimer = null;

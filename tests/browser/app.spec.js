@@ -67,6 +67,8 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Sprints globais',exact:true})).toHaveCount(0);
+ await expect(page.locator('#globalSearch')).toHaveCount(0);
+ await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
  await expect(page.locator('[data-operational-filter="type"] option[value="SIC"]')).toHaveText('SIC');
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
