@@ -8753,6 +8753,53 @@ button.alert-item {
   gap: 10px;
 }
 
+.settings-history-summary {
+  align-items: center;
+  margin-bottom: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  color: var(--navy);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.settings-history-collapse {
+  display: none;
+}
+
+.settings-history-chevron {
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.settings-history-panel[open] .settings-history-summary {
+  margin-bottom: 14px;
+}
+
+.settings-history-panel[open] .settings-history-expand {
+  display: none;
+}
+
+.settings-history-panel[open] .settings-history-collapse {
+  display: inline;
+}
+
+.settings-history-panel[open] .settings-history-chevron {
+  transform: rotate(180deg);
+}
+
 .history-item {
   padding: 12px;
   border: 1px solid var(--line);

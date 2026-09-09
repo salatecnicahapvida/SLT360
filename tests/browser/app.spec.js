@@ -96,6 +96,13 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
   await expect(page.locator('#app')).not.toBeEmpty();
  }
  await expect(page.locator('[data-team-action="create"]')).toBeVisible();
+ const settingsHistory=page.locator('.settings-history-panel');
+ await expect(settingsHistory).not.toHaveAttribute('open','');
+ await expect(settingsHistory.getByText('Sem histórico registrado.')).not.toBeVisible();
+ await settingsHistory.locator('summary').click();
+ await expect(settingsHistory).toHaveAttribute('open','');
+ await expect(settingsHistory.getByText('Sem histórico registrado.')).toBeVisible();
+ await expect(settingsHistory.getByText('Recolher')).toBeVisible();
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
 });

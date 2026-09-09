@@ -14118,20 +14118,25 @@ function renderSettings() {
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
+      <details class="panel settings-history-panel">
+        <summary class="panel-header settings-history-summary">
           <div>
             <h2>Histórico</h2>
             <p class="panel-subtitle">Auditoria das alterações relevantes</p>
           </div>
-        </div>
+          <span class="settings-history-toggle">
+            <span class="settings-history-expand">Expandir</span>
+            <span class="settings-history-collapse">Recolher</span>
+            <span class="settings-history-chevron" aria-hidden="true">⌄</span>
+          </span>
+        </summary>
         <div class="history-list">
           ${history
             .slice(0, 12)
             .map(renderHistoryItem)
             .join("") || `<div class="empty-state">Sem histórico registrado.</div>`}
         </div>
-      </section>
+      </details>
     </div>
   `;
 }
