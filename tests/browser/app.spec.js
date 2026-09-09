@@ -21,7 +21,7 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false}={}){
  const input=structuredClone(payload);
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -39,7 +39,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
  const requests=[]; const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const user={id,email:'admin@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{}};
- const grants=['budget','maintenance','clinical','finance'].map(module=>({module,can_read:true,can_write:role==='Admin'}));
+ const grants=['projects','budget','maintenance','clinical','finance'].map(module=>({module,can_read:true,can_write:role==='Admin'||analystCanWrite}));
  const profile={id,nome:'Usuário teste',perfil:role,ativo:true,must_change_password:false,revision:1};
  const token=['eyJhbGciOiJIUzI1NiJ9',Buffer.from(JSON.stringify({sub:id,exp:Math.floor(Date.now()/1000)+3600,role:'authenticated'})).toString('base64url'),'test'].join('.');
  await page.route('https://mgpkgxcenxnqvvujlclh.supabase.co/**',async route=>{
@@ -132,6 +132,27 @@ test('module switching keeps one service order per id when source and database v
  await expect(page.getByRole('heading',{name:'Manutenção',exact:true})).toBeVisible();
  expect(b.errors).toEqual([]);
  await expect(page.getByText(/Identificador duplicado/)).toHaveCount(0);
+});
+
+test('analyst edits and moves existing demands but cannot create or delete them',async({page})=>{
+ const b=await backend(page,'Analista',false,{analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.locator('[data-action="open-demand"]')).toBeHidden();
+ await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail).toBeVisible();
+ await expect(detail.locator('[data-action="open-delete-demand"]')).toBeHidden();
+ await detail.locator('[name="observacao"]').fill('Descrição ajustada pelo analista');
+ await detail.locator('[name="nota"]').fill('Ajuste permitido ao analista');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='budget_demands'&&change.key==='test-budget-demand'&&change.operation==='upsert'))).toBe(true);
+
+ await page.locator('[data-module="maintenance"]').click();
+ await expect(page.locator('[data-action="open-maintenance-demand"]')).toBeHidden();
+ await page.locator('[data-module="clinical"]').click();
+ await expect(page.locator('[data-action="open-maintenance-demand"]')).toBeHidden();
+ await expect(page.locator('[data-action="create-clinical-demand-for-asset"]')).toBeHidden();
+ expect(b.errors).toEqual([]);
 });
 
 test('kanban horizontal scrollbar stays above the column names',async({page})=>{

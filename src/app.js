@@ -2052,7 +2052,29 @@ function activeRole() {
 
 function canAccessView(view) { const module = viewModule(viewAliases[view] || view); return module !== "projects" && canAccessModule(module); }
 
+const demandLifecycleActions = new Set([
+  "open-demand", "open-global-demand", "open-global-demand-type", "open-maintenance-demand", "open-project-demand",
+  "create-clinical-demand-for-asset", "create-budget-from-project", "start-budget-from-plan", "start-demand-wizard",
+  "submit-demand-step", "submit-demand-form", "open-delete-demand",
+]);
+
+function analystDemandLifecycleBlocked(action = "") {
+  return activeRole() === "Analista" && demandLifecycleActions.has(action);
+}
+
+function demandLifecycleDeniedMessage() {
+  return "Analistas podem preencher, alterar e mover demandas existentes, mas não podem criar ou excluir demandas.";
+}
+
+function ensureDemandLifecycleAllowed(form = null) {
+  if (activeRole() !== "Analista") return true;
+  if (form) showFormError(demandLifecycleDeniedMessage(), form);
+  else showToast(demandLifecycleDeniedMessage());
+  return false;
+}
+
 function canMutateUI(action) {
+  if (analystDemandLifecycleBlocked(action)) return false;
   const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets","open-config-catalog"].includes(action);
   if (!writeAction) return true;
   const module = /sprint|supplier/.test(action) ? "settings" : dataUIModuleForView(currentView);
@@ -2080,7 +2102,14 @@ function applyRolePermissions() {
   if (headerSearch) headerSearch.hidden = isHome;
   if (headerNewDemand) headerNewDemand.hidden = isHome;
   document.querySelectorAll('[data-action]').forEach(button => {
-    if (!canMutateUI(button.dataset.action)) { button.disabled = true; button.title = 'Seu acesso permite apenas consulta.'; }
+    if (analystDemandLifecycleBlocked(button.dataset.action)) {
+      button.hidden = true;
+      button.disabled = true;
+      button.title = demandLifecycleDeniedMessage();
+    } else if (!canMutateUI(button.dataset.action)) {
+      button.disabled = true;
+      button.title = 'Seu acesso permite apenas consulta.';
+    }
   });
   const logoutButton = document.querySelector('[data-action="logout"]');
   if (logoutButton) logoutButton.hidden = !user;
@@ -3869,6 +3898,7 @@ function openProjectDemandModal(selectedType = "planoInvestimento") {
 }
 
 function handleProjectDemandSubmit(form) {
+  if (!ensureDemandLifecycleAllowed(form)) return;
   const formData = new FormData(form);
   const typeId = String(formData.get("tipoDemanda") || "planoInvestimento");
   const type = projectDemandTypeById(typeId);
@@ -10022,6 +10052,7 @@ function updateMaintenanceDemandPhase(id, nextColumnId) {
 }
 
 function handleMaintenanceDemandSubmit(form) {
+  if (!ensureDemandLifecycleAllowed(form)) return;
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
   const selectedAsset = labels.isClinical ? clinicalEquipmentById(formData.get("clinicalAssetId")) : null;
@@ -14777,7 +14808,7 @@ function openDemandDetailModal(id) {
           </section>
         </div>
         <footer class="modal-actions">
-          <button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>
+          ${activeRole() === "Analista" ? "" : `<button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>`}
           <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
           <button class="primary-action" type="submit">Salvar</button>
         </footer>
@@ -16554,6 +16585,7 @@ function generateWorkKey(index, uf, tipoUnidade, tipologia) {
 }
 
 async function handleDemandSubmit(form) {
+  if (!ensureDemandLifecycleAllowed(form)) return;
   const formData = new FormData(form);
   const tipo = formData.get("tipo");
   let obraId = resolveWorkIdFromDemandForm(formData);
@@ -16962,6 +16994,7 @@ async function handleDemandDetailSubmit(form) {
 }
 
 function handleDeleteDemandSubmit(form) {
+  if (!ensureDemandLifecycleAllowed(form)) return;
   const demand = state.demands.find((item) => item.id === form.dataset.id);
   if (!demand) return;
   const formData = new FormData(form);
@@ -17221,6 +17254,8 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     return existing;
   }
 
+  if (!ensureDemandLifecycleAllowed(options.form || null)) return null;
+
   const work = record.obraId ? workById(record.obraId) : planWorkMatch(record);
   if (!work) {
     const message = "Antes de entregar para ST, cadastre ou vincule este projeto ao Portfólio de Obras.";
@@ -17432,7 +17467,10 @@ document.addEventListener("click", async (event) => {
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
-  if (!canMutateUI(action)) { showToast("Seu acesso permite apenas consulta."); return; }
+  if (!canMutateUI(action)) {
+    showToast(analystDemandLifecycleBlocked(action) ? demandLifecycleDeniedMessage() : "Seu acesso permite apenas consulta.");
+    return;
+  }
   if (action === "download-attachment") {
     event.preventDefault();
     await downloadStoredAttachment(actionButton.dataset.attachmentId);
