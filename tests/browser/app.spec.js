@@ -13,7 +13,10 @@ const payload={state:{
     {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
-  demands:[{id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]}],
+  demands:[
+    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
+    {id:'test-budget-demand',obraId:'test-work',titulo:'Orçamento de teste',tipo:'EmissaoInicial',coluna:'validacaoObras',sicIds:[],anexos:[]},
+  ],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
@@ -133,6 +136,35 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');
  await expect(page.locator('.ev-history-heading')).toContainText('DADOS EVS');
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
+ expect(b.errors).toEqual([]);
+});
+
+test('only SICs enter director approval after Works validation',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
+ await expect(kanbanColumns).toHaveCount(8);
+ await expect(kanbanColumns.locator('header h2')).toHaveText([
+  'Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
+  'Aguardando Aprovação Diretoria','Concluído','Cancelado',
+ ]);
+
+ await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
+ const nonSicStatus=page.locator('[data-action="update-demand-status"][data-id="test-budget-demand"]');
+ await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveCount(0);
+ await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
+
+ await page.locator('[data-action="open-demand-detail"][data-id="test-demand"]').click();
+ const sicStatus=page.locator('[data-action="update-demand-status"][data-id="test-demand"]');
+ await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveCount(1);
+ await sicStatus.selectOption('validacaoObras');
+ await sicStatus.selectOption('concluido');
+ await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
+ await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
+ const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
+ await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
+ await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
 

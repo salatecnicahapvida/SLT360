@@ -86,6 +86,7 @@ const columns = [
   { id: "pausado", label: "Pausado" },
   { id: "validacaoST", label: "Aguardando Validação Sala Técnica" },
   { id: "validacaoObras", label: "Aguardando Validação Obras" },
+  { id: "aprovacaoDiretoria", label: "Aguardando Aprovação Diretoria" },
   { id: "concluido", label: "Concluído" },
   { id: "cancelado", label: "Cancelado" },
 ];
@@ -14219,7 +14220,7 @@ function openDemandDetailModal(id) {
             <label class="field">
               <span>Status atual · altere para mover o card</span>
               <select name="coluna" data-action="update-demand-status" data-id="${demand.id}">
-                ${columnOptions(demand.coluna)}
+                ${columnOptions(demand)}
               </select>
             </label>
           </section>
@@ -14371,8 +14372,15 @@ function sprintOptions(selected) {
     .join("");
 }
 
-function columnOptions(selected) {
-  return columns.map((column) => `<option value="${column.id}" ${column.id === selected ? "selected" : ""}>${column.label}</option>`).join("");
+function columnsForDemand(demand) {
+  if (demandTypeKey(demand?.tipo) === "SIC") return columns;
+  return columns.filter((column) => column.id !== "aprovacaoDiretoria");
+}
+
+function columnOptions(demand) {
+  return columnsForDemand(demand)
+    .map((column) => `<option value="${column.id}" ${column.id === demand.coluna ? "selected" : ""}>${column.label}</option>`)
+    .join("");
 }
 
 function priorityOptions(selected) {
@@ -16549,10 +16557,29 @@ function approveSic(id) {
 
 function updateDemandColumn(id, nextColumnId) {
   const demand = state.demands.find((item) => item.id === id);
-  const nextColumn = columnById(nextColumnId);
+  let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
   if (demand.coluna === nextColumnId) return demand;
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
+    if (demand.coluna !== "validacaoObras") {
+      showToast("A SIC precisa passar pela validação de Obras e pela aprovação da Diretoria antes de ser concluída.");
+      return false;
+    }
+    nextColumnId = "aprovacaoDiretoria";
+    nextColumn = columnById(nextColumnId);
+  }
+  if (nextColumnId === "aprovacaoDiretoria") {
+    if (!isSicDemand) {
+      showToast("Somente demandas do tipo SIC podem aguardar aprovação da Diretoria.");
+      return false;
+    }
+    if (demand.coluna !== "validacaoObras") {
+      showToast("A SIC precisa estar em Aguardando Validação Obras antes de seguir para a Diretoria.");
+      return false;
+    }
+    if (!demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
+  }
   if (nextColumnId === "concluido") {
     const work = workById(demand.obraId);
     if (isSicDemand && sicApprovalReading(demand).status !== "Postada") {
@@ -16592,9 +16619,10 @@ function updateDemandColumn(id, nextColumnId) {
 function moveDemand(id, direction) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand) return;
-  const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
-  const nextIndex = Math.max(0, Math.min(columns.length - 1, currentIndex + direction));
-  const updated = updateDemandColumn(id, columns[nextIndex].id);
+  const allowedColumns = columnsForDemand(demand);
+  const currentIndex = allowedColumns.findIndex((column) => column.id === demand.coluna);
+  const nextIndex = Math.max(0, Math.min(allowedColumns.length - 1, currentIndex + direction));
+  const updated = updateDemandColumn(id, allowedColumns[nextIndex].id);
   if (updated === false) return;
   render();
 }
@@ -17445,8 +17473,13 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches('[data-action="update-demand-status"]')) {
     const demand = updateDemandColumn(event.target.dataset.id, event.target.value);
-    if (demand === false) return;
+    if (demand === false) {
+      const currentDemand = state.demands.find((item) => item.id === event.target.dataset.id);
+      if (currentDemand) event.target.value = currentDemand.coluna;
+      return;
+    }
     const box = event.target.closest(".demand-status-box");
+    if (demand) event.target.value = demand.coluna;
     if (box && demand) box.dataset.status = demand.coluna;
     render();
     if (demand) showToast(`Card movido para ${demandStatusLabel(demand)}.`);
