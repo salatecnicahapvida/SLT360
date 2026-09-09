@@ -508,7 +508,6 @@ function createPortfolioQuickFilters() {
     regional: "",
     uf: "",
     evStatus: "",
-    origem: "",
   };
 }
 
@@ -6447,7 +6446,6 @@ function renderPortfolioFilters(rows) {
       <label class="field"><span>Região</span><select data-portfolio-quick-filter="regional">${portfolioFilterOptions(rows, "regional", portfolioQuickFilters.regional, "Todas")}</select></label>
       <label class="field"><span>UF</span><select data-portfolio-quick-filter="uf">${portfolioFilterOptions(rows, "uf", portfolioQuickFilters.uf, "Todas")}</select></label>
       <label class="field"><span>Status do EV</span><select data-portfolio-quick-filter="evStatus">${portfolioFilterOptions(rows, "evStatus", portfolioQuickFilters.evStatus, "Todos")}</select></label>
-      <label class="field"><span>Origem</span><select data-portfolio-quick-filter="origem">${portfolioFilterOptions(rows, "origem", portfolioQuickFilters.origem, "Todas")}</select></label>
       <button class="secondary-action" type="button" data-action="clear-portfolio-filters">Limpar filtros</button>
     </div>
   `;
@@ -6627,7 +6625,6 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       classificacao: work.classificacaoObra,
       categoria: work.classificacaoObra || "",
       year,
-      origem: work._historicalBudgetWork ? "Histórico" : "Atual",
       tecnico: historicalRecord?.technician || "",
       isHistorical: Boolean(work._historicalBudgetWork),
       hasAssociatedEV,
@@ -6658,10 +6655,10 @@ function portfolioRowMatchesQuickFilters(row) {
   const terms = normalizeSearchText([searchTerm, portfolioQuickFilters.query].filter(Boolean).join(" ")).trim();
   const searchable = normalizeSearchText([
     row.idApp, row.codigo, row.nome, row.cidadeUf, row.regional, row.uf, row.tipoUnidade,
-    row.tipologia, row.categoria, row.year, row.evStatus, row.origem,
+    row.tipologia, row.categoria, row.year, row.evStatus,
   ].join(" "));
   if (terms && !terms.split(/\s+/).every((term) => searchable.includes(term))) return false;
-  return ["year", "categoria", "tipoUnidade", "tipologia", "regional", "uf", "evStatus", "origem"]
+  return ["year", "categoria", "tipoUnidade", "tipologia", "regional", "uf", "evStatus"]
     .every((field) => !portfolioQuickFilters[field] || String(row[field]) === String(portfolioQuickFilters[field]));
 }
 

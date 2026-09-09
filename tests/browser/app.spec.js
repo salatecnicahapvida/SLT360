@@ -240,19 +240,20 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(kpis).not.toContainText('Projetos próximos');
  await expect(kpis).not.toContainText('Vínculos com EV');
  await expect(kpis).not.toContainText('Projetos atrasados');
- await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(8);
+ await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(7);
+ await expect(page.locator('[data-portfolio-quick-filter="origem"]')).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
  await expect(page.locator('.portfolio-works-table thead th')).toContainText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
   'Área equivalente (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
  ]);
- await page.locator('[data-portfolio-quick-filter="origem"]').selectOption('Histórico');
- await expect(kpis).toContainText('3');
- await expect(kpis).toContainText('3 obras possuem EVs associados');
- await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
- await page.locator('[data-portfolio-search]').fill('Norte');
+ await page.locator('[data-portfolio-quick-filter="year"]').selectOption('2024');
+ await expect(kpis).toContainText('2');
+ await expect(kpis).toContainText('2 obras possuem EVs associados');
+ await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(2);
+ await page.locator('[data-portfolio-search]').fill('Sul');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
- await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Norte');
+ await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Sul');
  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
