@@ -1081,7 +1081,13 @@ function isRiskLine(line) {
 }
 
 function workById(id) {
-  return state.works.find((work) => work.id === id);
+  const current = state.works.find((work) => work.id === id);
+  if (current) return current;
+  const prefix = "historical-budget-";
+  if (!String(id || "").startsWith(prefix)) return undefined;
+  const historicalId = String(id).slice(prefix.length);
+  const record = arrayOrFallback(state.evs).find((item) => String(item.id) === historicalId);
+  return record ? historicalBudgetWorkFromRecord(record) : undefined;
 }
 
 function supplierById(id) {
@@ -14355,16 +14361,22 @@ function analystChipOptions(demand) {
   const analysts = uniqueAnalysts();
   const current = demand.analistaResponsavel || "";
   const options = current && !analysts.includes(current) ? [current, ...analysts] : analysts;
-  return options
-    .map(
+  return [
+    `
+      <label class="analyst-chip ${current ? "" : "is-active"}">
+        <input name="analistaResponsavel" type="radio" value="" ${current ? "" : "checked"} />
+        <span>Sem analista</span>
+      </label>
+    `,
+    ...options.map(
       (analyst) => `
         <label class="analyst-chip ${analyst === current ? "is-active" : ""}">
           <input name="analistaResponsavel" type="radio" value="${escapeAttribute(analyst)}" ${analyst === current ? "checked" : ""} />
           <span>${escapeAttribute(analyst)}</span>
         </label>
       `
-    )
-    .join("");
+    ),
+  ].join("");
 }
 
 function demandTypeOptions(selected, includeSic = true) {
@@ -14755,8 +14767,6 @@ function openDemandWizardModal(type = "EmissaoInicial", step = 1, draft = {}) {
 function demandWizardDefaultDraft(type, draft = {}) {
   const work = draft.obraId ? workById(draft.obraId) : null;
   const sprint = sprintById(draft.sprintId) || currentSprint();
-  const analysts = uniqueAnalysts();
-  const preferredAnalyst = analysts[0] || "";
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
@@ -14772,7 +14782,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
     unidadeCentro: draft.unidadeCentro || "",
     unidadeSource: draft.unidadeSource || "",
     sprintId: sprint?.id || "",
-    analistaResponsavel: draft.analistaResponsavel || preferredAnalyst,
+    analistaResponsavel: draft.analistaResponsavel || "",
     descricao: draft.descricao || "",
     prioridade: draft.prioridade || "Média",
     dataPrevistaInicio: draft.dataPrevistaInicio || "",
@@ -14812,6 +14822,7 @@ function renderDemandUnitModeOptions(selected = "nova") {
 function renderDemandWizardStep1(draft) {
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const title = demandTypeLabel(draft.tipo);
+  const isInitialIssue = draft.tipo === "EmissaoInicial";
   return `
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card demand-detail-form demand-create-card demand-wizard-card" id="demandWizardStep1" aria-labelledby="demandTitle" data-type="${draft.tipo}">
@@ -14837,53 +14848,64 @@ function renderDemandWizardStep1(draft) {
           </section>
 
           <label class="field modal-section">
-            <span>Descrição da demanda *</span>
-            <textarea name="descricao" required placeholder="Descreva o escopo desta demanda...">${draft.descricao}</textarea>
+            <span>Descrição da demanda${isInitialIssue ? "" : " *"}</span>
+            <textarea name="descricao" ${isInitialIssue ? "" : "required"} placeholder="Descreva o escopo desta demanda...">${escapeAttribute(draft.descricao)}</textarea>
           </label>
 
-          <section class="modal-section sic-work-link-panel">
-            <div class="section-title">
-              <span>Contexto da unidade</span>
-            </div>
-            <div class="form-grid">
-              <label class="field">
-                <span>Tipo de intervenção</span>
-                <select name="unidadeModo">
-                  ${renderDemandUnitModeOptions(draft.unidadeModo)}
-                </select>
-              </label>
-              <label class="field full-span">
-                <span>Assistente de busca de unidades</span>
-                <input name="unidadeBusca" data-demand-unit-search value="${escapeAttribute(draft.unidadeBusca)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
-              </label>
-            </div>
-            <input type="hidden" name="unidadeId" value="${escapeAttribute(draft.unidadeId)}" />
-            <div data-demand-unit-results>
-              ${maintenanceUnitSearchResults(draft.unidadeBusca, draft.unidadeId)}
-            </div>
-            <p class="muted">Use o assistente quando a obra for intervenção em uma unidade existente. Para unidade nova, siga apenas com a obra vinculada.</p>
-          </section>
+          ${isInitialIssue ? `
+            <input type="hidden" name="tipo" value="EmissaoInicial" />
+            <label class="field modal-section">
+              <span>Sprint</span>
+              <select name="sprintId">
+                ${sprintOptions(sprint?.id || "")}
+              </select>
+              <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+            </label>
+          ` : `
+            <section class="modal-section sic-work-link-panel">
+              <div class="section-title">
+                <span>Contexto da unidade</span>
+              </div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>Tipo de intervenção</span>
+                  <select name="unidadeModo">
+                    ${renderDemandUnitModeOptions(draft.unidadeModo)}
+                  </select>
+                </label>
+                <label class="field full-span">
+                  <span>Assistente de busca de unidades</span>
+                  <input name="unidadeBusca" data-demand-unit-search value="${escapeAttribute(draft.unidadeBusca)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
+                </label>
+              </div>
+              <input type="hidden" name="unidadeId" value="${escapeAttribute(draft.unidadeId)}" />
+              <div data-demand-unit-results>
+                ${maintenanceUnitSearchResults(draft.unidadeBusca, draft.unidadeId)}
+              </div>
+              <p class="muted">Use o assistente quando a obra for intervenção em uma unidade existente. Para unidade nova, siga apenas com a obra vinculada.</p>
+            </section>
 
-          <section class="modal-section">
-            <div class="section-title">
-              <span>Classificação</span>
-            </div>
-            <div class="form-grid">
-              <label class="field">
-                <span>Tipo de atividade</span>
-                <select name="tipo">
-                  ${demandTypeOptions(draft.tipo, false)}
-                </select>
-              </label>
-              <label class="field">
-                <span>Sprint</span>
-                <select name="sprintId">
-                  ${sprintOptions(sprint?.id || "")}
-                </select>
-                <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
-              </label>
-            </div>
-          </section>
+            <section class="modal-section">
+              <div class="section-title">
+                <span>Classificação</span>
+              </div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>Tipo de atividade</span>
+                  <select name="tipo">
+                    ${demandTypeOptions(draft.tipo, false)}
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Sprint</span>
+                  <select name="sprintId">
+                    ${sprintOptions(sprint?.id || "")}
+                  </select>
+                  <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+                </label>
+              </div>
+            </section>
+          `}
 
           <section class="modal-section">
             <div class="section-title">
@@ -14891,7 +14913,7 @@ function renderDemandWizardStep1(draft) {
             </div>
             <label class="field">
               <span>Buscar obra</span>
-              <input name="obraBusca" list="demandWorkOptions" value="${draft.obraBusca}" placeholder="Digite nome, chave ou cidade..." autocomplete="off" required />
+              <input name="obraBusca" list="demandWorkOptions" value="${escapeAttribute(draft.obraBusca)}" placeholder="Digite o nome da obra..." autocomplete="off" required />
             </label>
             ${demandWorkDatalist()}
           </section>
@@ -15026,9 +15048,21 @@ function demandWizardHiddenFields(draft) {
 function demandWorkDatalist() {
   return `
     <datalist id="demandWorkOptions">
-      ${state.works.map((work) => `<option value="${work.nome}">${work.chaveUnica || work.codigoOriginal || ""} · ${work.cidade}/${work.uf}</option>`).join("")}
+      ${demandWorkCatalog().map((work) => `<option value="${escapeAttribute(work.nome)}">${escapeAttribute(demandWorkYear(work))}</option>`).join("")}
     </datalist>
   `;
+}
+
+function demandWorkCatalog() {
+  return [...new Map(budgetWorks().map((work) => [String(work.id), work])).values()];
+}
+
+function demandWorkYear(work) {
+  const record = work?._historicalBudgetWork
+    ? arrayOrFallback(state.evs).find((item) => String(item.id) === String(work.historicalRecordId))
+    : null;
+  const latestVersion = arrayOrFallback(work?.ev?.versions).at(-1);
+  return String(work?.anoObra || record?.year || latestVersion?.data || "").slice(0, 4);
 }
 
 function resolveDemandWorkFromQuery(query) {
@@ -15065,13 +15099,14 @@ function handleDemandWizardStep1(form) {
 }
 
 function workOptionLabel(work) {
-  return `${work.nome} | ${work.chaveUnica} | ${work.cidade}/${work.uf}`;
+  const location = [work.cidade, work.uf].filter(Boolean).join("/");
+  return [work.nome, work.chaveUnica || work.codigoOriginal, location].filter(Boolean).join(" | ");
 }
 
 function findWorkByTypedSearch(value) {
   const terms = normalizeSearchText(value).split(/\s+/).filter(Boolean);
   if (!terms.length) return null;
-  return state.works.find((work) => {
+  return demandWorkCatalog().find((work) => {
     const text = normalizeSearchText([
       work.id,
       workOptionLabel(work),
@@ -15089,9 +15124,9 @@ function findWorkByExactTypedSearch(value) {
   const normalized = normalizeSearchText(value).trim();
   if (!normalized) return null;
   return (
-    state.works.find((work) => normalizeSearchText(workOptionLabel(work)) === normalized) ||
-    state.works.find((work) => normalizeSearchText(work.nome) === normalized) ||
-    state.works.find((work) => normalizeSearchText(work.chaveUnica || work.codigoOriginal) === normalized)
+    demandWorkCatalog().find((work) => normalizeSearchText(workOptionLabel(work)) === normalized) ||
+    demandWorkCatalog().find((work) => normalizeSearchText(work.nome) === normalized) ||
+    demandWorkCatalog().find((work) => normalizeSearchText(work.chaveUnica || work.codigoOriginal) === normalized)
   );
 }
 
@@ -15109,6 +15144,33 @@ function resolveWorkIdFromDemandForm(formData) {
     if (typedWork) return typedWork.id;
   }
   return "";
+}
+
+function ensureDemandWorkPersisted(work) {
+  if (!work) return null;
+  const existing = state.works.find((item) => item.id === work.id);
+  if (existing) return existing;
+  if (!work._historicalBudgetWork || !work.historicalRecordId) return null;
+
+  const record = arrayOrFallback(state.evs).find((item) => String(item.id) === String(work.historicalRecordId));
+  if (!record) return null;
+
+  const id = nextCode("OBR", state.works);
+  const persisted = structuredClone(work);
+  persisted.id = id;
+  persisted.status = persisted.status || "Histórico";
+  delete persisted._historicalBudgetWork;
+  delete persisted.historicalRecordId;
+  record.workId = id;
+  state.works.unshift(persisted);
+  addHistory({
+    entidade: "obra",
+    entidadeId: id,
+    campo: "consolidação",
+    valorAnterior: `Importação histórica ${record.id}`,
+    valorNovo: `${persisted.nome} vinculada ao cadastro mestre`,
+  });
+  return persisted;
 }
 
 function renderSicWorkSearchResults(query = "", selectedId = "") {
@@ -15995,7 +16057,7 @@ function generateWorkKey(index, uf, tipoUnidade, tipologia) {
 async function handleDemandSubmit(form) {
   const formData = new FormData(form);
   const tipo = formData.get("tipo");
-  const obraId = resolveWorkIdFromDemandForm(formData);
+  let obraId = resolveWorkIdFromDemandForm(formData);
   const demandId = nextCode("DEM", state.demands);
   const sicIds = [];
   let sicMetadata = null;
@@ -16006,7 +16068,7 @@ async function handleDemandSubmit(form) {
     return;
   }
 
-  const linkedWork = workById(obraId);
+  let linkedWork = workById(obraId);
   if (!linkedWork) {
     showFormError("A obra vinculada não está ativa. Selecione uma obra cadastrada no portfólio antes de salvar a demanda.", form);
     return;
@@ -16080,6 +16142,13 @@ async function handleDemandSubmit(form) {
       anexos,
     };
   }
+
+  linkedWork = ensureDemandWorkPersisted(linkedWork);
+  if (!linkedWork) {
+    showFormError("Não foi possível consolidar a obra selecionada no cadastro mestre.", form);
+    return;
+  }
+  obraId = linkedWork.id;
 
   state.demands.unshift({
     id: demandId,
@@ -17939,50 +18008,55 @@ document.addEventListener("input", (event) => {
   scheduleInputRender(`[data-filter-field="${field}"]`, value);
 });
 
+function historicalBudgetWorkFromRecord(record, linkedWork = null) {
+  const typology = record?.typology || "";
+  const area = Number(record?.area || 0);
+  const revisionMatch = String(record?.revision || "").match(/\d+/);
+  const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
+  const lines = Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
+    disciplinaId,
+    valorOrcado: Number(valorOrcado || 0),
+    status: "Orçado",
+  }));
+  const historicalEV = {
+    id: record.id,
+    versaoAtual: revisionNumber,
+    status: "Completo",
+    lines,
+    versions: [{
+      numero: revisionNumber,
+      data: record?.date || "",
+      origem: "Base histórica",
+      valorTotal: Number(record?.total || 0),
+      custoM2: area ? Number(record?.total || 0) / area : 0,
+    }],
+    demandaIds: [],
+    sicIds: [],
+  };
+  return {
+    ...(linkedWork || {}),
+    id: linkedWork?.id || `historical-budget-${record.id}`,
+    chaveUnica: linkedWork?.chaveUnica || record?.code || "",
+    codigoOriginal: linkedWork?.codigoOriginal || record?.code || "",
+    nome: linkedWork?.nome || record?.project || "EV histórico",
+    tipoUnidade: linkedWork?.tipoUnidade || "",
+    tipologiaObra: typology,
+    areaConstruida: linkedWork?.areaConstruida || area,
+    areaEquivalente: linkedWork?.areaEquivalente || area,
+    anoObra: linkedWork?.anoObra || String(record?.year || "").slice(0, 4),
+    uf: linkedWork?.uf || record?.uf || "",
+    regiao: linkedWork?.regiao || record?.region || "",
+    status: linkedWork?.status || "Histórico",
+    _historicalBudgetWork: true,
+    historicalRecordId: record.id,
+    ev: linkedWork?.ev || historicalEV,
+  };
+}
+
 function historicalBudgetWorks() {
   return arrayOrFallback(state.evs).map((record) => {
-    const linkedWork = record?.workId ? workById(record.workId) : null;
-    const typology = record?.typology || "";
-    const area = Number(record?.area || 0);
-    const revisionMatch = String(record?.revision || "").match(/\d+/);
-    const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
-    const lines = Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
-      disciplinaId,
-      valorOrcado: Number(valorOrcado || 0),
-      status: "Orçado",
-    }));
-    const historicalEV = {
-      id: record.id,
-      versaoAtual: revisionNumber,
-      status: "Completo",
-      lines,
-      versions: [{
-        numero: revisionNumber,
-        data: record?.date || "",
-        origem: "Base histórica",
-        valorTotal: Number(record?.total || 0),
-        custoM2: area ? Number(record?.total || 0) / area : 0,
-      }],
-      demandaIds: [],
-      sicIds: [],
-    };
-    return {
-      ...(linkedWork || {}),
-      id: linkedWork?.id || `historical-budget-${record.id}`,
-      chaveUnica: linkedWork?.chaveUnica || record?.code || "",
-      codigoOriginal: linkedWork?.codigoOriginal || record?.code || "",
-      nome: linkedWork?.nome || record?.project || "EV histórico",
-      tipoUnidade: linkedWork?.tipoUnidade || "",
-      tipologiaObra: typology,
-      areaConstruida: area,
-      areaEquivalente: area,
-      uf: linkedWork?.uf || record?.uf || "",
-      regiao: linkedWork?.regiao || record?.region || "",
-      status: "Histórico",
-      _historicalBudgetWork: true,
-      historicalRecordId: record.id,
-      ev: linkedWork?.ev || historicalEV,
-    };
+    const linkedWork = record?.workId ? state.works.find((work) => work.id === record.workId) : null;
+    return historicalBudgetWorkFromRecord(record, linkedWork);
   });
 }
 

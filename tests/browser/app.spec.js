@@ -104,12 +104,51 @@ test('analyst directory is separate from users and feeds every analyst filter',a
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await expect(page.locator('[data-operational-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Novo']);
+ await page.locator('#demandWizardStep1 [data-action="close-modal"]').first().click();
  await page.locator('[data-module="maintenance"]').click();
  await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
  await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
  await page.locator('[data-module="clinical"]').click();
  await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
  await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ expect(b.errors).toEqual([]);
+});
+
+test('initial budget demand is optional, shows work year and accepts every portfolio work',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ const step1=page.locator('#demandWizardStep1');
+ await expect(step1).toBeVisible();
+ await expect(step1.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
+ await expect(step1.getByText('Classificação',{exact:true})).toHaveCount(0);
+ await expect(step1.locator('[name="descricao"]')).not.toHaveAttribute('required','');
+ await expect(step1.locator('[name="analistaResponsavel"]:checked')).toHaveValue('');
+
+ const descriptionBox=await step1.locator('[name="descricao"]').boundingBox();
+ const sprintBox=await step1.locator('[name="sprintId"]').boundingBox();
+ const workBox=await step1.locator('[name="obraBusca"]').boundingBox();
+ expect(descriptionBox.y).toBeLessThan(sprintBox.y);
+ expect(sprintBox.y).toBeLessThan(workBox.y);
+
+ const currentOption=step1.locator('#demandWorkOptions option[value="Obra de teste"]');
+ const historicalOption=step1.locator('#demandWorkOptions option[value="Obra histórica Norte - AM"]');
+ await expect(currentOption).toHaveText('2026');
+ await expect(historicalOption).toHaveText('2025');
+ await expect(currentOption).not.toContainText('TEST');
+ await expect(currentOption).not.toContainText('undefined');
+ await page.screenshot({path:'outputs/initial-demand-audit.png',fullPage:true,animations:'disabled'});
+
+ await step1.locator('[name="obraBusca"]').fill('Obra histórica Norte - AM');
+ await step1.getByRole('button',{name:/Avançar/}).click();
+ await expect(page.locator('#demandForm')).toBeVisible();
+ await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
+ await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
+ await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 
