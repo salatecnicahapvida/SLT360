@@ -2026,7 +2026,7 @@ function render() {
 }
 
 function enhanceSortableTables() {
-  document.querySelectorAll("table.data-table").forEach((table, tableIndex) => {
+  document.querySelectorAll("table.data-table:not([data-no-sort])").forEach((table, tableIndex) => {
     table.dataset.sortableTable = table.dataset.sortableTable || `table-${tableIndex}`;
     table.querySelectorAll("tbody tr").forEach((row, rowIndex) => {
       if (!row.dataset.originalSortIndex) row.dataset.originalSortIndex = String(rowIndex);
@@ -4961,7 +4961,7 @@ function renderOperationalFilters() {
           <span>Analista</span>
           <select data-operational-filter="analyst">
             <option value="">Todos</option>
-            ${uniqueAnalysts().map((analyst) => `<option value="${analyst}" ${operationalFilters.analyst === analyst ? "selected" : ""}>${analyst}</option>`).join("")}
+            ${uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}" ${operationalFilters.analyst === analyst ? "selected" : ""}>${escapeAttribute(analyst)}</option>`).join("")}
           </select>
         </label>
         <label class="field">
@@ -5309,14 +5309,16 @@ function applyOperationalKpiFilter(key) {
 }
 
 function uniqueAnalysts() {
-  return [
-    ...new Set(
-      state.demands.flatMap((demand) => [
-        demand.analistaResponsavel,
-        ...(demand.analistasComplementares || []),
-      ])
-    ),
-  ].filter(Boolean);
+  const directory = (globalThis.SLT_CLOUD?.analysts || []).map((analyst) => analyst.nome);
+  const assigned = [
+    ...(state.demands || []),
+    ...(state.projectDemands || []),
+    ...(state.maintenanceDemands || []),
+  ].flatMap((demand) => [
+    demand.analistaResponsavel,
+    ...(demand.analistasComplementares || []),
+  ]);
+  return [...new Set([...directory, ...assigned].map((name) => String(name || "").trim()).filter(Boolean))];
 }
 
 function daysBetween(start, end) {
@@ -7954,7 +7956,7 @@ function maintenanceUnitSearchResults(query = "", selectedId = "") {
 function maintenanceFieldOptions(values, selected, emptyLabel = "Todos") {
   const normalizedValues = [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
   return [`<option value="">${emptyLabel}</option>`]
-    .concat(normalizedValues.map((value) => `<option value="${escapeAttribute(value)}" ${String(selected) === String(value) ? "selected" : ""}>${value}</option>`))
+    .concat(normalizedValues.map((value) => `<option value="${escapeAttribute(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeAttribute(value)}</option>`))
     .join("");
 }
 
@@ -8176,6 +8178,12 @@ function renderMaintenanceFilters() {
           <select data-maintenance-filter="phase">
             <option value="">Todas</option>
             ${maintenanceColumns.map((column) => `<option value="${column.id}" ${filters.phase === column.id ? "selected" : ""}>${column.label}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field">
+          <span>Analista</span>
+          <select data-maintenance-filter="analyst">
+            ${maintenanceFieldOptions(uniqueAnalysts(), filters.analyst)}
           </select>
         </label>
         <label class="field">
@@ -9132,9 +9140,9 @@ function renderMaintenanceMiniTable(items) {
 }
 
 function maintenanceAnalystOptions(selected = "") {
-  const analysts = [...new Set([...uniqueAnalysts(), "Thalles", "Skarth", "Rosa", "Herbson", "Leonardo", "Robério"].filter(Boolean))];
+  const analysts = uniqueAnalysts();
   return [`<option value="">A definir</option>`]
-    .concat(analysts.map((analyst) => `<option value="${analyst}" ${analyst === selected ? "selected" : ""}>${analyst}</option>`))
+    .concat(analysts.map((analyst) => `<option value="${escapeAttribute(analyst)}" ${analyst === selected ? "selected" : ""}>${escapeAttribute(analyst)}</option>`))
     .join("");
 }
 
@@ -14351,8 +14359,8 @@ function analystChipOptions(demand) {
     .map(
       (analyst) => `
         <label class="analyst-chip ${analyst === current ? "is-active" : ""}">
-          <input name="analistaResponsavel" type="radio" value="${analyst}" ${analyst === current ? "checked" : ""} />
-          <span>${analyst}</span>
+          <input name="analistaResponsavel" type="radio" value="${escapeAttribute(analyst)}" ${analyst === current ? "checked" : ""} />
+          <span>${escapeAttribute(analyst)}</span>
         </label>
       `
     )
@@ -14748,7 +14756,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
   const work = draft.obraId ? workById(draft.obraId) : null;
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const analysts = uniqueAnalysts();
-  const preferredAnalyst = analysts.includes("Thalles") ? "Thalles" : analysts[0] || "Skarth";
+  const preferredAnalyst = analysts[0] || "";
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
@@ -15235,10 +15243,10 @@ function openSicDemandModal(workId = "") {
             </label>
             <label class="field">
               <span>Analista da Sala Técnica</span>
-              <input name="analistaSalaTecnica" list="sicAnalystOptions" value="${escapeAttribute(uniqueAnalysts()[0] || "Skarth")}" required />
-              <datalist id="sicAnalystOptions">
-                ${uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}"></option>`).join("")}
-              </datalist>
+              <select name="analistaSalaTecnica" required>
+                <option value="">Selecione</option>
+                ${uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}">${escapeAttribute(analyst)}</option>`).join("")}
+              </select>
             </label>
             <label class="field">
               <span>Entrega prevista</span>

@@ -2,10 +2,13 @@ import { MODULE_OPTIONS } from './access.js';
 const esc = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function renderUsersPanel(cloud) {
  if(cloud.profile.perfil!=='Admin') return '';
- const users=cloud.team?.users||[], analysts=cloud.team?.analysts||[];
- return `<section class="panel users-panel" aria-labelledby="usersTitle"><div class="panel-header"><div><h2 id="usersTitle">Usuários e Equipe</h2><p class="panel-subtitle">Contas individuais, vínculo de analistas e permissões por módulo.</p></div><div class="users-actions"><button class="secondary-button" data-team-action="refresh">Atualizar lista</button><button class="primary-button" data-team-action="create">Novo usuário</button></div></div>
- <div class="table-wrap"><table class="data-table"><thead><tr><th>Usuário</th><th>Perfil / situação</th><th>Analista vinculado</th><th>Acesso aos módulos</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><strong>${esc(u.nome)}</strong><br><small>${esc(u.email)}</small></td><td>${esc(u.perfil)} · ${u.ativo?'Ativo':'Inativo'}${u.must_change_password?'<br><small>Troca de senha pendente</small>':''}</td><td>${esc(analysts.find(a=>a.id===u.analyst_id)?.nome||'Sem vínculo')}</td><td>${u.perfil==='Admin'?'Todos · edição':MODULE_OPTIONS.filter(m=>u.access?.some(g=>g.module===m.id&&g.can_read)).map(m=>`${m.label}: ${u.access.find(g=>g.module===m.id).can_write?'edição':'consulta'}`).join('<br>')||'Nenhum módulo'}</td><td><div class="users-actions"><button class="secondary-button" data-team-action="edit" data-user-id="${esc(u.id)}" aria-label="Editar ${esc(u.nome)}">Editar acesso</button>${u.id!==cloud.profile.id?`<button class="secondary-button" data-team-action="reset-password" data-user-id="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">Redefinir senha</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Atualize a lista para consultar os usuários.</td></tr>'}</tbody></table></div>
- <p class="muted">O vínculo identifica o responsável nas demandas. As permissões liberam os registros do módulo, não apenas as tarefas desse analista. Desativar a conta bloqueia novos acessos aos dados e gravações; o histórico é preservado.</p></section>`;
+ const users=cloud.team?.users||[], analysts=cloud.team?.analysts||cloud.analysts||[];
+ return `<section class="panel users-panel" aria-labelledby="usersTitle"><div class="panel-header"><div><h2 id="usersTitle">Usuários</h2><p class="panel-subtitle">Contas individuais, vínculo com analistas e permissões por módulo.</p></div><div class="users-actions"><button class="secondary-button" data-team-action="refresh">Atualizar lista</button><button class="primary-button" data-team-action="create">Novo usuário</button></div></div>
+ <div class="table-wrap"><table class="data-table" data-no-sort><thead><tr><th>Usuário</th><th>Perfil / situação</th><th>Analista vinculado</th><th>Acesso aos módulos</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><strong>${esc(u.nome)}</strong><br><small>${esc(u.email)}</small></td><td>${esc(u.perfil)} · ${u.ativo?'Ativo':'Inativo'}${u.must_change_password?'<br><small>Troca de senha pendente</small>':''}</td><td>${esc(analysts.find(a=>a.id===u.analyst_id)?.nome||'Sem vínculo')}</td><td>${u.perfil==='Admin'?'Todos · edição':MODULE_OPTIONS.filter(m=>u.access?.some(g=>g.module===m.id&&g.can_read)).map(m=>`${m.label}: ${u.access.find(g=>g.module===m.id).can_write?'edição':'consulta'}`).join('<br>')||'Nenhum módulo'}</td><td><div class="users-actions"><button class="secondary-button" data-team-action="edit" data-user-id="${esc(u.id)}" aria-label="Editar ${esc(u.nome)}">Editar acesso</button>${u.id!==cloud.profile.id?`<button class="secondary-button" data-team-action="reset-password" data-user-id="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">Redefinir senha</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Atualize a lista para consultar os usuários.</td></tr>'}</tbody></table></div>
+ <p class="muted">As permissões liberam os registros do módulo, não apenas as tarefas do analista vinculado. Desativar a conta bloqueia novos acessos e preserva o histórico.</p></section>
+ <section class="panel users-panel analysts-panel" aria-labelledby="analystsTitle"><div class="panel-header"><div><h2 id="analystsTitle">Analistas</h2><p class="panel-subtitle">Cadastre aqui os responsáveis que devem aparecer nos filtros e nas demandas.</p></div><button class="primary-button" data-team-action="create-analyst">Novo analista</button></div>
+ <div class="table-wrap"><table class="data-table" data-no-sort><thead><tr><th>Analista</th><th>Usuário associado</th><th>Situação do vínculo</th></tr></thead><tbody>${analysts.map(a=>{const linked=users.find(u=>u.analyst_id===a.id);return `<tr><td><strong>${esc(a.nome)}</strong></td><td>${linked?`${esc(linked.nome)}<br><small>${esc(linked.email)}</small>`:'—'}</td><td>${linked?'Associado':'Disponível para associação'}</td></tr>`;}).join('')||'<tr><td colspan="3">Nenhum analista cadastrado.</td></tr>'}</tbody></table></div>
+ <p class="muted">O analista pode existir sem conta. Quando necessário, associe-o ao editar ou criar um usuário.</p></section>`;
 }
 export function mountUsersAdmin(cloud,onUpdated) {
  async function refresh(){cloud.team=await cloud.adminUsers();cloud.analysts=cloud.team.analysts;onUpdated();}
@@ -15,6 +18,24 @@ export function mountUsersAdmin(cloud,onUpdated) {
   if(cloud.profile.perfil!=='Admin')return;
   if(button.dataset.teamAction==='refresh'){
    button.disabled=true;try{await refresh();}catch{button.textContent='Falha ao atualizar. Tente novamente.';button.disabled=false;}return;
+  }
+  if(button.dataset.teamAction==='create-analyst'){
+   const analystDialog=document.createElement('dialog');analystDialog.className='user-editor';
+   analystDialog.innerHTML=cloud.cleanHTML(`<form id="teamAnalystForm"><div class="panel-header"><h2>Novo analista</h2><button type="button" data-analyst-close aria-label="Fechar">×</button></div><p>Cadastre o responsável para disponibilizá-lo em todos os filtros e seletores de analista. A associação com uma conta de usuário pode ser feita depois.</p><label>Nome do analista<input name="nome" required minlength="2" maxlength="160" autocomplete="name" autofocus></label><p role="alert" data-analyst-error></p><div class="users-actions"><button type="button" data-analyst-close>Cancelar</button><button type="submit" class="primary-button">Criar analista</button></div></form>`);
+   document.body.append(analystDialog);analystDialog.showModal();
+   const analystForm=analystDialog.querySelector('form');let analystBusy=false;
+   const closeAnalyst=()=>{if(!analystBusy){analystDialog.close();analystDialog.remove();}};
+   analystDialog.querySelectorAll('[data-analyst-close]').forEach(b=>b.onclick=closeAnalyst);
+   analystDialog.addEventListener('cancel',e=>{e.preventDefault();closeAnalyst();});
+   analystForm.addEventListener('submit',async e=>{
+    e.preventDefault();e.stopPropagation();if(analystBusy)return;
+    const name=analystForm.elements.nome.value.trim();
+    const errorBox=analystDialog.querySelector('[data-analyst-error]');errorBox.textContent='';
+    analystBusy=true;analystForm.querySelectorAll('button').forEach(b=>b.disabled=true);
+    try{await cloud.createAnalyst(name);analystBusy=false;closeAnalyst();await refresh();}
+    catch(error){errorBox.textContent=error.message||'Não foi possível cadastrar o analista.';analystBusy=false;analystForm.querySelectorAll('button').forEach(b=>b.disabled=false);}
+   });
+   return;
   }
   const user=cloud.team?.users.find(u=>u.id===button.dataset.userId);
   if(button.dataset.teamAction==='reset-password'){
@@ -43,8 +64,7 @@ export function mountUsersAdmin(cloud,onUpdated) {
    <div class="user-form-grid"><label>Nome completo<input name="nome" required minlength="2" maxlength="160" value="${esc(user?.nome)}" autocomplete="name"></label>
    <label>E-mail de acesso<input name="email" type="email" required maxlength="254" value="${esc(user?.email)}" ${user?'readonly':''} autocomplete="off"></label>
    <label>Perfil<select name="perfil" ${self?'disabled':''}>${['Analista','Gestor','Admin'].map(p=>`<option ${p===(user?.perfil||'Analista')?'selected':''}>${p}</option>`).join('')}</select></label>
-   <label>Analista existente<select name="analyst_id"><option value="">Sem vínculo / cadastrar novo</option>${(cloud.team?.analysts||[]).map(a=>{const linked=cloud.team.users.find(u=>u.analyst_id===a.id&&u.id!==user?.id);return `<option value="${esc(a.id)}" ${user?.analyst_id===a.id?'selected':''} ${linked?'disabled':''}>${esc(a.nome)}${linked?' · já vinculado':''}</option>`;}).join('')}</select></label>
-   <label>Novo analista (opcional)<input name="new_analyst" maxlength="160" placeholder="Use apenas se não existir na lista"></label>
+   <label>Analista associado<select name="analyst_id"><option value="">Sem vínculo</option>${(cloud.analysts||[]).map(a=>{const linked=(cloud.team?.users||[]).find(u=>u.analyst_id===a.id&&u.id!==user?.id);return `<option value="${esc(a.id)}" ${user?.analyst_id===a.id?'selected':''} ${linked?'disabled':''}>${esc(a.nome)}${linked?' · já vinculado':''}</option>`;}).join('')}</select></label>
    <label class="user-active"><input name="ativo" type="checkbox" ${user?.ativo!==false?'checked':''} ${self?'disabled':''}>Conta ativa</label></div>
    <fieldset class="user-permissions"><legend>Permissões por módulo</legend><p data-admin-hint hidden>Administradores têm acesso completo, inclusive à gestão de usuários.</p><div data-grants>${MODULE_OPTIONS.map(m=>{const g=user?.access?.find(g=>g.module===m.id);return `<label>${m.label}<select name="grant_${m.id}"><option value="none">Sem acesso</option><option value="read" ${g?.can_read&&!g?.can_write?'selected':''}>Somente consulta</option><option value="write" ${g?.can_write?'selected':''}>Consulta e edição</option></select></label>`;}).join('')}</div></fieldset>
    <p class="muted">Unidades, sprints e fornecedores são referências compartilhadas de consulta. O cadastro de obras é compartilhado entre Projetos e Obras; Controle de Verba apenas consulta esse cadastro.</p>
@@ -59,9 +79,8 @@ export function mountUsersAdmin(cloud,onUpdated) {
   form.elements.perfil.onchange=roleChange;roleChange();
   form.addEventListener('submit',async e=>{
    e.preventDefault();e.stopPropagation();if(busy)return;
-   const details={nome:form.elements.nome.value.trim(),perfil:form.elements.perfil.value,ativo:form.elements.ativo.checked,analyst_id:form.elements.analyst_id.value||null,new_analyst:form.elements.new_analyst.value.trim(),access:MODULE_OPTIONS.map(m=>({module:m.id,can_read:form.elements['grant_'+m.id].value!=='none',can_write:form.elements['grant_'+m.id].value==='write'}))};
+   const details={nome:form.elements.nome.value.trim(),perfil:form.elements.perfil.value,ativo:form.elements.ativo.checked,analyst_id:form.elements.analyst_id.value||null,new_analyst:'',access:MODULE_OPTIONS.map(m=>({module:m.id,can_read:form.elements['grant_'+m.id].value!=='none',can_write:form.elements['grant_'+m.id].value==='write'}))};
    const errorBox=dialog.querySelector('[data-team-error]');errorBox.textContent='';
-   if(details.analyst_id&&details.new_analyst){errorBox.textContent='Escolha um analista existente ou preencha o novo analista, sem combinar os dois.';return;}
    busy=true;form.querySelectorAll('button').forEach(b=>b.disabled=true);
    try{
     const result=user?await cloud.updateUser(user.id,details,user.revision):await cloud.createUser(form.elements.email.value.trim(),details);
@@ -74,4 +93,5 @@ export function mountUsersAdmin(cloud,onUpdated) {
    }catch(error){errorBox.textContent=error.message||'Não foi possível confirmar. Atualize a lista antes de tentar novamente.';busy=false;form.querySelectorAll('button').forEach(b=>b.disabled=false);}
   });
  },true);
+ if(cloud.profile.perfil==='Admin'&&!cloud.team)refresh().catch(()=>{});
 }

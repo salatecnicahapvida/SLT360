@@ -12,6 +12,7 @@ test('contas: primeiro acesso, vínculo histórico, escopo, revisão e proteçã
  try{
   await seed(db,{state:{works:[{id:'w',nome:'Obra compartilhada',ev:{id:'ev',lines:[]}}],maintenanceDemands:[{id:'os',centroCusto:'Predial',analistaResponsavel:'Maria antiga',titulo:'Existente'}]},datasets:{}});
   await db.exec(await fs.readFile(new URL('../supabase/migrations/202608310005_users_team.sql',import.meta.url),'utf8'));
+  await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909120005_create_analyst_admin_api.sql',import.meta.url),'utf8'));
   const analyst=(await db.query('select id from slt_core_analysts')).rows[0].id;
   assert.equal((await db.query('select assignee,assignee_id,revision from slt_maintenance_orders')).rows[0].assignee_id,analyst);
   assert.equal((await db.query('select revision from slt_maintenance_orders')).rows[0].revision,1);
@@ -24,6 +25,7 @@ test('contas: primeiro acesso, vínculo histórico, escopo, revisão e proteçã
   await as('authenticated',member);
   await assert.rejects(db.query('select slt_module_load()'),{code:'42501'});
   await assert.rejects(db.query('select slt_admin_users()'),{code:'42501'});
+  await assert.rejects(db.query("select slt_admin_create_analyst('Sem permissão')"),{code:'42501'});
   await assert.rejects(db.query('select slt_service_create_profile($1,$2,$3)',[member,other,JSON.stringify(details)]),{code:'42501'});
   assert.equal((await db.query('select * from slt_core_analysts')).rows.length,0);
   await as('postgres');await db.query("update auth.users set encrypted_password='new personal hash' where id=$1",[member]);
@@ -36,6 +38,9 @@ test('contas: primeiro acesso, vínculo histórico, escopo, revisão e proteçã
   await assert.rejects(commit(),{code:'42501'});
   await assert.rejects(db.query('update slt360_profiles set perfil=\'Admin\''),{code:'42501'});
   await as('authenticated',admin);
+  const createdAnalyst=(await db.query("select slt_admin_create_analyst('Nova Analista') as data")).rows[0].data;
+  assert.equal(createdAnalyst.nome,'Nova Analista');
+  await assert.rejects(db.query("select slt_admin_create_analyst('nova analista')"),{code:'23505'});
   await assert.rejects(db.query('select slt_admin_update_user($1,$2,1)',[admin,JSON.stringify({...details,perfil:'Admin',ativo:false})]),{code:'22023'});
   await assert.rejects(db.query('select slt_admin_update_user($1,$2,1)',[member,JSON.stringify({...details,access:[{module:'core',can_read:true,can_write:true}]})]),{code:'22023'});
   details.access[0].can_write=true;
@@ -55,7 +60,7 @@ test('contas: primeiro acesso, vínculo histórico, escopo, revisão e proteçã
   assert.equal((await db.query('select * from storage.objects')).rows.length,0);
   await as('authenticated',admin);const directory=(await db.query('select slt_admin_users() as data')).rows[0].data;
   assert.equal(directory.users.length,2);assert.equal(directory.users.find(u=>u.id===member).analyst_id,analyst);
-  assert.equal((await db.query('select * from slt_core_access_audit')).rows.length,3);
+  assert.equal((await db.query('select * from slt_core_access_audit')).rows.length,4);
   await as('anon');await assert.rejects(db.query('select slt_admin_users()'),{code:'42501'});
  }finally{await db.close();}
 });

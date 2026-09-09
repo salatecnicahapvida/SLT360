@@ -25,6 +25,7 @@ async function backend(page,role='Admin',malicious=false){
  const input=structuredClone(payload);
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  let records=flattenPayload(input).map(r=>({...r,revision:1}));
+ let analysts=[];
  const requests=[]; const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const user={id,email:'admin@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{}};
@@ -38,7 +39,12 @@ async function backend(page,role='Admin',malicious=false){
   else if(p==='/auth/v1/user')data=user;
   else if(p.endsWith('/slt360_profiles'))data=[profile];
   else if(p.endsWith('/slt_core_module_access'))data=grants;
-  else if(p.endsWith('/slt_admin_users'))data={users:[{...profile,email:user.email,access:grants}],analysts:[]};
+  else if(p.endsWith('/slt_core_analysts'))data=analysts;
+  else if(p.endsWith('/slt_admin_users'))data={users:[{...profile,email:user.email,access:grants}],analysts};
+  else if(p.endsWith('/slt_admin_create_analyst')){
+   const body=req.postDataJSON();const analyst={id:'22222222-2222-4222-8222-222222222222',nome:body.analyst_name,created_at:'2026-09-09T12:00:00Z'};
+   analysts=[...analysts,analyst];data=analyst;
+  }
   else if(p.endsWith('/slt_module_load'))data={schema_version:2,records};
   else if(p.endsWith('/slt_backup_daily'))data={created:false};
   else if(p.endsWith('/slt_commit_changes')){
@@ -75,6 +81,36 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-team-action="create"]')).toBeVisible();
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
+});
+
+test('analyst directory is separate from users and feeds every analyst filter',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
+ await expect(page.getByRole('heading',{name:'Usuários',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Analistas',exact:true})).toBeVisible();
+ await expect(page.locator('.users-panel [data-action="sort-generic-table"]')).toHaveCount(0);
+
+ await page.locator('[data-team-action="create-analyst"]').click();
+ const analystDialog=page.locator('#teamAnalystForm');
+ await analystDialog.locator('[name="nome"]').fill('Analista Novo');
+ await analystDialog.getByRole('button',{name:'Criar analista',exact:true}).click();
+ await expect(page.locator('.analysts-panel tbody')).toContainText('Analista Novo');
+
+ await page.locator('[data-team-action="create"]').click();
+ const userDialog=page.locator('#teamAccountForm');
+ await expect(userDialog.locator('[name="analyst_id"] option')).toContainText(['Sem vínculo','Analista Novo']);
+ await expect(userDialog.locator('[name="new_analyst"]')).toHaveCount(0);
+ await userDialog.locator('[data-team-close]').first().click();
+
+ await page.getByRole('button',{name:'Obras',exact:true}).click();
+ await expect(page.locator('[data-operational-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await page.locator('[data-module="maintenance"]').click();
+ await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await page.locator('[data-module="clinical"]').click();
+ await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ expect(b.errors).toEqual([]);
 });
 
 test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
