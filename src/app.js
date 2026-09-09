@@ -17,8 +17,9 @@ const viewAliases = {
   worksHome: "worksOperational",
   worksPortfolio: "portfolio",
   worksHistory: "portfolio",
+  ev: "portfolio",
   worksIntelligence: "worksManagement",
-  worksOverview: "worksHome",
+  worksOverview: "worksOperational",
   projectsOverview: "projectsHome",
   projectsPlan: "projectsPortfolio",
   investmentPlan: "projectsPortfolio",
@@ -90,23 +91,19 @@ const columns = [
 ];
 
 const worksViewIds = [
-  "worksHome",
   "worksOperational",
   "worksManagement",
   "worksStrategic",
   "portfolio",
-  "ev",
   "sics",
 ];
 
 const worksNavItems = [
-
+  { view: "worksOperational", label: "Visão Operacional" },
+  { view: "worksManagement", label: "Visão Gerencial" },
+  { view: "worksStrategic", label: "Visão Estratégica" },
   { view: "portfolio", label: "Portfólio de Obras" },
-  { view: "worksOperational", label: "Operacional" },
-  { view: "worksManagement", label: "Gerencial" },
-  { view: "worksStrategic", label: "Estratégica" },
-  { view: "ev", label: "EV" },
-  { view: "sics", label: "SICs" },
+  { view: "sics", label: "Estudo de SIC's" },
 ];
 
 const projectColumns = [
@@ -255,7 +252,7 @@ const userAccessModules = [
   {
     id: "works",
     label: "Obras",
-    detail: "Portfólio, operacional, EV, SICs, gerencial e estratégica.",
+    detail: "Operacional, gerencial, estratégica, portfólio com EVs e estudo de SIC's.",
     views: worksViewIds,
   },
   {
@@ -2001,7 +1998,7 @@ function render() {
     kanban: renderWorksOperational,
     portfolio: renderPortfolio,
     investmentPlan: renderProjectsPortfolio,
-    ev: renderEV,
+    ev: renderPortfolio,
     maintenance: renderMaintenance,
     maintenanceOperational: renderMaintenanceOperational,
     maintenanceReports: renderMaintenanceReports,
@@ -2186,8 +2183,7 @@ function haptecCurrentContext() {
   if (["worksOperational", "kanban"].includes(currentView)) return "Operacional de Obras";
   if (currentView === "worksManagement") return "Gerencial de Obras";
   if (currentView === "worksStrategic") return "Estratégica de Obras";
-  if (currentView === "ev") return "EV";
-  if (currentView === "sics") return "SICs";
+  if (currentView === "sics") return "Estudo de SIC's";
   if (currentView === "maintenanceOperational") return "Operacional de Manutenção";
   if (maintenanceViewIds.includes(currentView)) return "Manutenção";
   if (currentView === "clinical") return "Engenharia Clínica";
@@ -2215,11 +2211,8 @@ function haptecViewHelp() {
   if (["worksOperational", "kanban"].includes(currentView)) {
     return "No Operacional de Obras você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
   }
-  if (currentView === "ev") {
-    return "Na aba EV você consulta ou preenche o Estudo de Viabilidade por obra. Use a busca assistida, abra o EV e preencha valores por disciplina, inclusive SICs na linha 32.";
-  }
   if (currentView === "sics") {
-    return "Na visão de SICs você acompanha histórico, linha do tempo, visão executiva e diagnóstico. Use os filtros para achar obra, disciplina, sprint ou tipologia.";
+    return "No Estudo de SIC's você acompanha histórico, linha do tempo, visão executiva e diagnóstico. Use os filtros para achar obra, disciplina, sprint ou tipologia.";
   }
   if (currentView === "maintenanceOperational") {
     return "No Operacional de Manutenção o Kanban segue as fases Pipefy. Use os filtros de sprint, fase, tipo de despesa, centro de custo e tipologia para limpar a fila.";
@@ -2864,9 +2857,8 @@ function renderHaptecAssistant() {
                   <div class="haptec-suggestion-block">
                     <span>Navegação</span>
                     <div class="haptec-shortcuts">
-                      <button type="button" data-action="haptec-nav" data-target-view="portfolio">Obras</button>
+                      <button type="button" data-action="haptec-nav" data-target-view="portfolio">Obras e EVs</button>
                       <button type="button" data-action="haptec-nav" data-target-view="maintenanceOperational">Manutenção</button>
-                      <button type="button" data-action="haptec-nav" data-target-view="ev">EV</button>
                       <button type="button" data-action="haptec-nav" data-target-view="sics">SICs</button>
                       <button type="button" data-action="haptec-nav" data-target-view="budget">Verbas</button>
                     </div>
@@ -4121,7 +4113,7 @@ function moduleSummaries() {
   return [
     {
       id: "orcamento",
-      view: "worksOverview",
+      view: "worksOperational",
       eyebrow: "01",
       title: "Obras",
       logo: moduleHeaders.works.logo,
@@ -6223,11 +6215,14 @@ function openInvestmentDetailModal(workId) {
 function renderPortfolio() {
   const allRows = portfolioRows(false, false);
   const rows = portfolioRows(true, false);
+  const evCount = evUnifiedRecords().length;
 
   return `
-    ${renderWorksToolbar("portfolio", "Portfólio de Obras", "855 obras iniciais da DADOS EVS; novos cadastros entram depois da base oficial", `
+    ${renderWorksToolbar("portfolio", "Portfólio de Obras e EVs", `${allRows.length} obras cadastradas e ${evCount} EVs vinculados em uma única visão`, `
+      <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros de EVs</button>
       <span class="tag">${allRows.length} obras oficiais</span>
       <button class="primary-action" type="button" data-action="open-work">+ Nova obra</button>
+      <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
     `)}
 
     <section class="kpi-grid portfolio-kpis">
@@ -6244,6 +6239,14 @@ function renderPortfolio() {
       ${renderPortfolioFilters(allRows)}
       ${renderPortfolioTable(rows)}
     </section>
+
+    <div class="strategic-section-heading">
+      <div><span>Estudos de Viabilidade</span><h2>EVs vinculados ao portfólio</h2></div>
+      <p>Consulta, composição por disciplina, histórico e ferramentas de análise na mesma tela das obras.</p>
+    </div>
+    ${renderEVHistoricalIntelligence()}
+    ${renderSLTCalculator()}
+    ${renderBudgetingFlowPanel()}
   `;
 }
 
@@ -7213,20 +7216,6 @@ function loadUnifiedEVIntoINCC(recordId) {
   render();
   document.querySelector("#sltCalculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
   showToast(`EV enviado para a Calculadora SLT (${record.year}).`);
-}
-
-function renderEV() {
-  return `
-    ${renderWorksToolbar("ev", "Base oficial de EVs", "DADOS EVS, composição por disciplina e alertas estatísticos em uma única visão", `
-      <button class="secondary-action" type="button" data-view="portfolio">Portfólio</button>
-      <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros</button>
-      ${miroButton("Fluxo Miro")}
-      <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
-    `)}
-    ${renderEVHistoricalIntelligence()}
-    ${renderSLTCalculator()}
-    ${renderBudgetingFlowPanel()}
-  `;
 }
 
 function projectMasterItems(work) {
@@ -12546,7 +12535,7 @@ function renderSics() {
   const active = sicViewMeta().find((view) => view.id === sicViewMode) || sicViewMeta()[0];
 
   return `
-    ${renderWorksToolbar("sics", active.title, active.subtitle, `
+    ${renderWorksToolbar("sics", "Estudo de SIC's", `${active.title} · ${active.subtitle}`, `
       <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
     `)}
     ${renderSicViewTabs()}
@@ -17699,7 +17688,7 @@ document.addEventListener("submit", async (event) => {
 document.querySelector("#globalSearch").addEventListener("input", (event) => {
   if (!isAuthenticated()) return;
   searchTerm = event.target.value;
-  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "ev", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) scheduleInputRender();
+  if (["dashboard", "team", "reports", "kanban", "worksOperational", "portfolio", "investmentPlan", "budget", ...projectViewIds, ...maintenanceViewIds, ...clinicalViewIds].includes(currentView)) scheduleInputRender();
 });
 
 let inputRenderTimer = null;

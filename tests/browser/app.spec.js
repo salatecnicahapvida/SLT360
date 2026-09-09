@@ -55,7 +55,16 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(homeCards).toHaveCount(4);
  await expect(homeCards.locator('.home-launchpad-card__number')).toHaveText(['01','02','03','04']);
  await expect(homeCards.locator('.home-launchpad-card__body strong')).toHaveText(['Obras','Manutenção','Eng. Clínica','Controle de Verba']);
- for(const view of ['worksOperational','worksManagement','worksStrategic','portfolio','ev','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
+ await expect(worksTabs).toHaveCount(5);
+ await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);
+ await expect(page.locator('[data-view="ev"]:visible')).toHaveCount(0);
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.locator('[data-module="works"]').click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ for(const view of ['worksOperational','worksManagement','worksStrategic','portfolio','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
   await page.locator(`[data-view="${view}"]`).filter({visible:true}).first().click();
   await expect(page.locator('#app')).not.toBeEmpty();
  }
@@ -68,7 +77,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- await expect(page.getByRole('heading',{name:'Portfólio de Obras',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Portfólio de Obras e EVs',exact:true})).toBeVisible();
  const kpis=page.locator('.portfolio-kpis');
  await expect(kpis).toContainText('Obras no portfólio');
  await expect(kpis).toContainText('5');
@@ -77,14 +86,14 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(kpis).not.toContainText('Vínculos com EV');
  await expect(kpis).not.toContainText('Projetos atrasados');
  await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(8);
- await expect(page.getByRole('button',{name:'Limpar filtros'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
  await page.locator('[data-portfolio-quick-filter="origem"]').selectOption('Histórico');
  await expect(kpis).toContainText('3');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
  await page.locator('[data-portfolio-search]').fill('Norte');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
  await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Norte');
- await page.getByRole('button',{name:'Limpar filtros'}).click();
+ await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
  await expect(historicalRow.locator('td').nth(3)).toHaveText('—');
@@ -103,8 +112,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(noEvRow).toContainText('Sem EV');
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
  await expect(ambiguousPaRow.locator('td').nth(7)).toBeEmpty();
- await page.locator('[data-view="ev"]').filter({visible:true}).first().click();
- await expect(page.getByRole('heading',{name:'Base oficial de EVs',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Todos os EVs oficiais em uma única visão',exact:true})).toBeVisible();
  await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');
  await expect(page.locator('.ev-history-heading')).toContainText('DADOS EVS');
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
