@@ -7165,10 +7165,6 @@ async function openHistoricalEVModal(recordId) {
   const sicTotal = additives.total;
   const originalTotal = additives.original;
   const sicPercentage = additives.percentage === null ? "—" : `${number(additives.percentage, 2)}%`;
-  const sicLimitStatus = additives.percentage === null
-    ? "Sem base de comparação"
-    : additives.threshold === "alert" ? "Acima de 5%"
-      : additives.threshold === "warning" ? "Atenção: entre 3% e 5%" : "Abaixo de 3%";
   const sicThresholdClass = additives.threshold === "alert"
     ? "mini-metric--alert"
     : additives.threshold === "warning" ? "mini-metric--warning" : "";
@@ -7188,13 +7184,13 @@ async function openHistoricalEVModal(recordId) {
             ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
             ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
             ${miniMetric("SICs / Aditivos", moneyCents(sicTotal), sicThresholdClass)}
-            ${miniMetric("Flag de SICs / Aditivos", sicLimitStatus, sicThresholdClass)}
+            ${miniMetric("Percentual de SICs / Aditivos", sicPercentage, sicThresholdClass)}
           </section>
           <details class="ev-additive-audit">
             <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>
             <p>${additives.detailed ? "Soma das linhas identificadas como SIC, ADT ou aditivo na descrição, ou classificadas como SICs. Cada linha é contada uma vez, preservando seu sinal." : "Composição detalhada indisponível: valor limitado ao agrupamento SICs informado na base."}</p>
             <ul>${additives.included.map((item) => `<li>Item ${escapeAttribute(item.item || "—")} · ${escapeAttribute(item.description || "SIC / Aditivo")} — <strong>${moneyCents(Number(item.value || 0))}</strong></li>`).join("")}</ul>
-            <p><strong>Total: ${moneyCents(sicTotal)}</strong> · EV original: ${moneyCents(originalTotal)} · Percentual: ${sicPercentage} · Total geral: ${moneyCents(record.total)}</p>
+            <p><strong>Total: ${moneyCents(sicTotal)}</strong> · EV original: ${moneyCents(originalTotal)} · Percentual sobre o total geral: ${sicPercentage} · Total geral: ${moneyCents(record.total)}</p>
           </details>
           <section class="ev-historical-source-note"><span>Coluna F</span><div><strong>Composição completa do EV</strong><small>Cada linha abaixo corresponde a uma filha da coluna “Descrição” da planilha de origem.</small></div></section>
           <div class="table-wrap ev-historical-items-wrap">

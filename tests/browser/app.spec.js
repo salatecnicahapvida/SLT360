@@ -217,9 +217,9 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await expect(metric('Valor total do EV')).toContainText('R$ 1.000');
  await expect(metric('Valor do EV original (sem SICs)')).toContainText('R$ 850');
  await expect(metric('SICs / Aditivos')).toContainText('R$ 150');
- await expect(metric('Flag de SICs / Aditivos')).toContainText('Acima de 5%');
+ await expect(metric('Percentual de SICs / Aditivos')).toContainText('15,00%');
  await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
- await expect(metric('Flag de SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
+ await expect(metric('Percentual de SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
  await expect(metric('Percentual sobre o EV original')).toHaveCount(0);
  await expect(modal.locator('.ev-historical-summary')).not.toContainText('Filhas da coluna F');
  const title=modal.locator('#historicalEVTitle');
@@ -229,9 +229,9 @@ test('historical EV shows original and additive totals with an unobstructed titl
  const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Sul'});
  await safeRow.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(metric('SICs / Aditivos')).toContainText('R$ 20');
- await expect(metric('Flag de SICs / Aditivos')).toContainText('Atenção: entre 3% e 5%');
+ await expect(metric('Percentual de SICs / Aditivos')).toContainText('3,85%');
  await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
- await expect(metric('Flag de SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
+ await expect(metric('Percentual de SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.setViewportSize({width:390,height:844});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
