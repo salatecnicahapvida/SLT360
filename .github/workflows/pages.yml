@@ -48,6 +48,8 @@ jobs:
 
       - name: Instalar navegador de teste
         shell: bash
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: 120000
         run: |
           for attempt in 1 2 3; do
             pnpm exec playwright install --with-deps chromium && exit 0
