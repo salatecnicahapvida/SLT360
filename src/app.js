@@ -1,4 +1,5 @@
 import { csvCell } from './csv.js';
+import { evAdditiveSummary } from './ev-additives.js';
 import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 import { renderBackupsPanel, mountBackups } from './backups-ui.js';
@@ -7139,11 +7140,9 @@ async function openHistoricalEVModal(recordId) {
     catch { showToast("Não foi possível carregar a composição do EV. Tente novamente."); return; }
   }
   const risk = Number(record.disciplines?.["taxa-risco"] || 0);
-  // SICs already belong to the imported total; do not add them a second time.
-  const sicTotal = Number(record.disciplines?.sics ?? items
-    .filter((item) => canonicalDisciplineId(item.disciplineId) === "sics")
-    .reduce((sum, item) => sum + Number(item.value || 0), 0));
-  const originalTotal = Number(record.total || 0) - sicTotal;
+  const additives = evAdditiveSummary(record, items);
+  const sicTotal = additives.total;
+  const originalTotal = additives.original;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
@@ -7153,20 +7152,26 @@ async function openHistoricalEVModal(recordId) {
         </header>
         <div class="modal-body ev-modal-body">
           <section class="ev-summary-grid ev-historical-summary">
-            ${miniMetric("Valor total do EV", money(record.total))}
-            ${miniMetric("Valor do EV original (sem SICs)", money(originalTotal))}
+            ${miniMetric("Valor total do EV", moneyCents(record.total))}
+            ${miniMetric("Valor do EV original (sem SICs)", moneyCents(originalTotal))}
             ${miniMetric("EV sem taxa de risco", money(record.baseTotal))}
             ${miniMetric("Taxa de risco", money(risk))}
             ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
             ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
-            ${miniMetric("SICs / Aditivos", money(sicTotal))}
+            ${miniMetric("SICs / Aditivos", moneyCents(sicTotal))}
           </section>
+          <details class="ev-additive-audit">
+            <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>
+            <p>${additives.detailed ? "Soma das linhas identificadas como SIC, ADT ou aditivo na descrição, ou classificadas como SICs. Cada linha é contada uma vez, preservando seu sinal." : "Composição detalhada indisponível: valor limitado ao agrupamento SICs informado na base."}</p>
+            <ul>${additives.included.map((item) => `<li>Item ${escapeAttribute(item.item || "—")} · ${escapeAttribute(item.description || "SIC / Aditivo")} — <strong>${moneyCents(Number(item.value || 0))}</strong></li>`).join("")}</ul>
+            <p><strong>Total: ${moneyCents(sicTotal)}</strong> · EV original: ${moneyCents(originalTotal)} · Total geral: ${moneyCents(record.total)}</p>
+          </details>
           <section class="ev-historical-source-note"><span>Coluna F</span><div><strong>Composição completa do EV</strong><small>Cada linha abaixo corresponde a uma filha da coluna “Descrição” da planilha de origem.</small></div></section>
           <div class="table-wrap ev-historical-items-wrap">
             <table class="data-table ev-historical-items-table">
               <thead><tr><th>Item</th><th>Filha / descrição da coluna F</th><th>Disciplina SLT 360</th><th class="numeric">Valor</th><th class="numeric">% do EV</th><th class="numeric">R$/m²</th></tr></thead>
-              <tbody>${items.map((item) => { const share = record.total ? (Number(item.value || 0) / record.total) * 100 : 0; return `<tr><td>${escapeAttribute(item.item || "—")}</td><td><strong>${escapeAttribute(item.description || "Sem descrição")}</strong></td><td><span class="tag">${escapeAttribute(disciplineById(item.disciplineId).nome)}</span></td><td class="numeric"><strong>${money(Number(item.value || 0))}</strong></td><td class="numeric">${number(share, 2)}%</td><td class="numeric">${record.area ? money(Number(item.value || 0) / record.area) : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty-state">Este EV não possui filhas registradas.</div></td></tr>`}</tbody>
-              <tfoot><tr class="ev-total-row"><td colspan="3"><strong>Total Geral</strong></td><td class="numeric"><strong>${money(record.total)}</strong></td><td class="numeric"><strong>100%</strong></td><td class="numeric"><strong>${record.area ? money(record.total / record.area) : "—"}</strong></td></tr></tfoot>
+              <tbody>${items.map((item) => { const share = record.total ? (Number(item.value || 0) / record.total) * 100 : 0; return `<tr><td>${escapeAttribute(item.item || "—")}</td><td><strong>${escapeAttribute(item.description || "Sem descrição")}</strong></td><td><span class="tag">${escapeAttribute(disciplineById(item.disciplineId).nome)}</span></td><td class="numeric"><strong>${moneyCents(Number(item.value || 0))}</strong></td><td class="numeric">${number(share, 2)}%</td><td class="numeric">${record.area ? money(Number(item.value || 0) / record.area) : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty-state">Este EV não possui filhas registradas.</div></td></tr>`}</tbody>
+              <tfoot><tr class="ev-total-row"><td colspan="3"><strong>Total Geral</strong></td><td class="numeric"><strong>${moneyCents(record.total)}</strong></td><td class="numeric"><strong>100%</strong></td><td class="numeric"><strong>${record.area ? money(record.total / record.area) : "—"}</strong></td></tr></tfoot>
             </table>
           </div>
         </div>
