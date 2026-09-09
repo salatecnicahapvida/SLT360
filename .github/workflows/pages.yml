@@ -46,19 +46,9 @@ jobs:
       - name: Gerar build de produção
         run: pnpm build
 
-      - name: Instalar navegador de teste
-        shell: bash
-        env:
-          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: 120000
-        run: |
-          for attempt in 1 2 3; do
-            pnpm exec playwright install --with-deps chromium && exit 0
-            echo "Falha ao instalar o Chromium (tentativa ${attempt}/3). Tentando novamente..."
-            sleep $((attempt * 10))
-          done
-          exit 1
-
       - name: Verificar fluxos no navegador
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chrome
         run: pnpm test:browser
 
       - name: Configurar GitHub Pages

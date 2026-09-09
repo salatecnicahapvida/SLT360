@@ -17,15 +17,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Instalar navegador de teste
-        shell: bash
+      - run: pnpm lint && pnpm test && pnpm build
+      - name: Verificar fluxos no navegador
         env:
-          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: 120000
-        run: |
-          for attempt in 1 2 3; do
-            pnpm exec playwright install --with-deps chromium && exit 0
-            echo "Falha ao instalar o Chromium (tentativa ${attempt}/3). Tentando novamente..."
-            sleep $((attempt * 10))
-          done
-          exit 1
-      - run: pnpm check
+          PLAYWRIGHT_BROWSER_CHANNEL: chrome
+        run: pnpm test:browser
