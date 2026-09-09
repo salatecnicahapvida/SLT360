@@ -430,6 +430,7 @@ let operationalFilters = {
   analyst: "",
   type: "",
   status: "",
+  validationGroup: false,
   punctuality: "",
 };
 let managementStatusFilter = "all";
@@ -4937,8 +4938,8 @@ function filteredDemands() {
     if (operationalFilters.sprintId && demand.sprintId !== operationalFilters.sprintId) return false;
     if (operationalFilters.analyst && demand.analistaResponsavel !== operationalFilters.analyst) return false;
     if (operationalFilters.type && demandTypeKey(demand.tipo) !== operationalFilters.type) return false;
-    if (operationalFilters.status === "validacao" && !["validacaoST", "validacaoObras"].includes(demand.coluna)) return false;
-    if (operationalFilters.status && operationalFilters.status !== "validacao" && demand.coluna !== operationalFilters.status) return false;
+    if (operationalFilters.validationGroup && !["validacaoST", "validacaoObras"].includes(demand.coluna)) return false;
+    if (operationalFilters.status && demand.coluna !== operationalFilters.status) return false;
     if (operationalFilters.punctuality === "late" && !isDemandLate(demand)) return false;
     if (operationalFilters.punctuality === "onTime" && isDemandLate(demand)) return false;
     if (operationalFilters.sprintId && !sprint) return false;
@@ -4980,7 +4981,6 @@ function renderOperationalFilters() {
           <select data-operational-filter="status">
             <option value="">Todas</option>
             ${columns.map((column) => `<option value="${column.id}" ${operationalFilters.status === column.id ? "selected" : ""}>${column.label}</option>`).join("")}
-            <option value="validacao" ${operationalFilters.status === "validacao" ? "selected" : ""}>Aguardando validação</option>
           </select>
         </label>
         <label class="field">
@@ -5250,6 +5250,7 @@ function resetOperationalFilters() {
     analyst: "",
     type: "",
     status: "",
+    validationGroup: false,
     punctuality: "",
   };
 }
@@ -5281,9 +5282,8 @@ function operationalActiveFilterText() {
   if (operationalFilters.sprintId) active.push(sprintById(operationalFilters.sprintId)?.nome || "sprint selecionada");
   if (operationalFilters.analyst) active.push(`analista ${operationalFilters.analyst}`);
   if (operationalFilters.type) active.push(demandTypeLabel(operationalFilters.type));
-  if (operationalFilters.status) {
-    active.push(operationalFilters.status === "validacao" ? "aguardando validação" : columnById(operationalFilters.status)?.label || operationalFilters.status);
-  }
+  if (operationalFilters.validationGroup) active.push("validação Sala Técnica e Obras");
+  if (operationalFilters.status) active.push(columnById(operationalFilters.status)?.label || operationalFilters.status);
   if (operationalFilters.punctuality === "late") active.push("atrasadas");
   if (operationalFilters.punctuality === "onTime") active.push("no prazo");
   return active.length ? `Filtrando por: ${active.join(" | ")}` : "";
@@ -5296,7 +5296,7 @@ function applyOperationalKpiFilter(key) {
     opFazer: { status: "fazer" },
     opFazendo: { status: "fazendo" },
     opPausado: { status: "pausado" },
-    opValidacao: { status: "validacao" },
+    opValidacao: { validationGroup: true },
     opConcluido: { status: "concluido" },
     completedDemands: { status: "concluido" },
     opCancelado: { status: "cancelado" },
@@ -5306,6 +5306,7 @@ function applyOperationalKpiFilter(key) {
   const filter = map[key];
   if (!filter) return;
   operationalFilters.status = filter.status || "";
+  operationalFilters.validationGroup = Boolean(filter.validationGroup);
   operationalFilters.punctuality = filter.punctuality || "";
   operationalViewMode = "list";
   closeModal();
@@ -17634,6 +17635,7 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches("[data-operational-filter]")) {
     operationalFilters[event.target.dataset.operationalFilter] = event.target.value;
+    if (event.target.dataset.operationalFilter === "status") operationalFilters.validationGroup = false;
     render();
   }
   if (event.target.matches("[data-project-plan-filter]")) {

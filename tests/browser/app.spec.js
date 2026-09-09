@@ -71,6 +71,10 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
  await expect(page.locator('[data-operational-filter="type"] option[value="SIC"]')).toHaveText('SIC');
+ await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
+  'Todas','Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
+  'Aguardando Aprovação Diretoria','Concluído','Cancelado',
+ ]);
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
  await expect(worksTabs).toHaveCount(5);
  await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);
