@@ -26,6 +26,7 @@ const oiFields = {ordemInterna:'internal_order',descricao:'description',montante
 
 export const MODULES = ['core','projects','budget','maintenance','clinical','finance'];
 export const ENTITIES = [
+  entity('core_configuration_catalog','core','state.configurationCatalog',{id:'id',type:'catalog_type',label:'label',code:'code',region:'region',category:'category',position:f('position','integer')}),
   entity('budget_ev_typologies','budget','state.evTypologyOverrides',{}, {kind:'map'}),
   entity('budget_ev_targets','budget','state.evReferenceTargets',{}, {kind:'map'}),
   entity('budget_strategic_targets','budget','state.strategicTargetOverrides',{}, {kind:'map'}),

@@ -282,7 +282,7 @@ const userAccessModules = [
   },
 ];
 
-const disciplines = [
+const baseDisciplines = [
   ["fundacoes-e-contencoes", "Fundações e Contenções", "CustosDaObra", true],
   ["estruturas", "Estruturas", "CustosDaObra", true],
   ["adequacoes-civis", "Adequações Civis", "CustosDaObra", true],
@@ -350,6 +350,29 @@ const disciplineAliases = {
   "sistema-aquecimento-agua": "sistema-de-aquecimento-de-agua",
 };
 
+const baseRegions = ["Norte", "Nordeste", "Centro Oeste", "Sudeste", "Sul"];
+const baseStates = [
+  ["AC", "Acre", "Norte"], ["AL", "Alagoas", "Nordeste"], ["AP", "Amapá", "Norte"],
+  ["AM", "Amazonas", "Norte"], ["BA", "Bahia", "Nordeste"], ["CE", "Ceará", "Nordeste"],
+  ["DF", "Distrito Federal", "Centro Oeste"], ["ES", "Espírito Santo", "Sudeste"],
+  ["GO", "Goiás", "Centro Oeste"], ["MA", "Maranhão", "Nordeste"], ["MT", "Mato Grosso", "Centro Oeste"],
+  ["MS", "Mato Grosso do Sul", "Centro Oeste"], ["MG", "Minas Gerais", "Sudeste"], ["PA", "Pará", "Norte"],
+  ["PB", "Paraíba", "Nordeste"], ["PR", "Paraná", "Sul"], ["PE", "Pernambuco", "Nordeste"],
+  ["PI", "Piauí", "Nordeste"], ["RJ", "Rio de Janeiro", "Sudeste"], ["RN", "Rio Grande do Norte", "Nordeste"],
+  ["RS", "Rio Grande do Sul", "Sul"], ["RO", "Rondônia", "Norte"], ["RR", "Roraima", "Norte"],
+  ["SC", "Santa Catarina", "Sul"], ["SP", "São Paulo", "Sudeste"], ["SE", "Sergipe", "Nordeste"],
+  ["TO", "Tocantins", "Norte"],
+];
+
+const configurationCatalogDefinitions = {
+  discipline: { label: "Disciplinas do EV", singular: "disciplina" },
+  category: { label: "Categorias de obra", singular: "categoria" },
+  typology: { label: "Tipologias de obra", singular: "tipologia" },
+  year: { label: "Anos de obra", singular: "ano" },
+  region: { label: "Regiões", singular: "região" },
+  state: { label: "Estados", singular: "estado" },
+};
+
 const defaultState = {
   version: 8,
   works: [], demands: [], sics: [], contracts: [], suppliers: [],
@@ -357,7 +380,7 @@ const defaultState = {
   sprints: [], history: [], funds: [], fundMovements: [], budgetRevisions: [],
   maintenanceDemands: [], projectDemands: [], capexManualOiRows: [], clinicalAssets: [],
   workRevisions: [], evs: [], projectStatusOverrides: {}, evTypologyOverrides: {},
-  evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: []
+  evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: [], configurationCatalog: []
 };
 
 function importSignature(imported = {}) {
@@ -627,6 +650,7 @@ function normalizeState(saved) {
     projectStatusOverrides: saved.projectStatusOverrides && typeof saved.projectStatusOverrides === "object" ? saved.projectStatusOverrides : {},
     evReferenceTargets: saved.evReferenceTargets && typeof saved.evReferenceTargets === "object" ? saved.evReferenceTargets : {},
     strategicTargetOverrides: saved.strategicTargetOverrides && typeof saved.strategicTargetOverrides === "object" ? saved.strategicTargetOverrides : {},
+    configurationCatalog: arrayOrFallback(saved.configurationCatalog, base.configurationCatalog),
     history: arrayOrFallback(saved.history, base.history),
   };
 }
@@ -687,6 +711,87 @@ function dateOnly(value) {
 function arrayOrFallback(value, fallback = []) {
   if (Array.isArray(value)) return value;
   return Array.isArray(fallback) ? fallback : [];
+}
+
+function catalogEntry(type, id, label, attributes = {}) {
+  return { id: `${type}/${id}`, type, label, active: true, ...attributes };
+}
+
+function appendCatalogValues(items, type, values = []) {
+  const result = [...items];
+  const labels = new Set(result.map((item) => normalizeSearchText(item.label)));
+  values.filter(Boolean).forEach((value) => {
+    const label = String(value).trim();
+    const normalized = normalizeSearchText(label);
+    if (!normalized || labels.has(normalized)) return;
+    labels.add(normalized);
+    result.push(catalogEntry(type, `derived-${normalized.replace(/[^a-z0-9]+/g, "-")}`, label));
+  });
+  return result;
+}
+
+function defaultConfigurationItems(type) {
+  if (type === "discipline") {
+    return baseDisciplines.map((discipline) => catalogEntry(type, discipline.id, discipline.nome, {
+      code: discipline.id,
+      category: discipline.categoria,
+      position: discipline.posicao,
+      selectableForSIC: discipline.selecionavelParaSIC,
+    }));
+  }
+  if (type === "category") {
+    const defaults = [
+      "Adequação Regulatória", "Eficiência Operacional", "Fachada", "Obra Emergencial", "Obra Estratégica",
+      "Suficiência de Rede", "Verticalização", "Venda de Serviços", "Padronização de Unidade", "Histórico importado", "Não informada",
+    ].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
+    return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => work.classificacaoObra));
+  }
+  if (type === "typology") {
+    const defaults = ["Nova Unidade", "Retrofit", "Ampliação", "Reforma", "Adequação"].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
+    return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => work.tipologiaObra));
+  }
+  if (type === "year") {
+    const currentYear = new Date().getFullYear();
+    const defaults = Array.from({ length: 11 }, (_, index) => String(currentYear - 5 + index));
+    return appendCatalogValues([], type, [...defaults, ...arrayOrFallback(state?.works).map((work) => work.anoObra)])
+      .sort((left, right) => Number(left.label) - Number(right.label));
+  }
+  if (type === "region") return baseRegions.map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
+  if (type === "state") {
+    return baseStates.map(([code, label, region]) => catalogEntry(type, code.toLowerCase(), label, { code, region }));
+  }
+  return [];
+}
+
+function configurationItems(type, { includeInactive = false } = {}) {
+  const stored = arrayOrFallback(state?.configurationCatalog).filter((item) => item.type === type);
+  const items = stored.length ? stored : defaultConfigurationItems(type);
+  return items
+    .map((item, index) => ({ ...item, active: item.active !== false, position: Number(item.position || index + 1) }))
+    .filter((item) => includeInactive || item.active !== false)
+    .sort((left, right) => Number(left.position || 999) - Number(right.position || 999) || String(left.label).localeCompare(String(right.label), "pt-BR"));
+}
+
+function configurationLabels(type) {
+  return configurationItems(type).map((item) => type === "state" ? item.code : item.label).filter(Boolean);
+}
+
+function configuredDisciplines({ includeInactive = true } = {}) {
+  return configurationItems("discipline", { includeInactive }).map((item) => ({
+    id: item.code || item.id.replace(/^discipline\//, ""),
+    nome: item.label,
+    categoria: item.category || "OutrasCategorias",
+    posicao: Number(item.position || 999),
+    ativo: item.active !== false,
+    selecionavelParaSIC: item.active !== false && item.selectableForSIC !== false,
+  }));
+}
+
+function persistConfigurationType(type, items) {
+  state.configurationCatalog = [
+    ...arrayOrFallback(state.configurationCatalog).filter((item) => item.type !== type),
+    ...items,
+  ];
 }
 
 function normalizeMaintenanceDemands(demands = [], sprints = []) {
@@ -770,6 +875,7 @@ function persistedStatePayload() {
       evTypologyOverrides: state.evTypologyOverrides || {},
       evReferenceTargets: state.evReferenceTargets || {},
       strategicTargetOverrides: state.strategicTargetOverrides || {},
+      configurationCatalog: arrayOrFallback(state.configurationCatalog),
       deletedEVRecordIds: arrayOrFallback(state.deletedEVRecordIds),
     sicApprovalWorks: arrayOrFallback(state.sicApprovalWorks),
     sicApprovalWeeks: arrayOrFallback(state.sicApprovalWeeks),
@@ -1080,7 +1186,7 @@ function canonicalDisciplineId(id) {
 
 function disciplineById(id) {
   const canonicalId = canonicalDisciplineId(id);
-  return disciplines.find((discipline) => discipline.id === canonicalId) || {
+  return configuredDisciplines().find((discipline) => discipline.id === canonicalId) || {
     id,
     nome: id,
     categoria: "OutrasCategorias",
@@ -1945,7 +2051,7 @@ function activeRole() {
 function canAccessView(view) { const module = viewModule(viewAliases[view] || view); return module !== "projects" && canAccessModule(module); }
 
 function canMutateUI(action) {
-  const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets"].includes(action);
+  const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets","open-config-catalog"].includes(action);
   if (!writeAction) return true;
   const module = /sprint|supplier/.test(action) ? "settings" : dataUIModuleForView(currentView);
   return globalThis.SLT_CLOUD.canWrite(module);
@@ -2574,7 +2680,7 @@ function haptecDisciplineIdsFromQuestion(text) {
     ["estrutura", ["estruturas"]],
   ];
   for (const [term, ids] of aliases) if (text.includes(term)) return ids;
-  const direct = disciplines.find((item) => text.includes(normalizeSearchText(item.nome)));
+  const direct = configuredDisciplines().find((item) => text.includes(normalizeSearchText(item.nome)));
   return direct ? [direct.id] : [];
 }
 
@@ -6022,7 +6128,7 @@ function renderWorksStrategic() {
     .map(([label, valor]) => ({ label, valor })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
   const byTypology = [...sourceRecords.reduce((map, record) => map.set(record.typology || "Não informada", (map.get(record.typology || "Não informada") || 0) + Number(record.total || 0)), new Map())]
     .map(([label, valor]) => ({ label, valor })).sort((a, b) => b.valor - a.valor);
-  const byDiscipline = disciplines.map((discipline) => ({
+  const byDiscipline = configuredDisciplines({ includeInactive: false }).map((discipline) => ({
     label: discipline.nome,
     valor: sourceRecords.reduce((sum, record) => sum + Number(record.disciplines?.[discipline.id] || 0), 0),
   })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
@@ -7063,7 +7169,7 @@ function evHistoricalBenchmark(records, disciplineId) {
 }
 
 function evHistoricalBenchmarkRows(records) {
-  return disciplines
+  return configuredDisciplines({ includeInactive: false })
     .filter((item) => !["taxa-risco", "sics", "outras-linhas-ev"].includes(item.id))
     .map((item) => ({ discipline: item, ...evHistoricalBenchmark(records, item.id) }))
     .filter((row) => row.count >= 5)
@@ -7124,7 +7230,7 @@ function renderEVHistoricalIntelligence() {
   const sortedRecords = evHistoricalSortedRecords(records);
   const selectedBenchmark = benchmarks[0];
   const maxMean = Math.max(...benchmarks.map((row) => row.mean), 1);
-  const selectableDisciplines = disciplines.filter((d) => !["taxa-risco", "sics"].includes(d.id));
+  const selectableDisciplines = configuredDisciplines({ includeInactive: false }).filter((d) => !["taxa-risco", "sics"].includes(d.id));
   return `
     <section class="panel ev-history-panel">
       <div class="panel-header ev-history-heading"><div><span class="eyebrow">Fonte única de inteligência · DADOS EVS + novos cadastros</span><h2>Todos os EVs oficiais em uma única visão</h2><p class="panel-subtitle">${source.length} EVs vinculados a obras: ${officialCount} da carga inicial DADOS EVS${newCount ? ` + ${newCount} novo(s) cadastro(s)` : ""}.</p></div><span class="ev-history-badge">Base oficial</span></div>
@@ -7262,7 +7368,7 @@ function editHistoricalEV(recordId) {
 function openEVTypologyModal(recordId) {
   const record = evUnifiedRecords().find((item) => item.id === recordId);
   if (!record) return;
-  const options = [...new Set(evUnifiedRecords().map((item) => item.typology).concat([
+  const options = [...new Set(evUnifiedRecords().map((item) => item.typology).concat(configurationLabels("typology"), [
     "Hospital", "Pronto Atendimento", "Clínica e Medicina Preventiva", "Diagnóstico, Laboratório e Terapias",
     "TEA", "Administrativo e Logística", "Adequação Regulatória", "Outros", "Não informada",
   ]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -7604,7 +7710,7 @@ function renderEVStandardStructure(work) {
   (work.ev.lines || []).forEach((line) => {
     lineMap.set(canonicalDisciplineId(line.disciplinaId), line);
   });
-  const rows = disciplines.map((discipline) => {
+  const rows = configuredDisciplines().map((discipline) => {
     const line = lineMap.get(discipline.id);
     const status = normalizeEVLineStatus(line?.status || "Estimado");
     const value = status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0);
@@ -9396,6 +9502,8 @@ function ufFromWorkName(value = "") {
 
 function regionFromUf(uf = "") {
   const stateCode = String(uf || "").trim().toUpperCase();
+  const configuredState = configurationItems("state").find((item) => String(item.code || "").toUpperCase() === stateCode);
+  if (configuredState?.region) return configuredState.region;
   if (["AC", "AM", "AP", "PA", "RO", "RR", "TO"].includes(stateCode)) return "Norte";
   if (["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"].includes(stateCode)) return "Nordeste";
   if (["DF", "GO", "MS", "MT"].includes(stateCode)) return "Centro Oeste";
@@ -13721,7 +13829,7 @@ function renderAnalytics() {
   return `
     ${renderToolbar("Disciplina & Tipologia", "Custo por m², desvio e volatilidade por disciplina", "", moduleHeaders.budget)}
     <section class="kpi-grid">
-      ${kpi("Disciplinas rastreadas", String(disciplines.filter((item) => item.selecionavelParaSIC).length), "Dicionário canônico ativo", "blue")}
+      ${kpi("Disciplinas rastreadas", String(configuredDisciplines({ includeInactive: false }).filter((item) => item.selecionavelParaSIC).length), "Dicionário canônico ativo", "blue")}
       ${kpi("Volatilidade aprovada", money(approvedSicTotal()), "Soma de SICs aprovadas", "orange")}
       ${kpi("Tipologias", String(new Set(state.works.map((work) => work.tipologiaObra)).size), "Segmentos com obras cadastradas", "green")}
       ${kpi("Itens bloqueados", "2", "SIC's e Taxa de Risco", "red")}
@@ -13917,7 +14025,7 @@ function renderWorksSettings() {
 }
 
 function renderDisciplineDictionary(category, title) {
-  const items = disciplines.filter((discipline) => discipline.categoria === category);
+  const items = configuredDisciplines().filter((discipline) => discipline.categoria === category);
   return `
     <section class="dictionary-block">
       <h3>${title}</h3>
@@ -14072,6 +14180,174 @@ function renderUserAccessChips(user) {
   `;
 }
 
+function configurationItemDetail(type, item) {
+  if (type === "discipline") {
+    return `${String(item.position || 0).padStart(2, "0")} · ${categoryLabel(item.category)} · ${item.selectableForSIC === false ? "bloqueada para SIC" : "selecionável para SIC"}`;
+  }
+  if (type === "state") return `${item.code || "Sem UF"} · ${item.region || "Sem região"}`;
+  return item.active === false ? "Inativo" : "Ativo";
+}
+
+function renderConfigurationCatalogCard(type) {
+  const definition = configurationCatalogDefinitions[type];
+  const items = configurationItems(type, { includeInactive: true });
+  return `
+    <article class="configuration-catalog-card" data-configuration-type="${type}">
+      <header>
+        <div><h3>${definition.label}</h3><small>${items.length} item(ns) configurado(s)</small></div>
+        <button class="secondary-action compact-action" type="button" data-action="open-config-catalog" data-catalog-type="${type}">Novo</button>
+      </header>
+      <div class="configuration-catalog-list">
+        ${items.map((item) => `
+          <div class="configuration-catalog-item ${item.active === false ? "is-inactive" : ""}">
+            <div>
+              <strong>${escapeAttribute(type === "state" ? `${item.code || ""} · ${item.label}` : item.label)}</strong>
+              <small>${escapeAttribute(configurationItemDetail(type, item))}</small>
+            </div>
+            <button class="ghost-button compact-action" type="button" data-action="open-config-catalog" data-catalog-type="${type}" data-catalog-id="${escapeAttribute(item.id)}">Editar</button>
+          </div>
+        `).join("") || `<div class="empty-state">Nenhum item configurado.</div>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderConfigurationCatalogsPanel() {
+  return `
+    <section class="panel configuration-catalogs-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Cadastros e dicionários</h2>
+          <p class="panel-subtitle">Listas únicas utilizadas nos EVs, obras, formulários e filtros do aplicativo</p>
+        </div>
+        <span class="tag">Configuração compartilhada</span>
+      </div>
+      <div class="configuration-catalog-grid">
+        ${Object.keys(configurationCatalogDefinitions).map(renderConfigurationCatalogCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function openConfigurationCatalogModal(type, itemId = "") {
+  const definition = configurationCatalogDefinitions[type];
+  if (!definition) return;
+  const items = configurationItems(type, { includeInactive: true });
+  const item = items.find((entry) => entry.id === itemId) || null;
+  const isEditing = Boolean(item);
+  const nextPosition = items.reduce((highest, entry) => Math.max(highest, Number(entry.position || 0)), 0) + 1;
+  const regionOptions = configurationItems("region", { includeInactive: true });
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <form class="modal-card configuration-catalog-modal" id="configurationCatalogForm" aria-labelledby="configurationCatalogTitle">
+        <input type="hidden" name="type" value="${type}" />
+        <input type="hidden" name="itemId" value="${escapeAttribute(item?.id || "")}" />
+        <header>
+          <div>
+            <h2 id="configurationCatalogTitle">${isEditing ? "Editar" : "Nova"} ${definition.singular}</h2>
+            <p class="muted">A alteração passa a valer nas opções compartilhadas do aplicativo.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" data-form-error></div>
+          <div class="form-grid">
+            ${type === "state" ? `
+              <label class="field"><span>UF *</span><input name="code" required minlength="2" maxlength="2" value="${escapeAttribute(item?.code || "")}" placeholder="SP" /></label>
+              <label class="field"><span>Nome do estado *</span><input name="label" required minlength="2" maxlength="120" value="${escapeAttribute(item?.label || "")}" /></label>
+              <label class="field"><span>Região *</span><select name="region" required><option value="">Selecione</option>${regionOptions.map((region) => `<option value="${escapeAttribute(region.label)}" ${region.label === item?.region ? "selected" : ""}>${escapeAttribute(region.label)}${region.active === false ? " · inativa" : ""}</option>`).join("")}</select></label>
+            ` : `
+              <label class="field"><span>${type === "year" ? "Ano" : "Nome"} *</span><input name="label" required minlength="${type === "year" ? "4" : "2"}" maxlength="${type === "year" ? "4" : "160"}" ${type === "year" ? 'inputmode="numeric" pattern="\\d{4}"' : ""} value="${escapeAttribute(item?.label || "")}" /></label>
+            `}
+            ${type === "discipline" ? `
+              <label class="field"><span>Identificador *</span><input name="code" required maxlength="120" value="${escapeAttribute(item?.code || "")}" ${isEditing ? "readonly" : ""} placeholder="instalacoes-eletricas" /></label>
+              <label class="field"><span>Grupo do EV *</span><select name="category" required><option value="CustosDaObra" ${item?.category === "CustosDaObra" ? "selected" : ""}>Custos da Obra</option><option value="OutrasCategorias" ${item?.category !== "CustosDaObra" ? "selected" : ""}>Outras Categorias</option></select></label>
+              <label class="field"><span>Posição *</span><input name="position" type="number" min="1" max="999" required value="${escapeAttribute(item?.position || nextPosition)}" /></label>
+              <label class="field checkbox-field"><input name="selectableForSIC" type="checkbox" ${item?.selectableForSIC !== false ? "checked" : ""} /><span>Selecionável em SIC</span></label>
+            ` : ""}
+            <label class="field checkbox-field"><input name="active" type="checkbox" ${item?.active !== false ? "checked" : ""} /><span>Item ativo</span></label>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-action" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">${isEditing ? "Salvar alterações" : "Criar item"}</button>
+        </div>
+      </form>
+    </div>
+  `);
+  modalRoot.querySelector('[name="label"]')?.focus();
+}
+
+function handleConfigurationCatalogSubmit(form) {
+  const formData = new FormData(form);
+  const type = String(formData.get("type") || "");
+  const definition = configurationCatalogDefinitions[type];
+  if (!definition) return;
+  const itemId = String(formData.get("itemId") || "");
+  const items = configurationItems(type, { includeInactive: true }).map((item) => ({ ...item }));
+  const existingIndex = items.findIndex((item) => item.id === itemId);
+  const existing = existingIndex >= 0 ? items[existingIndex] : null;
+  const label = String(formData.get("label") || "").trim();
+  const code = String(formData.get("code") || "").trim().toUpperCase();
+  if (items.some((item) => item.id !== itemId && normalizeSearchText(item.label) === normalizeSearchText(label))) {
+    showFormError(`Esta ${definition.singular} já está cadastrada.`, form);
+    return;
+  }
+  if (type === "state" && !/^[A-Z]{2}$/.test(code)) {
+    showFormError("Informe a UF com duas letras.", form);
+    return;
+  }
+  if (type === "year" && !/^\d{4}$/.test(label)) {
+    showFormError("Informe o ano com quatro números.", form);
+    return;
+  }
+  const disciplineCode = type === "discipline"
+    ? String(formData.get("code") || "").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "")
+    : "";
+  const comparableCode = type === "discipline" ? disciplineCode : code;
+  if (["discipline", "state"].includes(type) && (!comparableCode || items.some((item) => item.id !== itemId && String(item.code || "").toUpperCase() === comparableCode.toUpperCase()))) {
+    showFormError("O identificador informado já existe ou é inválido.", form);
+    return;
+  }
+  const nextItem = {
+    ...(existing || {}),
+    id: existing?.id || `${type}/${crypto.randomUUID()}`,
+    type,
+    label,
+    active: formData.get("active") === "on",
+  };
+  if (type === "state") Object.assign(nextItem, { code, region: String(formData.get("region") || "").trim() });
+  if (type === "discipline") Object.assign(nextItem, {
+    code: disciplineCode,
+    category: String(formData.get("category") || "OutrasCategorias"),
+    position: Number(formData.get("position") || 999),
+    selectableForSIC: formData.get("selectableForSIC") === "on",
+  });
+  if (existingIndex >= 0) items[existingIndex] = nextItem;
+  else items.push(nextItem);
+  persistConfigurationType(type, items);
+  if (type === "region" && existing && existing.label !== label) {
+    const states = configurationItems("state", { includeInactive: true }).map((stateItem) =>
+      stateItem.region === existing.label ? { ...stateItem, region: label } : stateItem
+    );
+    persistConfigurationType("state", states);
+  }
+  state.history = [{
+    id: `HIST-${Date.now()}`,
+    entidade: "configuracao",
+    entidadeId: nextItem.id,
+    campo: existing ? "edição" : "criação",
+    valorAnterior: existing?.label || "",
+    valorNovo: nextItem.label,
+    usuario: currentUser()?.nome || "Sistema",
+    timestamp: new Date().toISOString(),
+  }, ...arrayOrFallback(state.history)];
+  saveState();
+  closeModal();
+  render();
+  showToast(`${definition.label}: cadastro ${existing ? "atualizado" : "criado"}.`);
+}
+
 function renderSettings() {
   const history = Array.isArray(state.history) ? state.history : [];
   return `
@@ -14080,45 +14356,8 @@ function renderSettings() {
     `)}
     ${renderSprintSettingsPanel()}
     ${renderUsersSettingsPanel()}
-    <div class="content-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Dicionário de disciplinas</h2>
-            <p class="panel-subtitle">Posição imutável e bloqueio de itens genéricos</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Pos.</th>
-                <th>Disciplina</th>
-                <th>Categoria</th>
-                <th>SIC</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${disciplines
-                .map((discipline) => `
-                  <tr>
-                    <td>${discipline.posicao}</td>
-                    <td><strong>${discipline.nome}</strong></td>
-                    <td>${categoryLabel(discipline.categoria)}</td>
-                    <td>
-                      <span class="status-pill" data-status="${discipline.selecionavelParaSIC ? "Aprovado" : "Reprovado"}">
-                        ${discipline.selecionavelParaSIC ? "Selecionável" : "Bloqueado"}
-                      </span>
-                    </td>
-                  </tr>
-                `)
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <details class="panel settings-history-panel">
+    ${renderConfigurationCatalogsPanel()}
+    <details class="panel settings-history-panel">
         <summary class="panel-header settings-history-summary">
           <div>
             <h2>Histórico</h2>
@@ -14136,8 +14375,7 @@ function renderSettings() {
             .map(renderHistoryItem)
             .join("") || `<div class="empty-state">Sem histórico registrado.</div>`}
         </div>
-      </details>
-    </div>
+    </details>
   `;
 }
 
@@ -14804,7 +15042,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
             </label>
             <label class="field">
               <span>UF *</span>
-              <input name="uf" required maxlength="2" placeholder="CE" value="${fieldValue("uf")}" />
+              <input name="uf" list="ufOptions" required maxlength="2" placeholder="CE" value="${fieldValue("uf")}" />
             </label>
             <label class="field">
               <span>Região *</span>
@@ -14816,7 +15054,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
             </label>
             <label class="field">
               <span>Ano da obra</span>
-              <input name="anoObra" inputmode="numeric" maxlength="4" placeholder="2026" value="${fieldValue("anoObra")}" />
+              <input name="anoObra" list="anoObraOptions" inputmode="numeric" maxlength="4" placeholder="2026" value="${fieldValue("anoObra")}" />
             </label>
             <label class="field">
               <span>Classificação</span>
@@ -14888,9 +15126,11 @@ function workFormDatalists() {
   `;
   return `
     ${datalist("tipoUnidadeOptions", uniqueWorkValues("tipoUnidade"))}
-    ${datalist("regiaoOptions", uniqueWorkValues("regiao"))}
-    ${datalist("classificacaoOptions", uniqueWorkValues("classificacaoObra"))}
-    ${datalist("tipologiaOptions", uniqueWorkValues("tipologiaObra"))}
+    ${datalist("ufOptions", configurationLabels("state"))}
+    ${datalist("regiaoOptions", configurationLabels("region"))}
+    ${datalist("anoObraOptions", configurationLabels("year"))}
+    ${datalist("classificacaoOptions", configurationLabels("category"))}
+    ${datalist("tipologiaOptions", configurationLabels("typology"))}
   `;
 }
 
@@ -15599,7 +15839,7 @@ function disciplineRowTemplate() {
         <span>Disciplina</span>
         <select name="disciplinaId">
           <option value="">Selecionar</option>
-          ${disciplines
+          ${configuredDisciplines({ includeInactive: false })
             .filter((discipline) => discipline.selecionavelParaSIC)
             .map((discipline) => `<option value="${discipline.id}">${discipline.posicao}. ${discipline.nome}</option>`)
             .join("")}
@@ -15621,7 +15861,7 @@ function sicDraftDisciplineRowTemplate(item = {}) {
         <span>Disciplina</span>
         <select name="sicDraftDisciplinaId">
           <option value="">Selecionar</option>
-          ${disciplines
+          ${configuredDisciplines({ includeInactive: false })
             .filter((discipline) => discipline.selecionavelParaSIC)
             .map((discipline) => `<option value="${discipline.id}" ${discipline.id === item.disciplinaId ? "selected" : ""}>${discipline.posicao}. ${discipline.nome}</option>`)
             .join("")}
@@ -17330,6 +17570,10 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
+  if (action === "open-config-catalog") {
+    openConfigurationCatalogModal(actionButton.dataset.catalogType, actionButton.dataset.catalogId || "");
+    return;
+  }
   if (action === "open-ev-modal") openEVModal(actionButton.dataset.id);
   if (action === "open-portfolio-work-options") {
     openPortfolioWorkOptions(actionButton.dataset.id);
@@ -18031,6 +18275,10 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     handleSprintSubmit(event.target);
   }
+  if (event.target.id === "configurationCatalogForm") {
+    event.preventDefault();
+    handleConfigurationCatalogSubmit(event.target);
+  }
 
   if (event.target.id === "demandWizardStep1") {
     event.preventDefault();
@@ -18341,6 +18589,22 @@ function receiveCloudModulePayload(payload) {
 
 globalThis.EV_HISTORICAL_DATA = { source: "DADOS EVS(1).xlsx", sheet: "Planilha1", records: arrayOrFallback(state.evs) };
 globalThis.SLT_CLOUD.registerModuleReceiver(receiveCloudModulePayload);
-mountUsersAdmin(globalThis.SLT_CLOUD, () => render());
+mountUsersAdmin(globalThis.SLT_CLOUD, (context) => {
+  const rename = context?.analystRename;
+  if (rename?.from && rename.to && rename.from !== rename.to) {
+    const updateDemand = (demand) => {
+      if (demand.analistaResponsavel === rename.from) demand.analistaResponsavel = rename.to;
+      demand.analistasComplementares = arrayOrFallback(demand.analistasComplementares).map((name) => name === rename.from ? rename.to : name);
+      if (demand.sicMetadata?.analistaSalaTecnica === rename.from) demand.sicMetadata.analistaSalaTecnica = rename.to;
+    };
+    arrayOrFallback(state.demands).forEach(updateDemand);
+    arrayOrFallback(state.projectDemands).forEach(updateDemand);
+    arrayOrFallback(state.maintenanceDemands).forEach(updateDemand);
+    arrayOrFallback(state.sics).forEach((sic) => {
+      if (sic.analistaSalaTecnica === rename.from) sic.analistaSalaTecnica = rename.to;
+    });
+  }
+  render();
+});
 mountBackups(globalThis.SLT_CLOUD);
 render();

@@ -45,6 +45,10 @@ async function backend(page,role='Admin',malicious=false){
    const body=req.postDataJSON();const analyst={id:'22222222-2222-4222-8222-222222222222',nome:body.analyst_name,created_at:'2026-09-09T12:00:00Z'};
    analysts=[...analysts,analyst];data=analyst;
   }
+  else if(p.endsWith('/slt_admin_update_analyst')){
+   const body=req.postDataJSON();const analyst=analysts.find(item=>item.id===body.target_id);
+   if(analyst)analyst.nome=body.analyst_name;data=analyst;
+  }
   else if(p.endsWith('/slt_home_summary'))data={schema_version:2,works:{totalWorks:5,historicalEVCount:3,activeCount:2,pendingEVCount:1,contracted:0},maintenance:{totalCount:0,activeCount:0,overdueCount:0},clinical:{equipmentCount:0,unitCount:0,totalCount:0,activeCount:0},finance:{fundCount:0,availableBalance:0}};
   else if(p.endsWith('/slt_module_load')){
    const module=req.postDataJSON()?.module_key;
@@ -52,6 +56,7 @@ async function backend(page,role='Admin',malicious=false){
     ...(['budget','maintenance','clinical','projects'].includes(module)?['core_units','core_sprints','core_source_unit_registry_data']:[]),
     ...(module==='budget'?['core_suppliers']:[]),
     ...(['budget','finance','projects'].includes(module)?['projects_works']:[]),
+    ...(['budget','maintenance','clinical','projects','finance'].includes(module)?['core_configuration_catalog']:[]),
    ]);
    data={schema_version:2,records:module?records.filter(row=>ENTITY_BY_NAME.get(row.entity)?.module===module||dependencies.has(row.entity)):records};
   }
@@ -148,25 +153,74 @@ test('analyst directory is separate from users and feeds every analyst filter',a
  await analystDialog.locator('[name="nome"]').fill('Analista Novo');
  await analystDialog.getByRole('button',{name:'Criar analista',exact:true}).click();
  await expect(page.locator('.analysts-panel tbody')).toContainText('Analista Novo');
+ await page.getByRole('button',{name:'Editar analista Analista Novo'}).click();
+ const analystEditDialog=page.locator('#teamAnalystForm');
+ await analystEditDialog.locator('[name="nome"]').fill('Analista Editado');
+ await analystEditDialog.getByRole('button',{name:'Salvar alterações',exact:true}).click();
+ await expect(page.locator('.analysts-panel tbody')).toContainText('Analista Editado');
+ await expect(page.locator('.analysts-panel tbody')).not.toContainText('Analista Novo');
 
  await page.locator('[data-team-action="create"]').click();
  const userDialog=page.locator('#teamAccountForm');
- await expect(userDialog.locator('[name="analyst_id"] option')).toContainText(['Sem vínculo','Analista Novo']);
+ await expect(userDialog.locator('[name="analyst_id"] option')).toContainText(['Sem vínculo','Analista Editado']);
  await expect(userDialog.locator('[name="new_analyst"]')).toHaveCount(0);
  await userDialog.locator('[data-team-close]').first().click();
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
- await expect(page.locator('[data-operational-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await expect(page.locator('[data-operational-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
- await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Novo']);
+ await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Editado']);
  await page.locator('#demandWizardStep1 [data-action="close-modal"]').first().click();
  await page.locator('[data-module="maintenance"]').click();
  await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
  await page.locator('[data-module="clinical"]').click();
  await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Novo']);
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
+ expect(b.errors).toEqual([]);
+});
+
+test('configuration catalogs can be created and edited and feed work and EV forms',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
+ const catalogs=page.locator('.configuration-catalog-card');
+ await expect(catalogs).toHaveCount(6);
+ await expect(catalogs.locator('h3')).toHaveText(['Disciplinas do EV','Categorias de obra','Tipologias de obra','Anos de obra','Regiões','Estados']);
+ for(const type of ['discipline','category','typology','year','region','state']){
+  await expect(page.locator(`[data-configuration-type="${type}"]`).getByRole('button',{name:'Novo'})).toBeVisible();
+ }
+
+ const categoryCard=page.locator('[data-configuration-type="category"]');
+ await categoryCard.getByRole('button',{name:'Novo'}).click();
+ await page.locator('#configurationCatalogForm [name="label"]').fill('Categoria Configurável');
+ await page.locator('#configurationCatalogForm').getByRole('button',{name:'Criar item'}).click();
+ const createdCategory=categoryCard.locator('.configuration-catalog-item').filter({hasText:'Categoria Configurável'});
+ await expect(createdCategory).toBeVisible();
+ await createdCategory.getByRole('button',{name:'Editar'}).click();
+ await page.locator('#configurationCatalogForm [name="label"]').fill('Categoria Editada');
+ await page.locator('#configurationCatalogForm').getByRole('button',{name:'Salvar alterações'}).click();
+ await expect(categoryCard).toContainText('Categoria Editada');
+ await expect(categoryCard).not.toContainText('Categoria Configurável');
+
+ const disciplineCard=page.locator('[data-configuration-type="discipline"]');
+ await disciplineCard.getByRole('button',{name:'Novo'}).click();
+ const disciplineForm=page.locator('#configurationCatalogForm');
+ await disciplineForm.locator('[name="label"]').fill('Disciplina Configurável');
+ await disciplineForm.locator('[name="code"]').fill('disciplina-configuravel');
+ await disciplineForm.locator('[name="category"]').selectOption('CustosDaObra');
+ await disciplineForm.getByRole('button',{name:'Criar item'}).click();
+ await expect(disciplineCard).toContainText('Disciplina Configurável');
+ await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='core_configuration_catalog'))).toBe(true);
+
+ await page.getByRole('button',{name:'Obras',exact:true}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ await expect(page.locator('#classificacaoOptions option[value="Categoria Editada"]')).toHaveCount(1);
+ await page.locator('#workForm [data-action="close-modal"]').first().click();
+ await page.getByRole('button',{name:'Nova SIC',exact:true}).click();
+ await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
+ await page.locator('#demandForm [data-action="close-modal"]').first().click();
  expect(b.errors).toEqual([]);
 });
 

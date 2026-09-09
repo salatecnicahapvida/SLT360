@@ -27,7 +27,7 @@ test('CSV neutralizes formulas while preserving numeric amounts',()=>{
 });
 
 test('EV settings, hidden historical IDs and SIC state round-trip without losing data',()=>{
- const state={evTypologyOverrides:{x:'Hospital'},evReferenceTargets:{x:{value:12}},strategicTargetOverrides:{hospital:{targetMin:10,targetMax:20}},deletedEVRecordIds:['x'],sicApprovalWorks:[{id:'w',descricao:'Test',sics:[]}],sicApprovalWeeks:[{id:'week',label:'Test'}],sicApprovalSnapshots:[{weekId:'week',obraId:'w',ev:{total:1}}]};
+ const state={configurationCatalog:[{id:'category/test',type:'category',label:'Teste',active:true}],evTypologyOverrides:{x:'Hospital'},evReferenceTargets:{x:{value:12}},strategicTargetOverrides:{hospital:{targetMin:10,targetMax:20}},deletedEVRecordIds:['x'],sicApprovalWorks:[{id:'w',descricao:'Test',sics:[]}],sicApprovalWeeks:[{id:'week',label:'Test'}],sicApprovalSnapshots:[{weekId:'week',obraId:'w',ev:{total:1}}]};
  const result=hydrateRecords(flattenPayload({state})).state;
  for(const key of Object.keys(state)) assert.deepEqual(result[key],state[key],key);
 });
@@ -51,7 +51,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   const commit=changes=>db.query('select slt_commit_changes($1,$2) result',[`00000000-0000-4000-8000-${String(request++).padStart(12,'0')}`,JSON.stringify(changes)]);
   await as('anon');await assert.rejects(db.query('select * from slt_budget_approval_works'),{code:'42501'});
   await as('authenticated',admin);
-  const state={sicApprovalWorks:[{id:'aw',descricao:'Approval'}],sicApprovalWeeks:[{id:'week',start:'2026-09-01'}],sicApprovalSnapshots:[{weekId:'week',obraId:'aw',ev:{total:123}}],evReferenceTargets:{hospital:{value:100}},deletedEVRecordIds:['hist']};
+  const state={configurationCatalog:[{id:'category/test',type:'category',label:'Teste',active:true}],sicApprovalWorks:[{id:'aw',descricao:'Approval'}],sicApprovalWeeks:[{id:'week',start:'2026-09-01'}],sicApprovalSnapshots:[{weekId:'week',obraId:'aw',ev:{total:123}}],evReferenceTargets:{hospital:{value:100}},deletedEVRecordIds:['hist']};
   const changes=flattenPayload({state}).map(r=>({...r,expected_revision:0,operation:'upsert'}));
   await commit(changes);
   const legacy=(await db.query('select slt_module_load() result')).rows[0].result;

@@ -330,6 +330,11 @@ async function startInternal() {
       if (r.error) throw r.error;
       return r.data;
     },
+    async updateAnalyst(target_id, analyst_name) {
+      const r = await client.rpc('slt_admin_update_analyst', { target_id, analyst_name });
+      if (r.error) throw r.error;
+      return r.data;
+    },
     async historicalEVItems(ev_id) {
       const r = await client.rpc('slt_budget_historical_ev_items', {ev_id});
       if (r.error) throw r.error;

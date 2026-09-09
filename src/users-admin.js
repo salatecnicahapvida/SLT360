@@ -7,11 +7,11 @@ export function renderUsersPanel(cloud) {
  <div class="table-wrap"><table class="data-table" data-no-sort><thead><tr><th>Usuário</th><th>Perfil / situação</th><th>Analista vinculado</th><th>Acesso aos módulos</th><th>Ações</th></tr></thead><tbody>${users.map(u=>`<tr><td><strong>${esc(u.nome)}</strong><br><small>${esc(u.email)}</small></td><td>${esc(u.perfil)} · ${u.ativo?'Ativo':'Inativo'}${u.must_change_password?'<br><small>Troca de senha pendente</small>':''}</td><td>${esc(analysts.find(a=>a.id===u.analyst_id)?.nome||'Sem vínculo')}</td><td>${u.perfil==='Admin'?'Todos · edição':MODULE_OPTIONS.filter(m=>u.access?.some(g=>g.module===m.id&&g.can_read)).map(m=>`${m.label}: ${u.access.find(g=>g.module===m.id).can_write?'edição':'consulta'}`).join('<br>')||'Nenhum módulo'}</td><td><div class="users-actions"><button class="secondary-button" data-team-action="edit" data-user-id="${esc(u.id)}" aria-label="Editar ${esc(u.nome)}">Editar acesso</button>${u.id!==cloud.profile.id?`<button class="secondary-button" data-team-action="reset-password" data-user-id="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">Redefinir senha</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Atualize a lista para consultar os usuários.</td></tr>'}</tbody></table></div>
  <p class="muted">As permissões liberam os registros do módulo, não apenas as tarefas do analista vinculado. Desativar a conta bloqueia novos acessos e preserva o histórico.</p></section>
  <section class="panel users-panel analysts-panel" aria-labelledby="analystsTitle"><div class="panel-header"><div><h2 id="analystsTitle">Analistas</h2><p class="panel-subtitle">Cadastre aqui os responsáveis que devem aparecer nos filtros e nas demandas.</p></div><button class="primary-button" data-team-action="create-analyst">Novo analista</button></div>
- <div class="table-wrap"><table class="data-table" data-no-sort><thead><tr><th>Analista</th><th>Usuário associado</th><th>Situação do vínculo</th></tr></thead><tbody>${analysts.map(a=>{const linked=users.find(u=>u.analyst_id===a.id);return `<tr><td><strong>${esc(a.nome)}</strong></td><td>${linked?`${esc(linked.nome)}<br><small>${esc(linked.email)}</small>`:'—'}</td><td>${linked?'Associado':'Disponível para associação'}</td></tr>`;}).join('')||'<tr><td colspan="3">Nenhum analista cadastrado.</td></tr>'}</tbody></table></div>
+ <div class="table-wrap"><table class="data-table" data-no-sort><thead><tr><th>Analista</th><th>Usuário associado</th><th>Situação do vínculo</th><th>Ações</th></tr></thead><tbody>${analysts.map(a=>{const linked=users.find(u=>u.analyst_id===a.id);return `<tr><td><strong>${esc(a.nome)}</strong></td><td>${linked?`${esc(linked.nome)}<br><small>${esc(linked.email)}</small>`:'—'}</td><td>${linked?'Associado':'Disponível para associação'}</td><td><button class="secondary-button" data-team-action="edit-analyst" data-analyst-id="${esc(a.id)}" aria-label="Editar analista ${esc(a.nome)}">Editar</button></td></tr>`;}).join('')||'<tr><td colspan="4">Nenhum analista cadastrado.</td></tr>'}</tbody></table></div>
  <p class="muted">O analista pode existir sem conta. Quando necessário, associe-o ao editar ou criar um usuário.</p></section>`;
 }
 export function mountUsersAdmin(cloud,onUpdated) {
- async function refresh(){cloud.team=await cloud.adminUsers();cloud.analysts=cloud.team.analysts;onUpdated();}
+ async function refresh(context){cloud.team=await cloud.adminUsers();cloud.analysts=cloud.team.analysts;onUpdated(context);}
  document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-team-action]');if(!button)return;
   event.preventDefault();event.stopImmediatePropagation();
@@ -19,9 +19,10 @@ export function mountUsersAdmin(cloud,onUpdated) {
   if(button.dataset.teamAction==='refresh'){
    button.disabled=true;try{await refresh();}catch{button.textContent='Falha ao atualizar. Tente novamente.';button.disabled=false;}return;
   }
-  if(button.dataset.teamAction==='create-analyst'){
+  if(button.dataset.teamAction==='create-analyst'||button.dataset.teamAction==='edit-analyst'){
+   const analyst=(cloud.team?.analysts||cloud.analysts||[]).find(a=>a.id===button.dataset.analystId)||null;
    const analystDialog=document.createElement('dialog');analystDialog.className='user-editor';
-   analystDialog.innerHTML=cloud.cleanHTML(`<form id="teamAnalystForm"><div class="panel-header"><h2>Novo analista</h2><button type="button" data-analyst-close aria-label="Fechar">×</button></div><p>Cadastre o responsável para disponibilizá-lo em todos os filtros e seletores de analista. A associação com uma conta de usuário pode ser feita depois.</p><label>Nome do analista<input name="nome" required minlength="2" maxlength="160" autocomplete="name" autofocus></label><p role="alert" data-analyst-error></p><div class="users-actions"><button type="button" data-analyst-close>Cancelar</button><button type="submit" class="primary-button">Criar analista</button></div></form>`);
+   analystDialog.innerHTML=cloud.cleanHTML(`<form id="teamAnalystForm"><div class="panel-header"><h2>${analyst?'Editar analista':'Novo analista'}</h2><button type="button" data-analyst-close aria-label="Fechar">×</button></div><p>${analyst?'Atualize o nome usado nos filtros, seletores e demandas vinculadas.':'Cadastre o responsável para disponibilizá-lo em todos os filtros e seletores de analista. A associação com uma conta de usuário pode ser feita depois.'}</p><label>Nome do analista<input name="nome" required minlength="2" maxlength="160" value="${esc(analyst?.nome)}" autocomplete="name" autofocus></label><p role="alert" data-analyst-error></p><div class="users-actions"><button type="button" data-analyst-close>Cancelar</button><button type="submit" class="primary-button">${analyst?'Salvar alterações':'Criar analista'}</button></div></form>`);
    document.body.append(analystDialog);analystDialog.showModal();
    const analystForm=analystDialog.querySelector('form');let analystBusy=false;
    const closeAnalyst=()=>{if(!analystBusy){analystDialog.close();analystDialog.remove();}};
@@ -32,7 +33,7 @@ export function mountUsersAdmin(cloud,onUpdated) {
     const name=analystForm.elements.nome.value.trim();
     const errorBox=analystDialog.querySelector('[data-analyst-error]');errorBox.textContent='';
     analystBusy=true;analystForm.querySelectorAll('button').forEach(b=>b.disabled=true);
-    try{await cloud.createAnalyst(name);analystBusy=false;closeAnalyst();await refresh();}
+    try{if(analyst)await cloud.updateAnalyst(analyst.id,name);else await cloud.createAnalyst(name);analystBusy=false;closeAnalyst();await refresh(analyst?{analystRename:{from:analyst.nome,to:name}}:undefined);}
     catch(error){errorBox.textContent=error.message||'Não foi possível cadastrar o analista.';analystBusy=false;analystForm.querySelectorAll('button').forEach(b=>b.disabled=false);}
    });
    return;
