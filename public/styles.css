@@ -6440,6 +6440,10 @@ button.alert-item {
   background: #edf4fa;
 }
 
+.operational-board-panel .kanban-column {
+  height: clamp(1100px, 150vh, 1600px);
+}
+
 .kanban-column::before {
   content: "";
   display: block;

@@ -144,6 +144,7 @@ test('only SICs enter director approval after Works validation',async({page})=>{
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
  await expect(kanbanColumns).toHaveCount(8);
+ expect((await kanbanColumns.first().boundingBox()).height).toBeGreaterThanOrEqual(1100);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
   'Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
   'Aguardando Aprovação Diretoria','Concluído','Cancelado',
