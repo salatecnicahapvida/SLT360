@@ -47,7 +47,14 @@ jobs:
         run: pnpm build
 
       - name: Instalar navegador de teste
-        run: pnpm exec playwright install --with-deps chromium
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm exec playwright install --with-deps chromium && exit 0
+            echo "Falha ao instalar o Chromium (tentativa ${attempt}/3). Tentando novamente..."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Verificar fluxos no navegador
         run: pnpm test:browser

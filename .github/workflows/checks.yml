@@ -17,5 +17,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Instalar navegador de teste
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm exec playwright install --with-deps chromium && exit 0
+            echo "Falha ao instalar o Chromium (tentativa ${attempt}/3). Tentando novamente..."
+            sleep $((attempt * 10))
+          done
+          exit 1
       - run: pnpm check
