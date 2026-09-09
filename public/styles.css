@@ -8211,6 +8211,17 @@ button.alert-item {
   font-size: 1.2rem;
 }
 
+.mini-metric--alert {
+  border-color: #dc2626;
+  background: #fff1f2;
+  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.12);
+}
+
+.mini-metric--alert small,
+.mini-metric--alert strong {
+  color: #b91c1c;
+}
+
 .ev-master-panel,
 .ev-version-panel {
   border: 1px solid var(--line);

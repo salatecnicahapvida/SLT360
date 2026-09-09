@@ -15,8 +15,19 @@ test('counts SICs in all disciplines once and preserves negative amounts and cen
  assert.equal(result.total,160.25);
  assert.equal(result.original,1005);
  assert.equal(result.included.length,4);
+ assert.ok(Math.abs(result.percentage-(160.25/1005*100))<Number.EPSILON);
+ assert.equal(result.exceedsLimit,true);
 });
 test('detailed zero overrides stale aggregate, ordinary words are not SICs',()=>{
  const result=evAdditiveSummary({total:123,disciplines:{sics:90}},[{description:'Físico básico',value:123}]);
  assert.equal(result.total,0);assert.equal(result.original,123);
+ assert.equal(result.percentage,0);assert.equal(result.exceedsLimit,false);
+});
+test('flags only percentages strictly above five percent',()=>{
+ const atLimit=evAdditiveSummary({total:1050,disciplines:{sics:50}},[]);
+ assert.equal(atLimit.percentage,5);
+ assert.equal(atLimit.exceedsLimit,false);
+ const aboveLimit=evAdditiveSummary({total:1050.01,disciplines:{sics:50.01}},[]);
+ assert.ok(aboveLimit.percentage>5);
+ assert.equal(aboveLimit.exceedsLimit,true);
 });

@@ -11,5 +11,14 @@ export function evAdditiveSummary(record, items = []) {
   const cents = items.length
     ? included.reduce((sum, item) => sum + Math.round(Number(item.value || 0) * 100), 0)
     : Math.round(Number(record.disciplines?.sics || 0) * 100);
-  return { included, total: cents / 100, original: (Math.round(Number(record.total || 0) * 100) - cents) / 100, detailed: items.length > 0 };
+  const originalCents = Math.round(Number(record.total || 0) * 100) - cents;
+  const percentage = originalCents > 0 ? (cents / originalCents) * 100 : null;
+  return {
+    included,
+    total: cents / 100,
+    original: originalCents / 100,
+    percentage,
+    exceedsLimit: percentage !== null && percentage > 5,
+    detailed: items.length > 0,
+  };
 }

@@ -213,14 +213,25 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
  const modal=page.locator('.ev-historical-modal');
  await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
- const metric=label=>modal.locator('.ev-historical-summary > *').filter({hasText:label});
+ const metric=label=>modal.locator('.ev-historical-summary > .mini-metric').filter({has:page.getByText(label,{exact:true})});
  await expect(metric('Valor total do EV')).toContainText('R$ 1.000');
  await expect(metric('Valor do EV original (sem SICs)')).toContainText('R$ 850');
  await expect(metric('SICs / Aditivos')).toContainText('R$ 150');
+ await expect(metric('Percentual sobre o EV original')).toContainText('17,65%');
+ await expect(metric('Flag de SICs / Aditivos')).toContainText('Acima de 5%');
+ await expect(metric('Percentual sobre o EV original')).toHaveClass(/mini-metric--alert/);
+ await expect(metric('Flag de SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
  await expect(modal.locator('.ev-historical-summary')).not.toContainText('Filhas da coluna F');
  const title=modal.locator('#historicalEVTitle');
  await title.click(); // Also checks that the site header does not cover the title.
  await page.screenshot({path:'outputs/ev-summary-layout.png',fullPage:false});
+ await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+ const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Sul'});
+ await safeRow.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(metric('Percentual sobre o EV original')).toContainText('0,00%');
+ await expect(metric('Flag de SICs / Aditivos')).toContainText('Dentro de 5%');
+ await expect(metric('Percentual sobre o EV original')).not.toHaveClass(/mini-metric--alert/);
+ await expect(metric('Flag de SICs / Aditivos')).not.toHaveClass(/mini-metric--alert/);
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.setViewportSize({width:390,height:844});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
