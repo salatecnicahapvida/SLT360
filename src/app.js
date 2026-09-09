@@ -4917,7 +4917,6 @@ function renderWorksOperational() {
             <button class="${operationalViewMode === "list" ? "is-active" : ""}" type="button" data-action="set-operational-view" data-mode="list">Lista</button>
           </div>
           <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
-          <button class="secondary-action" type="button" data-view="worksManagement">Visão gerencial</button>
         </div>
       </div>
       ${renderOperationalFilterBanner()}
