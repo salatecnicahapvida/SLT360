@@ -6216,6 +6216,10 @@ function renderPortfolio() {
   const allRows = portfolioRows(false, false);
   const rows = portfolioRows(true, false);
   const evCount = evUnifiedRecords().length;
+  const worksWithEVCount = rows.filter((row) => row.hasAssociatedEV).length;
+  const worksWithEVLabel = worksWithEVCount === 1
+    ? "1 obra possui EV associado"
+    : `${worksWithEVCount} obras possuem EVs associados`;
 
   return `
     ${renderWorksToolbar("portfolio", "Portfólio de Obras e EVs", `${allRows.length} obras cadastradas e ${evCount} EVs vinculados em uma única visão`, `
@@ -6226,7 +6230,7 @@ function renderPortfolio() {
     `)}
 
     <section class="kpi-grid portfolio-kpis">
-      ${kpi("Obras no portfólio", String(rows.length), rows.length === allRows.length ? "855 da base oficial + novos cadastros" : `de ${allRows.length} obra(s) cadastrada(s)`, "blue")}
+      ${kpi("Obras no portfólio", String(rows.length), worksWithEVLabel, "blue")}
     </section>
 
     <section class="panel portfolio-panel">
@@ -6428,6 +6432,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       origem: work._historicalBudgetWork ? "Histórico" : "Atual",
       tecnico: historicalRecord?.technician || "",
       isHistorical: Boolean(work._historicalBudgetWork),
+      hasAssociatedEV: Boolean(work._historicalBudgetWork || !work.ev?._virtualEmptyEV),
       openId: work._historicalBudgetWork ? work.historicalRecordId : work.id,
       evId: work.ev.id || (work._historicalBudgetWork ? work.historicalRecordId : `EV-${work.id}`),
       prazo: work.prazoDias || plannedDurationForWork(work),

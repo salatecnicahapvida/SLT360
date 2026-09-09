@@ -81,6 +81,8 @@ test('portfolio includes works without EV, selectable filters and the single req
  const kpis=page.locator('.portfolio-kpis');
  await expect(kpis).toContainText('Obras no portfólio');
  await expect(kpis).toContainText('5');
+ await expect(kpis).toContainText('4 obras possuem EVs associados');
+ await expect(kpis).not.toContainText('855 da base oficial');
  await expect(kpis).not.toContainText('Etapas de Projetos');
  await expect(kpis).not.toContainText('Projetos próximos');
  await expect(kpis).not.toContainText('Vínculos com EV');
@@ -89,6 +91,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
  await page.locator('[data-portfolio-quick-filter="origem"]').selectOption('Histórico');
  await expect(kpis).toContainText('3');
+ await expect(kpis).toContainText('3 obras possuem EVs associados');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(3);
  await page.locator('[data-portfolio-search]').fill('Norte');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
