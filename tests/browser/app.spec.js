@@ -89,6 +89,10 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(kpis).not.toContainText('Projetos atrasados');
  await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(8);
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
+ await expect(page.locator('.portfolio-works-table thead th')).toContainText([
+  'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
+  'Área equivalente (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
+ ]);
  await page.locator('[data-portfolio-quick-filter="origem"]').selectOption('Histórico');
  await expect(kpis).toContainText('3');
  await expect(kpis).toContainText('3 obras possuem EVs associados');
@@ -99,22 +103,31 @@ test('portfolio includes works without EV, selectable filters and the single req
  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
- await expect(historicalRow.locator('td').nth(3)).toHaveText('—');
- await expect(historicalRow.locator('td').nth(4)).toBeEmpty();
- await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
- await expect(historicalRow.locator('td').nth(6)).toHaveText('Hospital');
- await expect(historicalRow.locator('td').nth(7)).toHaveText('Norte / AM');
+ await expect(historicalRow.locator('td').nth(2)).toHaveText('AM');
+ await expect(historicalRow.locator('td').nth(3)).toHaveText('Norte');
+ await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
+ await expect(historicalRow.locator('td').nth(5)).toHaveText('Hospital');
+ await expect(historicalRow.locator('td').nth(9)).toHaveText('200,00');
+ await expect(historicalRow.locator('td').nth(11)).toHaveText('R$ 1.000,00');
+ await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 5,00');
+ await expect(historicalRow.getByRole('button',{name:'Abrir EV'})).toBeVisible();
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
- await expect(currentRow.locator('td').nth(2)).toHaveText('2026');
- await expect(currentRow.locator('td').nth(3)).toHaveText('120');
- await expect(currentRow.locator('td').nth(4)).toBeEmpty();
- await expect(currentRow.locator('td').nth(5)).toHaveText('Clínica');
- await expect(currentRow.locator('td').nth(6)).toHaveText('Reforma');
- await expect(currentRow.locator('td').nth(7)).toHaveText('Sudeste / SP');
+ await expect(currentRow.locator('td').nth(2)).toHaveText('SP');
+ await expect(currentRow.locator('td').nth(3)).toHaveText('Sudeste');
+ await expect(currentRow.locator('td').nth(4)).toHaveText('2026');
+ await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
+ await expect(currentRow.locator('td').nth(6)).toBeEmpty();
+ await expect(currentRow.locator('td').nth(9)).toHaveText('100,00');
+ await expect(currentRow.locator('td').nth(10)).toHaveText('120');
+ await expect(currentRow.getByRole('button',{name:'Abrir EV'})).toBeVisible();
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
- await expect(noEvRow).toContainText('Sem EV');
+ await expect(noEvRow.locator('td').nth(11)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(12)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(13)).toHaveText('Sem EV');
+ await expect(noEvRow.getByRole('button',{name:'Abrir EV'})).toHaveCount(0);
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
- await expect(ambiguousPaRow.locator('td').nth(7)).toBeEmpty();
+ await expect(ambiguousPaRow.locator('td').nth(2)).toBeEmpty();
+ await expect(ambiguousPaRow.locator('td').nth(3)).toBeEmpty();
  await expect(page.getByRole('heading',{name:'Todos os EVs oficiais em uma única visão',exact:true})).toBeVisible();
  await expect(page.locator('.ev-history-heading')).toContainText('3 da carga inicial DADOS EVS + 1 novo');
  await expect(page.locator('.ev-history-heading')).toContainText('DADOS EVS');

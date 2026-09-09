@@ -6290,38 +6290,42 @@ function renderPortfolioTable(rows) {
           <tr>
             <th>Código</th>
             <th>Nome da obra</th>
+            <th>Estado</th>
+            <th>Região</th>
             <th>Ano</th>
-            <th class="numeric">Tempo de obra (dias)</th>
-            <th>Categoria</th>
-            <th>Tipo</th>
             <th>Tipologia</th>
-            <th>Região / UF</th>
-            <th class="numeric">Área (m²)</th>
+            <th>Categoria</th>
+            <th>CNPJ</th>
+            <th>Endereço</th>
+            <th class="numeric">Área equivalente (m²)</th>
+            <th class="numeric">Tempo de obra (dias)</th>
             <th class="numeric">Total orçado</th>
-            <th>EV</th>
+            <th class="numeric">Custo por m²</th>
             <th>Ações</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((row) => `
             <tr>
-              <td><strong>${escapeAttribute(row.codigo || "—")}</strong></td>
+              <td><strong>${escapeAttribute(row.codigo || "")}</strong></td>
               <td><strong>${escapeAttribute(row.nome)}</strong><br /><span class="muted">${escapeAttribute(row.origem)}${row.tecnico ? ` · ${escapeAttribute(row.tecnico)}` : ""}</span></td>
-              <td>${escapeAttribute(row.year || "—")}</td>
-              <td class="numeric">${escapeAttribute(row.prazo || "—")}</td>
-              <td>${escapeAttribute(row.categoria || "")}</td>
-              <td>${escapeAttribute(row.tipoUnidade || "")}</td>
+              <td>${escapeAttribute(row.uf || "")}</td>
+              <td>${escapeAttribute(row.regional || "")}</td>
+              <td>${escapeAttribute(row.year || "")}</td>
               <td>${escapeAttribute(row.tipologia || "")}</td>
-              <td>${escapeAttribute([row.regional, row.uf].filter(Boolean).join(" / "))}</td>
-              <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : "—"}</td>
-              <td class="numeric"><strong>${money(row.capex)}</strong></td>
-              <td><span class="status-pill" data-status="${escapeAttribute(row.evStatus)}">${escapeAttribute(row.evStatus)}</span><br /><span class="muted">${escapeAttribute(row.evId)}</span></td>
-              <td><div class="table-actions portfolio-actions">
-                <button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>
-                ${row.isHistorical ? "" : `<button class="ghost-button compact-action" type="button" data-action="edit-work" data-id="${escapeAttribute(row.id)}">Editar</button>`}
-              </div></td>
+              <td>${escapeAttribute(row.categoria || "")}</td>
+              <td>${escapeAttribute(row.cnpj || "")}</td>
+              <td>${escapeAttribute(row.endereco || "")}</td>
+              <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : ""}</td>
+              <td class="numeric">${row.prazo ? escapeAttribute(row.prazo) : ""}</td>
+              <td class="numeric">${row.hasAssociatedEV ? `<strong>${moneyCents(row.capex)}</strong>` : ""}</td>
+              <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
+              <td>${row.hasAssociatedEV
+                ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
+                : `<span class="muted">Sem EV</span>`}
+              </td>
             </tr>
-          `).join("") || `<tr><td colspan="12"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
+          `).join("") || `<tr><td colspan="14"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
       </table>
     </div>
@@ -6416,6 +6420,8 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const tipologia = work.tipologiaObra || "";
     const uf = String(work.uf || ufFromWorkName(work.nome) || "").trim().toUpperCase();
     const regional = String(work.regiao || regionFromUf(uf) || "").trim();
+    const areaEquivalente = Number(work.areaEquivalente || 0);
+    const hasAssociatedEV = Boolean(work._historicalBudgetWork || (work.ev && !work.ev._virtualEmptyEV));
     return {
       id: work.id,
       idApp: work.chaveUnica,
@@ -6432,18 +6438,19 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       origem: work._historicalBudgetWork ? "Histórico" : "Atual",
       tecnico: historicalRecord?.technician || "",
       isHistorical: Boolean(work._historicalBudgetWork),
-      hasAssociatedEV: Boolean(work._historicalBudgetWork || !work.ev?._virtualEmptyEV),
+      hasAssociatedEV,
       openId: work._historicalBudgetWork ? work.historicalRecordId : work.id,
       evId: work.ev.id || (work._historicalBudgetWork ? work.historicalRecordId : `EV-${work.id}`),
       prazo: work.prazoDias || plannedDurationForWork(work),
-      areaEquivalente: work.areaEquivalente || 0,
+      areaEquivalente,
       areaConstruida: work.areaConstruida || 0,
       sap: work.ordemInternaSAP || "—",
-      cnpj: work.cnpj || "—",
-      endereco: work.endereco || "—",
+      cnpj: work.cnpj || "",
+      endereco: work.endereco || "",
       status: work.status,
       evStatus: work.ev.status,
       capex,
+      custoM2: hasAssociatedEV && areaEquivalente > 0 ? capex / areaEquivalente : null,
       contratado: totals.contratado,
       saldo: totals.saldo,
       proximoMarco: milestones[index % milestones.length],

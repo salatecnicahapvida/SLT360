@@ -8703,7 +8703,7 @@ button.alert-item {
 }
 
 .portfolio-works-table {
-  min-width: 1460px;
+  min-width: 2100px;
 }
 
 .portfolio-works-table th:nth-child(2),
@@ -8712,15 +8712,23 @@ button.alert-item {
   white-space: normal;
 }
 
-.portfolio-works-table th:nth-child(10),
-.portfolio-works-table td:nth-child(10) {
-  min-width: 160px;
+.portfolio-works-table th:nth-child(8),
+.portfolio-works-table td:nth-child(8) { min-width: 180px; }
+
+.portfolio-works-table th:nth-child(9),
+.portfolio-works-table td:nth-child(9) {
+  min-width: 260px;
+  white-space: normal;
 }
 
+.portfolio-works-table th:nth-child(10),
+.portfolio-works-table td:nth-child(10),
 .portfolio-works-table th:nth-child(11),
-.portfolio-works-table td:nth-child(11) {
-  min-width: 130px;
-}
+.portfolio-works-table td:nth-child(11),
+.portfolio-works-table th:nth-child(12),
+.portfolio-works-table td:nth-child(12),
+.portfolio-works-table th:nth-child(13),
+.portfolio-works-table td:nth-child(13) { min-width: 150px; }
 
 .portfolio-plan-table {
   min-width: 1780px;
@@ -8853,6 +8861,11 @@ button.alert-item {
 .portfolio-table th:nth-child(15),
 .portfolio-table td:nth-child(15) {
   min-width: 180px;
+}
+
+.portfolio-works-table th:nth-child(14),
+.portfolio-works-table td:nth-child(14) {
+  min-width: 140px;
 }
 
 .portfolio-actions {
