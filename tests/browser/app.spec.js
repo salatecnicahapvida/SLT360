@@ -9,7 +9,7 @@ const payload={state:{
     {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
-    {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':950,'taxa-risco':50},items:[]},
+    {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':800,'taxa-risco':50,sics:150},items:[]},
     {id:'evh-test-2',code:'HIST-2',project:'Obra histórica Sul - RS',year:2024,date:'2024-05-01',revision:'REV01',typology:'Clínica e Medicina Preventiva',technician:'Técnico B',area:100,total:500,baseTotal:500,disciplines:{'adequacoes-civis':500},items:[]},
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
@@ -195,6 +195,30 @@ test('initial budget demand is optional, shows work year and accepts every portf
  await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
  await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+test('historical EV shows original and additive totals with an unobstructed title',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
+ await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ const modal=page.locator('.ev-historical-modal');
+ await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
+ const metric=label=>modal.locator('.ev-historical-summary > *').filter({hasText:label});
+ await expect(metric('Valor total do EV')).toContainText('R$ 1.000');
+ await expect(metric('Valor do EV original (sem SICs)')).toContainText('R$ 850');
+ await expect(metric('SICs / Aditivos')).toContainText('R$ 150');
+ await expect(modal.locator('.ev-historical-summary')).not.toContainText('Filhas da coluna F');
+ const title=modal.locator('#historicalEVTitle');
+ await title.click(); // Also checks that the site header does not cover the title.
+ await page.screenshot({path:'outputs/ev-summary-layout.png',fullPage:false});
+ await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+ await page.setViewportSize({width:390,height:844});
+ await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await title.click();
+ await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  expect(b.errors).toEqual([]);
 });
 

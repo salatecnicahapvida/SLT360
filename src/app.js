@@ -7142,6 +7142,11 @@ async function openHistoricalEVModal(recordId) {
     catch { showToast("Não foi possível carregar a composição do EV. Tente novamente."); return; }
   }
   const risk = Number(record.disciplines?.["taxa-risco"] || 0);
+  // SICs already belong to the imported total; do not add them a second time.
+  const sicTotal = Number(record.disciplines?.sics ?? items
+    .filter((item) => canonicalDisciplineId(item.disciplineId) === "sics")
+    .reduce((sum, item) => sum + Number(item.value || 0), 0));
+  const originalTotal = Number(record.total || 0) - sicTotal;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
@@ -7152,11 +7157,12 @@ async function openHistoricalEVModal(recordId) {
         <div class="modal-body ev-modal-body">
           <section class="ev-summary-grid ev-historical-summary">
             ${miniMetric("Valor total do EV", money(record.total))}
+            ${miniMetric("Valor do EV original (sem SICs)", money(originalTotal))}
             ${miniMetric("EV sem taxa de risco", money(record.baseTotal))}
             ${miniMetric("Taxa de risco", money(risk))}
             ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
             ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
-            ${miniMetric("Filhas da coluna F", number(items.length))}
+            ${miniMetric("SICs / Aditivos", money(sicTotal))}
           </section>
           <section class="ev-historical-source-note"><span>Coluna F</span><div><strong>Composição completa do EV</strong><small>Cada linha abaixo corresponde a uma filha da coluna “Descrição” da planilha de origem.</small></div></section>
           <div class="table-wrap ev-historical-items-wrap">
