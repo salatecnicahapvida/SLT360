@@ -12222,3 +12222,71 @@ button.analyst-chip {
 .portfolio-work-row:hover > td { background: #edf5ff; }
 .portfolio-work-row:focus-visible { outline: 2px solid #0067b1; outline-offset: -2px; }
 .portfolio-work-options { width: min(560px, calc(100vw - 32px)); }
+
+/* Visão Estratégica: análise financeira dos EVs */
+.strategic-analysis-intro { display:grid;gap:14px;margin-bottom:16px; }
+.strategic-analysis-intro h2,
+.strategic-discipline-panel h2,
+.strategic-discipline-detail h2,
+.strategic-analysis-grid h2,
+.strategic-top-projects h2 { margin:4px 0 2px;color:#003f78;font-size:1.2rem; }
+.strategic-analysis-filters { display:grid;grid-template-columns:repeat(3,minmax(190px,1fr)) max-content;gap:12px;align-items:end;padding:14px;border:1px solid #cfe0ee;border-radius:12px;background:#f4f8fc; }
+.strategic-analysis-scope { margin:0;color:#567087;font-size:.82rem; }
+.strategic-analysis-scope strong { color:#004a83; }
+.strategic-discipline-panel,
+.strategic-discipline-detail,
+.strategic-top-projects { margin-top:16px; }
+.strategic-discipline-table { min-width:1180px; }
+.strategic-discipline-table td:first-child { min-width:280px; }
+.strategic-discipline-table td small,
+.strategic-project-ranking td small { display:block;margin-top:4px;color:#6c8194;font-size:.68rem; }
+.strategic-discipline-table tr.is-selected td { background:#e9f5ff; }
+.strategic-discipline-link { border:0;background:none;padding:0;color:#005ca8;font:inherit;font-weight:800;text-align:left;cursor:pointer; }
+.strategic-discipline-link:hover { text-decoration:underline; }
+.strategic-detail-kpis { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0; }
+.strategic-detail-kpis article { padding:15px;border:1px solid #caddeb;border-radius:12px;background:linear-gradient(145deg,#f3f8fd,#fff); }
+.strategic-detail-kpis span { display:block;color:#42627c;font-size:.69rem;font-weight:800;text-transform:uppercase; }
+.strategic-detail-kpis strong { display:block;margin:8px 0 5px;color:#003f78;font-size:1.25rem; }
+.strategic-detail-kpis small { color:#6c8194;font-size:.7rem; }
+.strategic-project-ranking { min-width:1060px; }
+.strategic-analysis-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px; }
+.strategic-analysis-bars { display:grid;gap:12px;margin-top:14px; }
+.strategic-analysis-bar { display:grid;grid-template-columns:minmax(170px,1fr) minmax(100px,1.25fr) 110px;gap:12px;align-items:center; }
+.strategic-analysis-bar > div { min-width:0; }
+.strategic-analysis-bar > div strong,
+.strategic-analysis-bar > div small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.strategic-analysis-bar > div strong { color:#163c5d;font-size:.78rem; }
+.strategic-analysis-bar > div small { margin-top:3px;color:#75899c;font-size:.65rem; }
+.strategic-analysis-bar > i { height:8px;overflow:hidden;border-radius:999px;background:#e3edf5; }
+.strategic-analysis-bar > i b { display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#00a278,#057dbd); }
+.strategic-analysis-bar > span { text-align:right; }
+.strategic-analysis-bar > span b,
+.strategic-analysis-bar > span small { display:block; }
+.strategic-analysis-bar > span b { color:#00467f;font-size:.77rem; }
+.strategic-analysis-bar > span small { margin-top:2px;color:#718699;font-size:.65rem; }
+.strategic-top-projects-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin-top:14px; }
+.strategic-top-projects-grid article { display:grid;grid-template-columns:30px minmax(0,1fr) max-content 48px;gap:10px;align-items:center;padding:10px;border-bottom:1px solid #dbe7f0; }
+.strategic-top-projects-grid article > span { color:#7890a4;font-size:.68rem;font-weight:800; }
+.strategic-top-projects-grid article div { min-width:0; }
+.strategic-top-projects-grid article strong,
+.strategic-top-projects-grid article small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.strategic-top-projects-grid article strong { color:#163c5d;font-size:.76rem; }
+.strategic-top-projects-grid article small { margin-top:3px;color:#75899c;font-size:.65rem; }
+.strategic-top-projects-grid article > b { color:#00467f;font-size:.78rem; }
+.strategic-top-projects-grid article > em { color:#0b8b68;font-size:.69rem;font-style:normal;font-weight:800;text-align:right; }
+
+@media(max-width:1100px){
+  .strategic-analysis-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .strategic-analysis-grid { grid-template-columns:1fr; }
+  .strategic-detail-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .strategic-top-projects-grid { grid-template-columns:1fr; }
+}
+@media(max-width:700px){
+  .strategic-analysis-filters,
+  .strategic-detail-kpis { grid-template-columns:1fr; }
+  .strategic-analysis-bar { grid-template-columns:minmax(0,1fr) 92px; }
+  .strategic-analysis-bar > i { grid-column:1 / 3;grid-row:2; }
+  .strategic-top-projects-grid article { grid-template-columns:26px minmax(0,1fr); }
+  .strategic-top-projects-grid article > b,
+  .strategic-top-projects-grid article > em { grid-column:2; }
+}

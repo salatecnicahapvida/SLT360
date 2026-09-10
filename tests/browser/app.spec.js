@@ -21,9 +21,10 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null}={}){
  const input=structuredClone(payload);
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
+ if(Array.isArray(evRecords))input.state.evs=evRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -194,6 +195,37 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
  await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
  await expect(analystPanel.locator('tbody tr')).toHaveCount(1);
+ expect(b.errors).toEqual([]);
+});
+
+test('strategic view sums discipline values exactly and recalculates every indicator from its filters',async({page})=>{
+ const evRecords=[
+  {id:'strategic-1',code:'EV-001',project:'Hospital Estratégico A - SP',year:2025,date:'2025-06-01',revision:'REV01',typology:'Hospital',technician:'Técnico A',area:100,total:1000,baseTotal:1000,disciplines:{'instalacoes-de-climatizacao-e-exaustao':120,'equipamentos-de-climatizacao':80,'adequacoes-civis':800},items:[]},
+  {id:'strategic-2',code:'EV-002',project:'Hospital Estratégico B - RJ',year:2024,date:'2024-06-01',revision:'REV01',typology:'Hospital',technician:'Técnico B',area:50,total:500,baseTotal:500,disciplines:{'instalacoes-de-climatizacao-e-exaustao':50,'equipamentos-de-climatizacao':50,'adequacoes-civis':400},items:[]},
+ ];
+ const b=await backend(page,'Admin',false,{evRecords});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksStrategic"]').filter({visible:true}).first().click();
+
+ await expect(page.getByRole('heading',{name:'Investimento por disciplina'})).toBeVisible();
+ const table=page.locator('.strategic-discipline-table');
+ const climateRow=table.locator('tbody tr').filter({hasText:'Instalações de Climatização e Exaustão'});
+ await expect(climateRow.locator('td')).toHaveText([
+  /Instalações de Climatização e Exaustão/,'R$ 170,00','10,3%','2','66,7%','R$ 85,00','R$ 85,00','R$ 1,13\/m²',
+ ]);
+
+ await climateRow.getByRole('button',{name:'Instalações de Climatização e Exaustão'}).click();
+ const detail=page.locator('.strategic-discipline-detail');
+ await expect(detail).toContainText('R$ 170,00');
+ await expect(detail).toContainText('11,33% do total filtrado');
+ await expect(detail.locator('.strategic-project-ranking tbody tr')).toHaveCount(2);
+ await expect(detail.locator('.strategic-project-ranking tbody tr').first().locator('td').nth(3)).toHaveText('R$ 120,00');
+
+ await page.locator('[data-strategic-ev-filter="year"]').selectOption('2025');
+ await expect(page.locator('.strategic-analysis-scope')).toContainText('1 de 3 EVs');
+ await expect(page.locator('.strategic-discipline-detail')).toContainText('R$ 120,00');
+ await expect(page.locator('.strategic-project-ranking tbody tr')).toHaveCount(1);
+ await page.screenshot({path:'outputs/strategic-analysis-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
 

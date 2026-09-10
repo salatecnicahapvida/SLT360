@@ -702,6 +702,11 @@ let strategicEVDecisionFilters = {
   targetId: "",
   year: "",
 };
+let strategicEVFilters = {
+  year: "",
+  typology: "",
+  discipline: "",
+};
 let projectPlanFilters = {
   query: "",
   etapa: "",
@@ -6316,28 +6321,95 @@ function historicalInvestmentRankingRows() {
     .sort((a, b) => b.valor - a.valor);
 }
 
+function strategicEVScopeRecords(sourceRecords, { ignoreDiscipline = false } = {}) {
+  return sourceRecords.filter((record) => {
+    if (strategicEVFilters.year && String(record.year) !== strategicEVFilters.year) return false;
+    if (strategicEVFilters.typology && record.typology !== strategicEVFilters.typology) return false;
+    if (!ignoreDiscipline && strategicEVFilters.discipline && !Number(record.disciplines?.[strategicEVFilters.discipline] || 0)) return false;
+    return true;
+  });
+}
+
+function strategicDisciplineRows(records) {
+  const portfolioTotal = records.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  return configuredDisciplines({ includeInactive: false })
+    .filter((discipline) => !["taxa-risco", "sics", "outras-linhas-ev"].includes(discipline.id))
+    .map((discipline) => {
+      const withValue = records.filter((record) => Number(record.disciplines?.[discipline.id] || 0) > 0);
+      const values = withValue.map((record) => Number(record.disciplines[discipline.id]) || 0);
+      const total = values.reduce((sum, value) => sum + value, 0);
+      const withArea = withValue.filter((record) => Number(record.area) > 0);
+      const area = withArea.reduce((sum, record) => sum + Number(record.area || 0), 0);
+      const valueWithArea = withArea.reduce((sum, record) => sum + Number(record.disciplines?.[discipline.id] || 0), 0);
+      const benchmark = evHistoricalBenchmark(records, discipline.id);
+      return {
+        discipline,
+        total,
+        count: withValue.length,
+        coverage: records.length ? (withValue.length / records.length) * 100 : 0,
+        shareInEVs: portfolioTotal ? (total / portfolioTotal) * 100 : 0,
+        average: values.length ? total / values.length : 0,
+        medianValue: evPercentile(values, 0.5),
+        costM2: area ? valueWithArea / area : 0,
+        benchmark,
+      };
+    })
+    .filter((row) => row.total > 0)
+    .sort((left, right) => right.total - left.total);
+}
+
+function strategicGroupedRows(records, field, disciplineId = "") {
+  const groups = new Map();
+  records.forEach((record) => {
+    const label = String(record[field] || "Não informado");
+    const current = groups.get(label) || { label, count: 0, total: 0, area: 0, valueWithArea: 0, disciplineTotal: 0 };
+    const area = Number(record.area || 0);
+    const total = Number(record.total || 0);
+    current.count += 1;
+    current.total += total;
+    current.disciplineTotal += disciplineId ? Number(record.disciplines?.[disciplineId] || 0) : 0;
+    if (area > 0 && total > 0) {
+      current.area += area;
+      current.valueWithArea += total;
+    }
+    groups.set(label, current);
+  });
+  return [...groups.values()].map((row) => ({ ...row, costM2: row.area ? row.valueWithArea / row.area : 0 }));
+}
+
+function renderStrategicBarRows(rows, valueKey, total, formatter = moneyCompact) {
+  const max = Math.max(...rows.map((row) => Number(row[valueKey] || 0)), 1);
+  return rows.map((row) => `<div class="strategic-analysis-bar">
+    <div><strong>${escapeAttribute(row.label)}</strong><small>${number(row.count)} EVs · ${moneyCents(row.total)}${row.costM2 ? ` · ${moneyCents(row.costM2)}/m²` : ""}</small></div>
+    <i><b style="width:${Math.max(2, (Number(row[valueKey] || 0) / max) * 100)}%"></b></i>
+    <span><b>${formatter(Number(row[valueKey] || 0))}</b><small>${total ? `${number((Number(row[valueKey] || 0) / total) * 100, 1)}%` : "0,0%"}</small></span>
+  </div>`).join("") || `<div class="empty-state">Sem dados para o recorte selecionado.</div>`;
+}
+
 function renderWorksStrategic() {
   const sourceRecords = evUnifiedRecords();
-  const validAreaRecords = sourceRecords.filter((record) => Number(record.total) > 0 && Number(record.area) > 0);
-  const totalValue = sourceRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
-  const validValue = validAreaRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
-  const totalArea = validAreaRecords.reduce((sum, record) => sum + Number(record.area || 0), 0);
-  const historicalCount = sourceRecords.filter((record) => record.sourceKind === "historical").length;
-  const currentCount = sourceRecords.filter((record) => record.sourceKind === "current").length;
-  const years = new Set(sourceRecords.map((record) => String(record.year)).filter(Boolean)).size;
-  const typologies = new Set(sourceRecords.map((record) => record.typology).filter(Boolean)).size;
-  const investmentRows = sourceRecords.map((record) => ({ record, valor: Number(record.total) || 0 })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
+  const records = strategicEVScopeRecords(sourceRecords);
+  const scopedAreaRecords = records.filter((record) => Number(record.total) > 0 && Number(record.area) > 0);
+  const totalValue = records.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const validValue = scopedAreaRecords.reduce((sum, record) => sum + Number(record.total || 0), 0);
+  const totalArea = scopedAreaRecords.reduce((sum, record) => sum + Number(record.area || 0), 0);
+  const weightedCostM2 = totalArea ? validValue / totalArea : 0;
+  const historicalCount = records.filter((record) => record.sourceKind === "historical").length;
+  const currentCount = records.filter((record) => record.sourceKind === "current").length;
+  const investmentRows = records.map((record) => ({ record, valor: Number(record.total) || 0 })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
   const topInvestment = investmentRows[0];
   const topFiveValue = investmentRows.slice(0, 5).reduce((sum, row) => sum + row.valor, 0);
   const topFiveShare = totalValue ? (topFiveValue / totalValue) * 100 : 0;
-  const byYear = [...sourceRecords.reduce((map, record) => map.set(String(record.year || "Não informado"), (map.get(String(record.year || "Não informado")) || 0) + Number(record.total || 0)), new Map())]
-    .map(([label, valor]) => ({ label, valor })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
-  const byTypology = [...sourceRecords.reduce((map, record) => map.set(record.typology || "Não informada", (map.get(record.typology || "Não informada") || 0) + Number(record.total || 0)), new Map())]
-    .map(([label, valor]) => ({ label, valor })).sort((a, b) => b.valor - a.valor);
-  const byDiscipline = configuredDisciplines({ includeInactive: false }).map((discipline) => ({
-    label: discipline.nome,
-    valor: sourceRecords.reduce((sum, record) => sum + Number(record.disciplines?.[discipline.id] || 0), 0),
-  })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
+  const disciplineRows = strategicDisciplineRows(records);
+  const selectedDiscipline = strategicEVFilters.discipline ? disciplineById(strategicEVFilters.discipline) : null;
+  const selectedDisciplineRow = disciplineRows.find((row) => row.discipline.id === strategicEVFilters.discipline);
+  const selectedDisciplineTotal = records.reduce((sum, record) => sum + Number(record.disciplines?.[strategicEVFilters.discipline] || 0), 0);
+  const selectedDisciplineShare = totalValue ? (selectedDisciplineTotal / totalValue) * 100 : 0;
+  const byYear = strategicGroupedRows(records, "year", strategicEVFilters.discipline).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
+  const byTypology = strategicGroupedRows(records, "typology", strategicEVFilters.discipline).sort((a, b) => b.total - a.total);
+  const filterBase = strategicEVScopeRecords(sourceRecords, { ignoreDiscipline: true });
+  const selectableDisciplines = configuredDisciplines({ includeInactive: false }).filter((discipline) => !["taxa-risco", "sics", "outras-linhas-ev"].includes(discipline.id));
+  const disciplineValueFor = (record) => strategicEVFilters.discipline ? Number(record.disciplines?.[strategicEVFilters.discipline] || 0) : 0;
 
   return `
     ${renderWorksToolbar("worksStrategic", "Visão Estratégica", `Base oficial de ${sourceRecords.length} EVs · mesma fonte da DADOS EVS`, `
@@ -6345,28 +6417,39 @@ function renderWorksStrategic() {
       <button class="primary-action" type="button" data-view="budget">Controle de Verbas</button>
     `)}
 
+    <section class="panel strategic-analysis-intro">
+      <div><span class="eyebrow">Inteligência de custos dos EVs</span><h2>Investimento orçado, composição e referências históricas</h2><p class="panel-subtitle">Os valores representam os custos previstos nos Estudos de Viabilidade. Eles não correspondem a pagamentos realizados. Use os filtros para recalcular todos os indicadores e detalhar qualquer disciplina da base.</p></div>
+      <div class="strategic-analysis-filters">
+        <label class="field"><span>Ano do EV</span><select data-strategic-ev-filter="year">${evHistoricalFilterOptions(sourceRecords.map((record) => String(record.year)), strategicEVFilters.year, "Todos os anos")}</select></label>
+        <label class="field"><span>Tipologia</span><select data-strategic-ev-filter="typology">${evHistoricalFilterOptions(sourceRecords.map((record) => record.typology), strategicEVFilters.typology, "Todas as tipologias")}</select></label>
+        <label class="field"><span>Disciplina</span><select data-strategic-ev-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((discipline) => discipline.id), strategicEVFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
+        <button class="secondary-action" type="button" data-action="clear-strategic-ev-filters">Limpar filtros</button>
+      </div>
+      <p class="strategic-analysis-scope"><strong>${number(records.length)} de ${number(sourceRecords.length)} EVs</strong> no recorte atual${selectedDiscipline ? ` · somente EVs com ${escapeAttribute(selectedDiscipline.nome)}` : ""}.</p>
+    </section>
+
     <section class="strategic-hero panel">
       <article class="strategic-main-kpi" data-tone="green" style="--hero-progress:360deg">
         <header><span class="eyebrow">Indicador principal</span><em>Fonte única · Base de EVs</em></header>
         <div class="strategic-main-kpi__body">
-          <span class="strategic-main-ring"><b>${number(sourceRecords.length)}</b><small>EVs</small></span>
+          <span class="strategic-main-ring"><b>${number(records.length)}</b><small>EVs</small></span>
           <span class="strategic-main-copy">
             <strong>Base estratégica sincronizada com a DADOS EVS</strong>
-            <small>Todos os indicadores abaixo usam a carga inicial oficial e os novos EVs cadastrados depois dela.</small>
+            <small>Todos os indicadores abaixo respondem ao recorte selecionado e usam a carga oficial mais os novos EVs.</small>
             <span class="strategic-main-breakdown">
               <span data-tone="green"><i></i><b>${historicalCount}</b><small>Base DADOS EVS</small></span>
               <span data-tone="blue"><i></i><b>${currentCount}</b><small>Novos cadastros</small></span>
-              <span data-tone="orange"><i></i><b>${validAreaRecords.length}</b><small>Com área válida</small></span>
+              <span data-tone="orange"><i></i><b>${scopedAreaRecords.length}</b><small>Com área válida</small></span>
             </span>
           </span>
         </div>
         <span class="strategic-main-footer"><i>Base inicial DADOS EVS + novos cadastros</i><b>Atualização automática</b></span>
       </article>
       <div class="strategic-hero-metrics">
-        ${strategicHeroMetric("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "EV", "blue", 100)}
+        ${strategicHeroMetric("Investimento orçado nos EVs", moneyCompact(totalValue), moneyCents(totalValue), "EV", "blue", 100)}
         ${strategicHeroMetric("Maior EV", topInvestment ? topInvestment.record.project : "Sem carteira", topInvestment ? `${moneyCompact(topInvestment.valor)} · ${number((topInvestment.valor / Math.max(totalValue, 1)) * 100, 1)}% da base` : "", "TOP 1", "orange", topInvestment ? (topInvestment.valor / Math.max(totalValue, 1)) * 100 : 0)}
-        ${strategicHeroMetric("Área equivalente", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m² · ${validAreaRecords.length} EVs válidos`, "ÁREA", "green", 100)}
-        ${strategicHeroMetric("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "TOP 5", "purple", topFiveShare)}
+        ${strategicHeroMetric("Custo médio ponderado", weightedCostM2 ? `${moneyCents(weightedCostM2)}/m²` : "Sem leitura", `${number(totalArea, 2)} m² · ${scopedAreaRecords.length} EVs válidos`, "R$/M²", "green", 100)}
+        ${strategicHeroMetric(selectedDiscipline ? selectedDiscipline.nome : "Concentração Top 5", selectedDiscipline ? moneyCompact(selectedDisciplineTotal) : `${number(topFiveShare, 1)}%`, selectedDiscipline ? `${moneyCents(selectedDisciplineTotal)} · ${number(selectedDisciplineShare, 1)}% dos EVs filtrados` : `${moneyCompact(topFiveValue)} · ${moneyCents(topFiveValue)}`, selectedDiscipline ? "DISC." : "TOP 5", "purple", selectedDiscipline ? selectedDisciplineShare : topFiveShare)}
       </div>
     </section>
 
@@ -6375,17 +6458,35 @@ function renderWorksStrategic() {
       <p>Valores abreviados para leitura rápida, com o montante exato logo abaixo.</p>
     </div>
     <section class="strategic-kpis">
-      ${executiveKpi("EVs oficiais", number(sourceRecords.length), `${historicalCount} iniciais + ${currentCount} novos`, "Quantidade da mesma base vinculada no Portfólio de Obras", "blue", "strategicUnifiedEV", "EV")}
-      ${executiveKpi("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "Soma dos valores dos EVs unificados", "green", "strategicUnifiedEV", "VALOR")}
-      ${executiveKpi("Área equivalente válida", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m²`, `${validAreaRecords.length} EVs com valor e área`, "blue", "strategicUnifiedEV", "ÁREA")}
-      ${executiveKpi("Registros históricos", number(historicalCount), `${number((historicalCount / Math.max(sourceRecords.length, 1)) * 100, 1)}% da base`, "EVs históricos disponíveis para inteligência", "green", "strategicUnifiedEV", "HIST")}
-      ${executiveKpi("Sem leitura de m²", number(sourceRecords.length - validAreaRecords.length), `${validAreaRecords.length} leituras válidas`, "EVs sem valor ou área equivalente", sourceRecords.length > validAreaRecords.length ? "orange" : "green", "strategicUnifiedEV", "QUALIDADE")}
-      ${executiveKpi("Tipologias", number(typologies), "Classificações disponíveis na base EV", "Agrupamento unificado por tipologia", "green", "strategicUnifiedEV", "TIPO")}
-      ${executiveKpi("Anos disponíveis", number(years), "Períodos presentes na DADOS EVS", "Períodos disponíveis para inteligência", "blue", "strategicUnifiedEV", "ANO")}
-      ${executiveKpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "Participação dos cinco maiores EVs", topFiveShare > 80 ? "orange" : "blue", "strategicUnifiedTop5", "TOP 5")}
+      ${executiveKpi("EVs no recorte", number(records.length), `${historicalCount} históricos + ${currentCount} novos`, "Quantidade considerada em todos os cálculos desta tela", "blue", "strategicUnifiedEV", "EV")}
+      ${executiveKpi("Investimento orçado", moneyCompact(totalValue), moneyCents(totalValue), "Soma exata do valor total dos EVs filtrados", "green", "strategicUnifiedEV", "VALOR")}
+      ${executiveKpi("Área equivalente válida", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m²`, `${scopedAreaRecords.length} EVs com valor e área`, "blue", "strategicUnifiedEV", "ÁREA")}
+      ${executiveKpi("Custo médio ponderado", weightedCostM2 ? `${moneyCents(weightedCostM2)}/m²` : "Sem leitura", `${moneyCents(validValue)} ÷ ${number(totalArea, 2)} m²`, "Calculado apenas com EVs que têm valor e área válidos", "green", "strategicUnifiedEV", "R$/M²")}
+      ${executiveKpi("Sem leitura de m²", number(records.length - scopedAreaRecords.length), `${scopedAreaRecords.length} leituras válidas`, "EVs sem valor ou área equivalente no recorte", records.length > scopedAreaRecords.length ? "orange" : "green", "strategicUnifiedEV", "QUALIDADE")}
+      ${executiveKpi("Disciplinas com valor", number(disciplineRows.length), "Custos discriminados na composição", "Taxa de risco, SICs e linhas residuais não entram neste ranking", "green", "strategicUnifiedEV", "DISC.")}
+      ${executiveKpi(selectedDiscipline ? `Valor em ${selectedDiscipline.nome}` : "Maior disciplina", moneyCompact(selectedDisciplineRow?.total || disciplineRows[0]?.total || 0), moneyCents(selectedDisciplineRow?.total || disciplineRows[0]?.total || 0), selectedDiscipline ? `${number(selectedDisciplineShare, 1)}% do valor total dos EVs filtrados` : (disciplineRows[0]?.discipline.nome || "Sem composição"), "blue", "strategicUnifiedEV", "CUSTO")}
+      ${executiveKpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${moneyCents(topFiveValue)}`, "Participação dos cinco maiores EVs", topFiveShare > 80 ? "orange" : "blue", "strategicUnifiedTop5", "TOP 5")}
     </section>
 
-    ${renderEVHistoricalIntelligence({ summaryOnly: true })}
+    <section class="panel strategic-discipline-panel">
+      <div class="panel-header"><div><span class="eyebrow">Composição financeira</span><h2>Investimento por disciplina</h2><p class="panel-subtitle">O valor é a soma direta das linhas da disciplina. A participação compara esse valor com toda a carteira filtrada; o R$/m² usa somente os EVs da disciplina com área válida.</p></div><span class="tag">${disciplineRows.length} disciplinas</span></div>
+      <div class="table-wrap"><table class="data-table strategic-discipline-table"><thead><tr><th>Disciplina</th><th class="numeric">Valor orçado</th><th class="numeric">% da carteira</th><th class="numeric">EVs</th><th class="numeric">Cobertura</th><th class="numeric">Média por EV</th><th class="numeric">Mediana por EV</th><th class="numeric">R$/m²</th></tr></thead><tbody>
+        ${disciplineRows.map((row) => `<tr class="${row.discipline.id === strategicEVFilters.discipline ? "is-selected" : ""}"><td><button type="button" class="strategic-discipline-link" data-action="select-strategic-discipline" data-discipline-id="${escapeAttribute(row.discipline.id)}">${escapeAttribute(row.discipline.nome)}</button><small>Participação típica: ${number(row.benchmark.median, 1)}% · faixa central ${number(row.benchmark.p25, 1)}%–${number(row.benchmark.p75, 1)}%</small></td><td class="numeric"><strong>${moneyCents(row.total)}</strong></td><td class="numeric">${number(row.shareInEVs, 1)}%</td><td class="numeric">${number(row.count)}</td><td class="numeric">${number(row.coverage, 1)}%</td><td class="numeric">${moneyCents(row.average)}</td><td class="numeric">${moneyCents(row.medianValue)}</td><td class="numeric">${row.costM2 ? `${moneyCents(row.costM2)}/m²` : "—"}</td></tr>`).join("") || `<tr><td colspan="8"><div class="empty-state">Nenhuma disciplina com valor no recorte.</div></td></tr>`}
+      </tbody></table></div>
+    </section>
+
+    ${selectedDiscipline ? `<section class="panel strategic-discipline-detail">
+      <div class="panel-header"><div><span class="eyebrow">Detalhamento da disciplina</span><h2>${escapeAttribute(selectedDiscipline.nome)}</h2><p class="panel-subtitle">Ranking dos EVs pelo valor previsto nesta disciplina. O percentual usa o valor total de cada EV como denominador.</p></div><button class="secondary-action" type="button" data-action="clear-strategic-discipline">Ver todas as disciplinas</button></div>
+      <div class="strategic-detail-kpis"><article><span>Valor da disciplina</span><strong>${moneyCents(selectedDisciplineTotal)}</strong><small>${number(selectedDisciplineShare, 2)}% do total filtrado</small></article><article><span>EVs com a disciplina</span><strong>${number(records.length)}</strong><small>${number((records.length / Math.max(filterBase.length, 1)) * 100, 1)}% dos EVs de ano e tipologia</small></article><article><span>Média por EV</span><strong>${moneyCents(selectedDisciplineRow?.average || 0)}</strong><small>Mediana ${moneyCents(selectedDisciplineRow?.medianValue || 0)}</small></article><article><span>Custo da disciplina por m²</span><strong>${selectedDisciplineRow?.costM2 ? `${moneyCents(selectedDisciplineRow.costM2)}/m²` : "Sem leitura"}</strong><small>Média ponderada pela área válida</small></article></div>
+      <div class="table-wrap"><table class="data-table strategic-project-ranking"><thead><tr><th>EV / obra</th><th>Ano</th><th>Tipologia</th><th class="numeric">Valor da disciplina</th><th class="numeric">% do EV</th><th class="numeric">Valor total do EV</th><th>Ação</th></tr></thead><tbody>${[...records].sort((a, b) => disciplineValueFor(b) - disciplineValueFor(a)).slice(0, 20).map((record) => { const value = disciplineValueFor(record); const historical = record.sourceKind === "historical"; return `<tr><td><strong>${escapeAttribute(record.project)}</strong><small>${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision || "")}</small></td><td>${escapeAttribute(String(record.year || "—"))}</td><td>${escapeAttribute(record.typology || "Não informada")}</td><td class="numeric"><strong>${moneyCents(value)}</strong></td><td class="numeric">${record.total ? `${number((value / record.total) * 100, 2)}%` : "—"}</td><td class="numeric">${moneyCents(record.total)}</td><td><button class="secondary-action compact-action" type="button" data-action="${historical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(historical ? record.id : record.workId)}">Abrir EV</button></td></tr>`; }).join("")}</tbody></table></div>
+    </section>` : ""}
+
+    <section class="strategic-analysis-grid">
+      <article class="panel"><div class="panel-header"><div><span class="eyebrow">Evolução histórica</span><h2>Investimento por ano</h2><p class="panel-subtitle">Valor total orçado e custo médio ponderado por m² em cada ano.</p></div></div><div class="strategic-analysis-bars">${renderStrategicBarRows(byYear, strategicEVFilters.discipline ? "disciplineTotal" : "total", strategicEVFilters.discipline ? selectedDisciplineTotal : totalValue)}</div></article>
+      <article class="panel"><div class="panel-header"><div><span class="eyebrow">Perfil da carteira</span><h2>Investimento por tipologia</h2><p class="panel-subtitle">Distribuição do orçamento entre hospitais, clínicas, unidades administrativas e demais tipologias.</p></div></div><div class="strategic-analysis-bars">${renderStrategicBarRows(byTypology, strategicEVFilters.discipline ? "disciplineTotal" : "total", strategicEVFilters.discipline ? selectedDisciplineTotal : totalValue)}</div></article>
+    </section>
+
+    <section class="panel strategic-top-projects"><div class="panel-header"><div><span class="eyebrow">Concentração do investimento</span><h2>Maiores EVs do recorte</h2><p class="panel-subtitle">Ranking pelo valor total orçado para identificar onde a carteira está mais concentrada.</p></div></div><div class="strategic-top-projects-grid">${investmentRows.slice(0, 10).map((row, index) => `<article><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeAttribute(row.record.project)}</strong><small>${escapeAttribute(String(row.record.year || "—"))} · ${escapeAttribute(row.record.typology || "Não informada")}</small></div><b>${moneyCents(row.valor)}</b><em>${number((row.valor / Math.max(totalValue, 1)) * 100, 1)}%</em></article>`).join("") || `<div class="empty-state">Sem EVs no recorte selecionado.</div>`}</div></section>
 
     <section class="panel strategic-portfolio-link">
       <div>
@@ -17971,6 +18072,22 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
+  if (action === "clear-strategic-ev-filters") {
+    strategicEVFilters = { year: "", typology: "", discipline: "" };
+    render();
+    return;
+  }
+  if (action === "select-strategic-discipline") {
+    strategicEVFilters.discipline = actionButton.dataset.disciplineId || "";
+    render();
+    document.querySelector(".strategic-discipline-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "clear-strategic-discipline") {
+    strategicEVFilters.discipline = "";
+    render();
+    return;
+  }
   if (action === "save-ev-reference-targets") {
     saveEVReferenceTargets();
     return;
@@ -18407,6 +18524,11 @@ document.addEventListener("change", (event) => {
   if (event.target.matches("[data-strategic-decision-filter]")) {
     strategicEVDecisionFilters[event.target.dataset.strategicDecisionFilter] = event.target.value;
     setTimeout(() => render(), 30);
+    return;
+  }
+  if (event.target.matches("[data-strategic-ev-filter]")) {
+    strategicEVFilters[event.target.dataset.strategicEvFilter] = event.target.value;
+    render();
     return;
   }
   if (event.target.matches("[data-strategic-history-filter]")) {
