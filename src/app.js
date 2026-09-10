@@ -613,7 +613,6 @@ let operationalFilters = {
 let managementStatusFilter = "all";
 let strategicHistoricalQuery = "";
 let strategicHistoricalFilters = { year: "", region: "", status: "" };
-let evShowNotApplicable = false;
 let evAssistantQuery = "";
 let evHistoricalFilters = { query: "", year: "", typology: "", discipline: "", technician: "" };
 let evHistoricalSort = { key: "", direction: "" };
@@ -6688,7 +6687,7 @@ function renderPortfolioTable(rows) {
         </thead>
         <tbody>
           ${rows.map((row) => `
-            <tr class="portfolio-work-row" tabindex="0" data-action="open-portfolio-work-options" data-id="${escapeAttribute(row.id)}" aria-label="Opções da obra ${escapeAttribute(row.nome)}">
+            <tr class="portfolio-work-row">
               <td><strong>${escapeAttribute(row.codigo || "")}</strong></td>
               <td><strong>${escapeAttribute(row.nome)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
@@ -6703,12 +6702,8 @@ function renderPortfolioTable(rows) {
               <td class="numeric">${row.hasAssociatedEV ? `<strong>${moneyCents(row.capex)}</strong>` : ""}</td>
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
               <td><div class="table-actions portfolio-actions">
-                ${row.hasAssociatedEV
-                  ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Visualizar EV</button>
-                    <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "edit-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Editar EV</button>
-                    <button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${escapeAttribute(row.inccId)}">Reajustar INCC</button>`
-                  : `<span class="muted">Sem EV</span>`}
-                <button class="ghost-button compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
+                <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">${row.hasAssociatedEV ? "Abrir EV" : "Criar EV"}</button>
+                <button class="secondary-action compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar Obra</button>
               </div></td>
             </tr>
           `).join("") || `<tr><td colspan="14"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
@@ -6717,30 +6712,6 @@ function renderPortfolioTable(rows) {
       </div>
     </div>
   `;
-}
-
-function openPortfolioWorkOptions(workId) {
-  const row = portfolioRows(false, false).find((item) => item.id === workId);
-  if (!row) return;
-  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop" data-action="close-modal">
-      <article class="modal-card portfolio-work-options" role="dialog" aria-modal="true" aria-labelledby="portfolioWorkOptionsTitle">
-        <header class="modal-header">
-          <div><span class="eyebrow">Opções da obra</span><h2 id="portfolioWorkOptionsTitle">${escapeAttribute(row.nome)}</h2>
-          <p class="muted">${escapeAttribute(row.codigo || "Sem código")} · ${escapeAttribute(row.cidadeUf || row.uf || "")}</p></div>
-          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
-        </header>
-        <div class="modal-body">
-          ${row.hasAssociatedEV ? `<p>EV vinculado · ${escapeAttribute(row.evStatus || "")} · ${moneyCents(row.capex)}</p>
-          <button class="secondary-action full-width" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Visualizar EV</button>
-          <button class="primary-action full-width" type="button" data-action="${row.isHistorical ? "edit-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Editar EV</button>
-          <button class="ghost-button full-width" type="button" data-action="load-ev-incc" data-id="${escapeAttribute(row.inccId)}">Reajustar INCC</button>`
-          : `<p class="empty-state">Esta obra ainda não possui EV vinculado.</p>`}
-          <button class="secondary-action full-width" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
-        </div>
-      </article>
-    </div>`);
-  modalRoot.querySelector('button')?.focus();
 }
 
 function openPortfolioWorkEditor(workId) {
@@ -6863,7 +6834,6 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       isHistorical: Boolean(work._historicalBudgetWork),
       hasAssociatedEV,
       openId: work._historicalBudgetWork ? work.historicalRecordId : work.id,
-      inccId: work._historicalBudgetWork ? work.historicalRecordId : `current-${work.id}`,
       evId: work.ev.id || (work._historicalBudgetWork ? work.historicalRecordId : `EV-${work.id}`),
       prazo: work.prazoDias || plannedDurationForWork(work),
       areaEquivalente,
@@ -7419,7 +7389,7 @@ async function openHistoricalEVModal(recordId) {
             </table>
           </div>
         </div>
-        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="ghost-button" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
+        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="ghost-button" type="button" data-action="load-ev-incc" data-id="${record.id}">Reajustar INCC</button><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
       </article>
     </div>`);
 }
@@ -7708,7 +7678,16 @@ function openEVModal(workId) {
   const totals = workTotals(work);
   const riskTotal = work.ev.lines.filter(isRiskLine).reduce((sum, line) => sum + (line.valorOrcado || 0), 0);
   const totalValue = totals.orcado + totals.aditivado;
-  const lastVersion = work.ev.versions[work.ev.versions.length - 1];
+  const displayVersions = [...(work.ev.versions || [])];
+  const currentRevision = Number(work.ev.versaoAtual || 0);
+  if (!work.ev._virtualEmptyEV && !displayVersions.some((version) => Number(version.numero) === currentRevision)) {
+    displayVersions.push({
+      numero: currentRevision,
+      data: "",
+      origem: "Versão atual",
+      valorTotal: totalValue,
+    });
+  }
   const masterItems = projectMasterItems(work);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
@@ -7763,8 +7742,8 @@ function openEVModal(workId) {
             <h3>Rastreabilidade de versões</h3>
             <div class="timeline-list">
               ${
-                work.ev.versions.length
-                  ? work.ev.versions
+                displayVersions.length
+                  ? displayVersions
                       .map(
                         (version) => `
                           <article>
@@ -7780,7 +7759,7 @@ function openEVModal(workId) {
           </section>
         </div>
         <footer class="modal-actions">
-          <button class="secondary-action" type="button" data-action="open-work-ev" data-id="${work.id}">Abrir na aba EV</button>
+          ${work.ev._virtualEmptyEV ? "" : `<button class="ghost-button" type="button" data-action="load-ev-incc" data-id="current-${escapeAttribute(work.id)}">Reajustar INCC</button>`}
           <button class="primary-action" type="button" data-view="budget">Ver controle de verba</button>
         </footer>
       </article>
@@ -7833,8 +7812,7 @@ function renderEVStandardStructure(work) {
     const value = status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0);
     return { discipline, line, status, value };
   });
-  const hiddenCount = rows.filter((row) => row.status === "Não se aplica").length;
-  const visibleRows = evShowNotApplicable ? rows : rows.filter((row) => row.status !== "Não se aplica");
+  const visibleRows = rows;
   const applicableRows = rows.filter((row) => row.status !== "Não se aplica");
   const baseTotal = applicableRows.reduce((sum, row) => sum + row.value, 0);
   const baseTotalNoRisk = applicableRows
@@ -7875,11 +7853,6 @@ function renderEVStandardStructure(work) {
       <section class="ev-deviation-panel" data-ev-deviation-panel>
         ${evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotalNoRisk)}
       </section>
-      <div class="ev-editor-toolbar">
-        <button class="secondary-action" type="button" data-action="toggle-ev-na">
-          ${evShowNotApplicable ? "Ocultar" : "Mostrar"} ${hiddenCount} item(ns) não aplicável(is)
-        </button>
-      </div>
       <div class="table-wrap ev-editor-table">
         <table class="data-table">
           <thead>
@@ -16500,6 +16473,7 @@ async function handleEVSubmit(form, mode = "final") {
     work.ev.anexos = uniqueAttachments([...(work.ev.anexos || []), ...files]);
   }
 
+  delete work.ev._virtualEmptyEV;
   const totals = workTotals(work);
   const totalValue = totals.orcado + totals.aditivado;
   work.ev.status = mode === "draft" ? "Rascunho" : deriveEVStatus(work);
@@ -17865,10 +17839,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "open-ev-modal") openEVModal(actionButton.dataset.id);
-  if (action === "open-portfolio-work-options") {
-    openPortfolioWorkOptions(actionButton.dataset.id);
-    return;
-  }
   if (action === "open-historical-ev") {
     await openHistoricalEVModal(actionButton.dataset.id);
     return;
@@ -18092,11 +18062,6 @@ document.addEventListener("click", async (event) => {
   if (action === "validate-budget-transfer") {
     validateBudgetTransfer();
     return;
-  }
-  if (action === "toggle-ev-na") {
-    evShowNotApplicable = !evShowNotApplicable;
-    if (actionButton.closest(".ev-modal-card")) openEVModal(selectedWorkId);
-    else render();
   }
   if (action === "toggle-demand-history") {
     const panel = actionButton.closest(".modal-section")?.querySelector(".demand-history-panel");
