@@ -6803,6 +6803,27 @@ button.alert-item {
   letter-spacing: 0.03em;
 }
 
+.demand-card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.demand-card-labels span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  max-width: 100%;
+  border: 1px solid rgba(0, 92, 169, 0.2);
+  border-radius: 999px;
+  background: #eef7ff;
+  color: var(--blue);
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
 .sic-approval-badge {
   width: fit-content;
   max-width: 100%;

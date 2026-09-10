@@ -14,7 +14,7 @@ const payload={state:{
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
   demands:[
-    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC - Solicitação de Informação',coluna:'fazer',sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
+    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC - Solicitação de Informação',coluna:'fazer',etiquetas:['Urgente'],sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
     {id:'test-budget-demand',obraId:'test-work',titulo:'Orçamento de teste',tipo:'EmissaoInicial',coluna:'validacaoObras',sicIds:[],anexos:[]},
   ],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
@@ -109,7 +109,11 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  expect(operationalDemandTypes.slice(1)).toEqual(registeredDemandTypes);
  await page.getByRole('button',{name:'Fechar'}).click();
  await page.locator('[data-operational-filter="type"]').selectOption('SIC');
- await expect(page.locator('.operational-board-panel article[data-id="test-demand"]')).toBeVisible();
+ const pendingSicCard=page.locator('.operational-board-panel article[data-id="test-demand"]');
+ await expect(pendingSicCard).toBeVisible();
+ await expect(pendingSicCard.locator('.demand-card-labels')).toHaveText('Urgente');
+ await expect(pendingSicCard.locator('.sic-approval-badge')).toHaveCount(0);
+ await expect(pendingSicCard.getByRole('button',{name:'Aprovação'})).toBeVisible();
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.locator('[data-operational-filter="type"]').selectOption('');
  await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
@@ -314,8 +318,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  expect(b.errors).toEqual([]);
 });
 
-test('initial budget demand waits for database confirmation and accepts every portfolio work',async({page})=>{
- const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021']});await login(page);
+test('new demands suggest the historical analyst, persist labels and give SICs a 15-day due date',async({page})=>{
+ const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021'],analystNames:['Técnico A']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
@@ -341,15 +345,31 @@ test('initial budget demand waits for database confirmation and accepts every po
  await page.screenshot({path:'outputs/initial-demand-audit.png',fullPage:true,animations:'disabled'});
 
  await step1.locator('[name="obraBusca"]').fill('Obra histórica Norte - AM');
+ await expect(step1.locator('[name="analistasSelecionados"]')).toHaveValue('["Técnico A"]');
  await step1.getByRole('button',{name:/Avançar/}).click();
  await expect(page.locator('#demandForm')).toBeVisible();
  await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
+ await page.locator('#demandForm [name="etiquetas"]').fill('Urgente, Diretoria');
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
- await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
- await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toContainText('DEM-022');
+ const createdCard=page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'});
+ await expect(createdCard).toBeVisible();
+ await expect(createdCard).toContainText('DEM-022');
+ await expect(createdCard.locator('.demand-card-labels')).toHaveText(/Urgente.*Diretoria/);
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
- expect(b.requests.some(request=>request.changes.some(change=>change.entity==='budget_demands'))).toBe(true);
+ const createdChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-022');
+ expect(createdChange?.document?.analistaResponsavel).toBe('Técnico A');
+ expect(createdChange?.document?.etiquetas).toEqual(['Urgente','Diretoria']);
  expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='budget_demands'&&change.key==='DEM-021')).toBe(false);
+
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="SIC"]').click();
+ const sicForm=page.locator('#demandForm');
+ await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
+ await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
+ await expect(sicForm.locator('[name="analistasSelecionados"]')).toHaveValue('["Técnico A"]');
+ const today=await page.evaluate(()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}));
+ const due=await sicForm.locator('[name="dataPrevistaEntrega"]').inputValue();
+ expect((Date.parse(`${due}T00:00:00Z`)-Date.parse(`${today}T00:00:00Z`))/86400000).toBe(15);
  expect(b.errors).toEqual([]);
 });
 

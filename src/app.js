@@ -845,9 +845,18 @@ function normalizeDemandProjectDetails(details = {}) {
   }).filter(([projectId]) => projectId));
 }
 
+function normalizeDemandLabels(labels = []) {
+  const values = Array.isArray(labels) ? labels : String(labels || "").split(/[,;\n]+/);
+  const normalized = values
+    .map((label) => String(label || "").trim().slice(0, 32))
+    .filter(Boolean);
+  return [...new Map(normalized.map((label) => [normalizeSearchText(label), label])).values()].slice(0, 6);
+}
+
 function normalizeDemandRecord(item = {}, works = []) {
   const demand = normalizeDemandAnalysts({
     ...item,
+    etiquetas: normalizeDemandLabels(item.etiquetas),
     projetosEnvolvidos: arrayOrFallback(item.projetosEnvolvidos),
     projetosEnvolvidosDetalhes: normalizeDemandProjectDetails(item.projetosEnvolvidosDetalhes),
     sicIds: arrayOrFallback(item.sicIds),
@@ -5487,7 +5496,7 @@ function filteredDemands() {
     const sprint = sprintById(demand.sprintId);
     const sicInfo = demandSicInfo(demand) || {};
     const text = normalizeSearchText(
-      `${demand.id} ${work?.nome || ""} ${demandAnalystNames(demand).join(" ")} ${demand.tipo} ${demand.observacao || ""} ${sicInfo.lecomNumber || ""} ${sicInfo.numeroSic || ""} ${sicInfo.tituloSic || ""} ${sicInfo.obraNumber || ""} ${sicInfo.obraNome || ""}`
+      `${demand.id} ${work?.nome || ""} ${demandAnalystNames(demand).join(" ")} ${normalizeDemandLabels(demand.etiquetas).join(" ")} ${demand.tipo} ${demand.observacao || ""} ${sicInfo.lecomNumber || ""} ${sicInfo.numeroSic || ""} ${sicInfo.tituloSic || ""} ${sicInfo.obraNumber || ""} ${sicInfo.obraNome || ""}`
     );
     const query = normalizeSearchText([searchTerm, operationalFilters.query].filter(Boolean).join(" ")).trim();
     if (query && !query.split(/\s+/).every((part) => text.includes(part))) return false;
@@ -5667,10 +5676,11 @@ function renderDemandCard(demand) {
         </div>
       </div>
       <h3>${work?.nome || "Obra não localizada"}</h3>
+      ${renderDemandCardLabels(demand.etiquetas)}
       ${
         approval
           ? `<div class="sic-card-sync">
-              <span class="sic-approval-badge" data-status="${approval.dataStatus}">${approval.label}</span>
+              ${approval.status === "Pendente" ? "" : `<span class="sic-approval-badge" data-status="${approval.dataStatus}">${approval.label}</span>`}
               <button class="sic-card-sync-button" type="button" data-action="open-sic-approval" data-id="${demand.id}">Aprovação</button>
             </div>`
           : ""
@@ -5691,6 +5701,24 @@ function renderDemandCard(demand) {
           : ""
       }
     </article>
+  `;
+}
+
+function renderDemandCardLabels(labels = []) {
+  const normalized = normalizeDemandLabels(labels);
+  if (!normalized.length) return "";
+  return `<div class="demand-card-labels" aria-label="Etiquetas do card">${normalized
+    .map((label) => `<span>${escapeAttribute(label)}</span>`)
+    .join("")}</div>`;
+}
+
+function renderDemandLabelsField(labels = []) {
+  return `
+    <label class="field full-span demand-labels-field">
+      <span>Etiquetas do card</span>
+      <input name="etiquetas" value="${escapeAttribute(normalizeDemandLabels(labels).join(", "))}" placeholder="Ex.: Urgente, Diretoria, Fornecedor" maxlength="200" />
+      <small class="muted">Separe por vírgulas. Até 6 etiquetas serão exibidas dentro do card.</small>
+    </label>
   `;
 }
 
@@ -14797,6 +14825,7 @@ function openDemandDetailModal(id) {
                   ${priorityOptions(demand.prioridade)}
                 </select>
               </label>
+              ${renderDemandLabelsField(demand.etiquetas)}
               <div class="detail-card">
                 <span>Sprint atual</span>
                 <strong>${sprint?.nome || "Sem sprint"}</strong>
@@ -15449,10 +15478,13 @@ function openDemandWizardModal(type = "EmissaoInicial", step = 1, draft = {}) {
 }
 
 function demandWizardDefaultDraft(type, draft = {}) {
-  const work = draft.obraId ? workById(draft.obraId) : null;
+  const work = draft.obraId
+    ? workById(draft.obraId) || demandWorkCatalog().find((item) => String(item.id) === String(draft.obraId))
+    : null;
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   const analystAssignment = normalizeDemandAnalysts(draft);
+  const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : historicalAnalystForWork(work);
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
     obraId: work?.id || "",
@@ -15467,8 +15499,9 @@ function demandWizardDefaultDraft(type, draft = {}) {
     unidadeCentro: draft.unidadeCentro || "",
     unidadeSource: draft.unidadeSource || "",
     sprintId: sprint?.id || "",
-    analistaResponsavel: analystAssignment.analistaResponsavel,
+    analistaResponsavel: analystAssignment.analistaResponsavel || suggestedAnalyst,
     analistasComplementares: analystAssignment.analistasComplementares,
+    etiquetas: normalizeDemandLabels(draft.etiquetas),
     descricao: draft.descricao || "",
     projetosEnvolvidos: arrayOrFallback(draft.projetosEnvolvidos),
     projetosEnvolvidosDetalhes: normalizeDemandProjectDetails(draft.projetosEnvolvidosDetalhes),
@@ -15613,7 +15646,7 @@ function renderDemandWizardStep1(draft) {
 }
 
 function renderDemandWizardStep2(draft) {
-  const work = workById(draft.obraId) || workById(selectedWorkId) || state.works[0];
+  const work = workById(draft.obraId) || demandWorkCatalog().find((item) => String(item.id) === String(draft.obraId)) || workById(selectedWorkId) || state.works[0];
   const title = demandTypeLabel(draft.tipo);
   return `
     <div class="modal-backdrop" data-action="close-modal">
@@ -15640,6 +15673,7 @@ function renderDemandWizardStep2(draft) {
                 ${priorityOptions(draft.prioridade)}
               </select>
             </label>
+            ${renderDemandLabelsField(draft.etiquetas)}
           </section>
 
           <section class="modal-section">
@@ -15745,6 +15779,29 @@ function demandWorkYear(work) {
   return String(work?.anoObra || record?.year || latestVersion?.data || "").slice(0, 4);
 }
 
+function historicalRecordForWork(work) {
+  if (!work) return null;
+  const records = arrayOrFallback(state.evs);
+  const sourceId = work.historicalRecordId || work.sourceHistoricalRecordId;
+  return records.find((record) => String(record.id) === String(sourceId || ""))
+    || records.find((record) => String(record.workId || "") === String(work.id || ""))
+    || records.find((record) => evUnifiedWorkForHistorical(record)?.id === work.id)
+    || null;
+}
+
+function historicalAnalystForWork(work) {
+  const analyst = String(historicalRecordForWork(work)?.technician || "").trim();
+  return analyst && !["nao informado", "sem tecnico", "-", "—"].includes(normalizeSearchText(analyst)) ? analyst : "";
+}
+
+function suggestHistoricalAnalystInForm(form, work) {
+  const selector = form?.querySelector("[data-demand-analyst-selector]");
+  if (!selector || analystAssignmentFromForm(form).analistaResponsavel) return;
+  const analyst = historicalAnalystForWork(work);
+  if (!analyst) return;
+  selector.outerHTML = globalThis.SLT_CLOUD.cleanHTML(analystChipOptions({ analistaResponsavel: analyst }));
+}
+
 function resolveDemandWorkFromQuery(query) {
   const normalized = normalizeSearchText(query);
   if (!normalized) return null;
@@ -15753,7 +15810,7 @@ function resolveDemandWorkFromQuery(query) {
 
 function handleDemandWizardStep1(form) {
   const formData = new FormData(form);
-  const analystAssignment = analystAssignmentFromForm(form);
+  const selectedAnalysts = analystAssignmentFromForm(form);
   const work = resolveDemandWorkFromQuery(formData.get("obraBusca"));
   if (!work) {
     showFormError("Selecione uma obra válida do portfólio antes de avançar.", form);
@@ -15767,6 +15824,9 @@ function handleDemandWizardStep1(form) {
   }
   const sprint = sprintById(formData.get("sprintId")) || currentSprint();
   const unitContext = demandUnitContextFields(unit, unidadeModo);
+  const analystAssignment = selectedAnalysts.analistaResponsavel
+    ? selectedAnalysts
+    : normalizeDemandAnalysts({ analistaResponsavel: historicalAnalystForWork(work) });
   demandWizardDraft = demandWizardDefaultDraft(formData.get("tipo"), {
     obraId: work.id,
     obraBusca: work.nome,
@@ -15905,6 +15965,7 @@ function updateSicWorkSearch(input) {
 
 function openSicDemandModal(workId = "") {
   const selectedWork = workId ? workById(workId) : null;
+  const suggestedAnalyst = historicalAnalystForWork(selectedWork);
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
   const selectedWorkNumber = selectedWork ? selectedWork.chaveUnica || selectedWork.codigoOriginal || "" : "";
   const selectedWorkName = selectedWork ? selectedWork.nome || "" : "";
@@ -15925,7 +15986,7 @@ function openSicDemandModal(workId = "") {
             <div class="section-title">
               <span>Analistas da demanda</span>
             </div>
-            ${analystChipOptions()}
+            ${analystChipOptions({ analistaResponsavel: suggestedAnalyst })}
           </section>
           <section class="modal-section sic-work-link-panel">
             <div class="section-title with-action">
@@ -15992,7 +16053,7 @@ function openSicDemandModal(workId = "") {
             </label>
             <label class="field">
               <span>Entrega prevista</span>
-              <input name="dataPrevistaEntrega" type="date" value="${currentSprint()?.dataFim || todayISO()}" required />
+              <input name="dataPrevistaEntrega" type="date" value="${addDaysISO(todayISO(), 15)}" required />
             </label>
             <label class="field">
               <span>Motivo</span>
@@ -16002,6 +16063,7 @@ function openSicDemandModal(workId = "") {
                 <option value="SolicitacaoCampo">Solicitação de Campo</option>
               </select>
             </label>
+            ${renderDemandLabelsField()}
           </div>
 
           <section class="modal-section">
@@ -16867,13 +16929,14 @@ async function handleDemandSubmit(form) {
     sprintId: formData.get("sprintId") || currentSprint()?.id || "sprint-4",
     ...analystAssignment,
     prioridade: formData.get("prioridade"),
+    etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
     coluna: tipo === "SIC" ? "fazer" : formData.get("coluna") || "fazer",
     dataPrevistaInicio: formData.get("dataPrevistaInicio") || todayISO(),
     dataInicioReal: formData.get("dataInicioReal") || "",
     dataPrevEnvioValidacaoObras: formData.get("dataPrevEnvioValidacaoObras") || "",
     dataEnvioRealValidacaoObras: formData.get("dataEnvioRealValidacaoObras") || "",
     dataValidacaoObras: formData.get("dataValidacaoObras") || "",
-    dataPrevistaEntrega: formData.get("dataPrevistaEntrega"),
+    dataPrevistaEntrega: formData.get("dataPrevistaEntrega") || (tipo === "SIC" ? addDaysISO(todayISO(), 15) : ""),
     dataEntregaReal: formData.get("dataEntregaReal") || "",
     naoEnviarValidacaoObras: formData.get("naoEnviarValidacaoObras") === "on",
     observacao: formData.get("descricao") || formData.get("observacao"),
@@ -17066,6 +17129,7 @@ async function handleDemandDetailSubmit(form) {
   const analystAssignment = analystAssignmentFromForm(form, demand);
   const previousSprint = demand.sprintId || "";
   const previousPriority = demand.prioridade || "";
+  const previousLabels = normalizeDemandLabels(demand.etiquetas);
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   const previousSicApproval = isSicDemand ? sicApprovalReading(demand) : null;
   const previousSicPayload =
@@ -17080,6 +17144,7 @@ async function handleDemandDetailSubmit(form) {
   demand.tipo = formData.get("tipo") || demand.tipo;
   demand.sprintId = formData.get("sprintId") || "";
   demand.prioridade = formData.get("prioridade") || demand.prioridade;
+  demand.etiquetas = normalizeDemandLabels(formData.get("etiquetas"));
   if (isSicDemand) {
     demand.sicMetadata = demand.sicMetadata || {};
     demand.sicMetadata.analistaSalaTecnica = demand.analistaResponsavel || "";
@@ -17203,6 +17268,15 @@ async function handleDemandDetailSubmit(form) {
       campo: "prioridade",
       valorAnterior: previousPriority || "Sem prioridade",
       valorNovo: demand.prioridade || "Sem prioridade",
+    });
+  }
+  if (JSON.stringify(previousLabels) !== JSON.stringify(demand.etiquetas)) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "etiquetas",
+      valorAnterior: previousLabels.join(", ") || "Nenhuma",
+      valorNovo: demand.etiquetas.join(", ") || "Nenhuma",
     });
   }
 
@@ -18177,6 +18251,7 @@ document.addEventListener("click", async (event) => {
       if (workCode) workCode.value = work.chaveUnica || work.codigoOriginal || "";
       if (workName) workName.value = work.nome || "";
       if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value, work.id));
+      suggestHistoricalAnalystInForm(form, work);
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
     }
@@ -18597,6 +18672,11 @@ function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
 }
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches('#demandWizardStep1 [name="obraBusca"]')) {
+    const work = findWorkByExactTypedSearch(event.target.value);
+    if (work) suggestHistoricalAnalystInForm(event.target.closest("form"), work);
+    return;
+  }
   if (event.target.matches("[data-clinical-park-search]")) {
     const value = event.target.value;
     clinicalParkQuery = value;
