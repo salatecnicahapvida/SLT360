@@ -7466,8 +7466,7 @@ button.alert-item {
   margin-top: 14px;
 }
 
-.budget-sic-grid,
-.retro-insight-grid {
+.budget-sic-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;

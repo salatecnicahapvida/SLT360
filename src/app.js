@@ -4272,7 +4272,7 @@ function renderHomeLaunchpadCard(module) {
   const primary = module.metrics[0] || { label: "Indicador", value: "-" };
   const secondary = module.metrics[1] || null;
   const descriptions = {
-    orcamento: "Esteira de EVs, sprints, retroanálise e validação orçamentária.",
+    orcamento: "Esteira de EVs, sprints e validação orçamentária.",
     manutencao: "Demandas prediais, fluxo operacional, CAPEX/OPEX e indicadores.",
     clinica: "Parque tecnológico, ordens de serviço e desempenho assistencial.",
     gestao: "CAPEX, OPEX, OIs, transferências, saldo e curva financeira.",
@@ -5767,139 +5767,6 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function disciplineBenchmarkRows() {
-  const groups = new Map();
-  budgetWorks().forEach((work) => {
-    if (!work.areaEquivalente) return;
-    work.ev.lines.forEach((line) => {
-      if (isRiskLine(line) || !line.valorOrcado) return;
-      const id = canonicalDisciplineId(line.disciplinaId);
-      const unitCost = line.valorOrcado / work.areaEquivalente;
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(unitCost);
-    });
-  });
-
-  const medians = new Map([...groups.entries()].map(([id, values]) => [id, median(values)]));
-  const rows = [];
-  budgetWorks().forEach((work) => {
-    if (!work.areaEquivalente) return;
-    work.ev.lines.forEach((line) => {
-      if (isRiskLine(line) || !line.valorOrcado) return;
-      const id = canonicalDisciplineId(line.disciplinaId);
-      const historical = medians.get(id) || 0;
-      if (!historical) return;
-      const unitCost = line.valorOrcado / work.areaEquivalente;
-      const deviation = ((unitCost - historical) / historical) * 100;
-      if (Math.abs(deviation) < 35) return;
-      rows.push({
-        work,
-        disciplineId: id,
-        discipline: disciplineById(id).nome,
-        unitCost,
-        historical,
-        deviation,
-        value: line.valorOrcado,
-      });
-    });
-  });
-  return rows.sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation)).slice(0, 12);
-}
-
-function renderBenchmarkInsights(rows) {
-  const above = rows.filter((row) => row.deviation > 0);
-  const critical = rows.filter((row) => Math.abs(row.deviation) > 150);
-  const maxRow = rows[0];
-  const totalExposure = above.reduce((sum, row) => sum + Math.max(row.value - row.historical * row.work.areaEquivalente, 0), 0);
-  return `
-    <div class="retro-insight-grid">
-      ${miniMetric("Itens acima da base", String(above.length))}
-      ${miniMetric("Exposição estimada", money(totalExposure))}
-      ${miniMetric("Críticos >150%", String(critical.length))}
-      ${miniMetric("Maior desvio", maxRow ? `${number(maxRow.deviation, 1)}%` : "—")}
-    </div>
-  `;
-}
-
-function renderBenchmarkTable(rows) {
-  if (!rows.length) return `<div class="empty-state">Sem desvio relevante acima de 35% contra a base histórica.</div>`;
-  return `
-    ${renderBenchmarkInsights(rows)}
-    <div class="table-wrap">
-      <table class="data-table benchmark-table">
-        <thead>
-          <tr>
-            <th>Obra</th>
-            <th>Disciplina</th>
-            <th class="numeric">Custo/m²</th>
-            <th class="numeric">Base histórica</th>
-            <th class="numeric">Desvio</th>
-            <th>Sinalização</th>
-            <th>Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr>
-                  <td><strong>${row.work.nome}</strong><br /><span class="muted">${row.work.cidade}/${row.work.uf}</span></td>
-                  <td><strong>${row.discipline}</strong><br /><span class="muted">${row.deviation > 0 ? "Solicitar validação do item no EV" : "Possível oportunidade ou suborçamento"}</span></td>
-                  <td class="numeric">${money(row.unitCost)}/m²</td>
-                  <td class="numeric">${money(row.historical)}/m²</td>
-                  <td class="numeric">${number(row.deviation, 1)}%</td>
-                  <td><span class="status-pill" data-status="${Math.abs(row.deviation) > 75 ? "Saldo crítico" : "Pendente"}">${row.deviation > 0 ? "Acima da base" : "Abaixo da base"}</span></td>
-                  <td><button class="secondary-action compact-action" type="button" data-action="open-benchmark-detail" data-work-id="${row.work.id}" data-discipline-id="${row.disciplineId}">Analisar EV</button></td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function openBenchmarkDetailModal(workId, disciplineId) {
-  const row = disciplineBenchmarkRows().find((item) => item.work.id === workId && item.disciplineId === disciplineId);
-  const work = workById(workId);
-  if (!row || !work) return;
-  const recommended = row.deviation > 0
-    ? "Validar quantitativos, premissas e cotações antes de liberar a versão final do EV."
-    : "Conferir se a disciplina está completa para evitar suborçamento e futura SIC.";
-  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop" data-action="close-modal">
-      <section class="modal-card kpi-modal-card" aria-labelledby="benchmarkTitle">
-        <header>
-          <div>
-            <span class="eyebrow">Retroanálise por disciplina</span>
-            <h2 id="benchmarkTitle">${row.discipline}</h2>
-            <p class="muted">${work.nome} | ${work.cidade}/${work.uf}</p>
-          </div>
-          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
-        </header>
-        <div class="modal-body">
-          <div class="kpi-detail-grid">
-            ${splitItem("Custo do EV", `${money(row.unitCost)}/m²`)}
-            ${splitItem("Base histórica", `${money(row.historical)}/m²`)}
-            ${splitItem("Desvio", `${number(row.deviation, 1)}%`)}
-            ${splitItem("Valor da linha", money(row.value))}
-          </div>
-          <section class="panel soft-panel">
-            <h3>Inteligência da Sala Técnica</h3>
-            <p>${recommended}</p>
-          </section>
-          ${renderEVLinesTable(work)}
-        </div>
-        <footer class="modal-actions">
-          <button class="primary-action" type="button" data-action="open-work-ev" data-id="${work.id}">Abrir EV da obra</button>
-          <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
-        </footer>
-      </section>
-    </div>
-  `);
-}
-
 function renderWorksManagement() {
   const scopedDemands = managementFilteredDemands();
   const completed = scopedDemands.filter((demand) => demand.coluna === "concluido");
@@ -5914,7 +5781,6 @@ function renderWorksManagement() {
     Math.max(delayedCompleted.length, 1);
   const producedValue = completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
   const punctualPercent = (punctual / Math.max(completedWithDates.length, 1)) * 100;
-  const benchmarkRows = disciplineBenchmarkRows();
 
   return `
     ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, capacidade, eficiência de prazo e valor entregue pela equipe", `
@@ -6013,17 +5879,6 @@ function renderWorksManagement() {
         </div>
       </section>
     </div>
-
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Retroanálise de custos por disciplina</h2>
-          <p class="panel-subtitle">Sinalização automática de obras que destoam da mediana histórica da carteira</p>
-        </div>
-        <button class="secondary-action" type="button" data-view="analytics">Ver Disciplina & Tipologia</button>
-      </div>
-      ${renderBenchmarkTable(benchmarkRows)}
-    </section>
 
     <div class="content-grid">
       <section class="panel">
@@ -17818,7 +17673,6 @@ document.addEventListener("click", async (event) => {
     handleEVSubmit(form, actionButton.dataset.mode || "final");
     return;
   }
-  if (action === "open-benchmark-detail") openBenchmarkDetailModal(actionButton.dataset.workId, actionButton.dataset.disciplineId);
   if (action === "open-investment-detail") openInvestmentDetailModal(actionButton.dataset.id);
   if (action === "open-sic-detail") openSicDetailModal(actionButton.dataset.key);
   if (action === "open-sic-slice") openSicSliceDetailModal(actionButton.dataset.field, actionButton.dataset.label);
