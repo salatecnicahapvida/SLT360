@@ -21,8 +21,9 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[]}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[]}={}){
  const input=structuredClone(payload);
+ input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
   input.state.maintenanceDemands=[
@@ -278,7 +279,7 @@ test('configuration catalogs can be created and edited and feed work and EV form
 });
 
 test('initial budget demand waits for database confirmation and accepts every portfolio work',async({page})=>{
- const b=await backend(page);await login(page);
+ const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
@@ -309,8 +310,10 @@ test('initial budget demand waits for database confirmation and accepts every po
  await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
  await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
+ await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toContainText('DEM-022');
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  expect(b.requests.some(request=>request.changes.some(change=>change.entity==='budget_demands'))).toBe(true);
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='budget_demands'&&change.key==='DEM-021')).toBe(false);
  expect(b.errors).toEqual([]);
 });
 

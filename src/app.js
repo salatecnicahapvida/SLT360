@@ -1966,6 +1966,13 @@ function nextCode(prefix, collection) {
   return `${prefix}-${String(highest + 1).padStart(3, "0")}`;
 }
 
+function nextDemandCode() {
+  return nextCode("DEM", [
+    ...(state.demands || []),
+    ...(state.deletedDemands || []),
+  ]);
+}
+
 function nextContractNumber() {
   const highest = state.contracts.reduce((max, contract) => {
     const match = String(contract.numeroContrato || "").match(/^CT-2026-(\d+)$/);
@@ -16716,7 +16723,9 @@ async function handleDemandSubmit(form) {
   });
   const tipo = formData.get("tipo");
   let obraId = resolveWorkIdFromDemandForm(formData);
-  const demandId = nextCode("DEM", state.demands);
+  // Demandas excluídas continuam reservando o código no banco. Considerá-las
+  // evita tentar recriar, por exemplo, DEM-021 sobre um registro arquivado.
+  const demandId = nextDemandCode();
   const sicIds = [];
   let sicMetadata = null;
   let sicDraftDisciplines = [];
@@ -16854,8 +16863,10 @@ async function handleDemandSubmit(form) {
   try {
     await saveStateAndWait();
   } catch (error) {
+    state.demands = state.demands.filter((demand) => demand.id !== demandId);
+    state.history = state.history.filter((entry) => !(entry.entidade === "demanda" && entry.entidadeId === demandId));
     if (submitButton) submitButton.disabled = false;
-    showFormError("A demanda não foi confirmada no banco. Recarregue os dados e tente novamente.", form);
+    showFormError("A demanda não foi confirmada no banco e foi retirada da tela. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
   closeModal();
@@ -17420,7 +17431,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
   const sprint = currentSprint();
   const startDate = record.inicioOrcamentacao || addDaysISO(record.terminoPlanejado, 1) || todayISO();
   const demand = {
-    id: nextCode("DEM", state.demands),
+    id: nextDemandCode(),
     obraId: work.id,
     unidadeModo: "nova",
     unidadeId: "",
