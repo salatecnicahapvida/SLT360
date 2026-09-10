@@ -21,7 +21,7 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[]}={}){
  const input=structuredClone(payload);
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -35,7 +35,11 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   ]};
  }
  let records=flattenPayload(input).map(r=>({...r,revision:1}));
- let analysts=[];
+ let analysts=analystNames.map((nome,index)=>({
+  id:`22222222-2222-4222-8222-${String(index+1).padStart(12,'0')}`,
+  nome,
+  created_at:'2026-09-09T12:00:00Z',
+ }));
  const requests=[]; const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const user={id,email:'admin@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{}};
@@ -283,7 +287,7 @@ test('initial budget demand is optional, shows work year and accepts every portf
  await expect(step1.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
  await expect(step1.getByText('Classificação',{exact:true})).toHaveCount(0);
  await expect(step1.locator('[name="descricao"]')).not.toHaveAttribute('required','');
- await expect(step1.locator('[name="analistaResponsavel"]:checked')).toHaveValue('');
+ await expect(step1.locator('[name="analistasSelecionados"]')).toHaveValue('[]');
 
  const descriptionBox=await step1.locator('[name="descricao"]').boundingBox();
  const sprintBox=await step1.locator('[name="sprintId"]').boundingBox();
@@ -305,6 +309,55 @@ test('initial budget demand is optional, shows work year and accepts every portf
  await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
  await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+test('first selected analyst is the leader, the others are complementary and involved projects persist',async({page})=>{
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Carla']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ const step1=page.locator('#demandWizardStep1');
+ const analysts=step1.locator('[data-demand-analyst-selector]');
+ await analysts.locator('label.analyst-chip').filter({hasText:'Bruno'}).click();
+ await analysts.locator('label.analyst-chip').filter({hasText:'Ana'}).click();
+ await analysts.locator('label.analyst-chip').filter({hasText:'Carla'}).click();
+ await expect(analysts.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
+ await step1.locator('[name="obraBusca"]').fill('Obra de teste');
+ await step1.getByRole('button',{name:/Avançar/}).click();
+
+ const step2=page.locator('#demandForm');
+ await expect(step2.getByText('Projetos envolvidos',{exact:true})).toBeVisible();
+ await step2.locator('label.analyst-chip').filter({hasText:'ARQ'}).click();
+ await step2.locator('label.analyst-chip').filter({hasText:'ELE'}).click();
+ await step2.getByRole('button',{name:'Salvar demanda',exact:true}).click();
+ await expect.poll(()=>{
+  const change=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
+  return change?{
+   leader:change.document.analistaResponsavel,
+   complementary:change.document.analistasComplementares,
+   projects:change.document.projetosEnvolvidos,
+  }:null;
+ }).toEqual({leader:'Bruno',complementary:['Ana','Carla'],projects:['ARQ','ELE']});
+
+ const saved=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
+ await page.locator(`[data-action="open-demand-detail"][data-id="${saved.document.id}"]`).click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
+ await expect(detail.locator('[name="projetosEnvolvidos"][value="ARQ"]')).toBeChecked();
+ await expect(detail.locator('[name="projetosEnvolvidos"][value="ELE"]')).toBeChecked();
+ await detail.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
+
+ await page.getByRole('button',{name:'Manutenção',exact:true}).click();
+ await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
+ await page.locator('[data-action="open-maintenance-demand"]').click();
+ await expect(page.locator('#maintenanceDemandForm [data-demand-analyst-selector]')).toBeVisible();
+ await page.locator('#maintenanceDemandForm [data-action="close-modal"]').first().click();
+
+ await page.getByRole('button',{name:'Eng. Clínica',exact:true}).click();
+ await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
+ await page.locator('[data-action="open-maintenance-demand"]').click();
+ await expect(page.locator('#maintenanceDemandForm [data-demand-analyst-selector]')).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 

@@ -27,7 +27,7 @@ test('CSV neutralizes formulas while preserving numeric amounts',()=>{
 });
 
 test('EV settings, hidden historical IDs and SIC state round-trip without losing data',()=>{
- const state={configurationCatalog:[{id:'category/test',type:'category',label:'Teste',active:true}],evTypologyOverrides:{x:'Hospital'},evReferenceTargets:{x:{value:12}},strategicTargetOverrides:{hospital:{targetMin:10,targetMax:20}},deletedEVRecordIds:['x'],sicApprovalWorks:[{id:'w',descricao:'Test',sics:[]}],sicApprovalWeeks:[{id:'week',label:'Test'}],sicApprovalSnapshots:[{weekId:'week',obraId:'w',ev:{total:1}}]};
+ const state={configurationCatalog:[{id:'category/test',type:'category',label:'Teste',active:true}],evTypologyOverrides:{x:'Hospital'},evReferenceTargets:{x:{value:12}},strategicTargetOverrides:{hospital:{targetMin:10,targetMax:20}},deletedEVRecordIds:['x'],demands:[{id:'d',obraId:'w',analistaResponsavel:'Bruno',analistasComplementares:['Ana','Carla'],projetosEnvolvidos:['ARQ','ELE']}],sicApprovalWorks:[{id:'w',descricao:'Test',sics:[]}],sicApprovalWeeks:[{id:'week',label:'Test'}],sicApprovalSnapshots:[{weekId:'week',obraId:'w',ev:{total:1}}]};
  const result=hydrateRecords(flattenPayload({state})).state;
  for(const key of Object.keys(state)) assert.deepEqual(result[key],state[key],key);
 });

@@ -7958,6 +7958,13 @@ button.alert-item {
 
 .analyst-chip {
   position: relative;
+  cursor: pointer;
+}
+
+button.analyst-chip {
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .analyst-chip input {
@@ -7970,6 +7977,7 @@ button.alert-item {
   display: inline-flex;
   min-height: 32px;
   align-items: center;
+  gap: 6px;
   border-radius: 999px;
   background: #eef3fa;
   color: #41536b;
@@ -7980,6 +7988,16 @@ button.alert-item {
     background 160ms ease,
     color 160ms ease,
     box-shadow 160ms ease;
+}
+
+.analyst-chip small {
+  font-size: 0.66rem;
+  font-weight: 900;
+  opacity: 0.78;
+}
+
+.demand-analyst-selector > .muted {
+  margin: 8px 0 0;
 }
 
 .analyst-chip.is-active span,
