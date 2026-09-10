@@ -27,8 +27,9 @@ export async function retryTransientCloud(operation, { attempts = 2, wait = ms =
 
 export function cloudSaveFailureMessage(error) {
   const code = String(error?.code || '').toUpperCase();
+  const detail = String(error?.message || '').trim();
   if (code === '40001') return 'Os dados foram alterados em outra sessão. Recarregue para receber a versão mais recente antes de salvar novamente.';
-  if (code === '42501') return 'Sua sessão ou permissão de edição não foi confirmada pelo banco. Recarregue e entre novamente se necessário.';
+  if (code === '42501') return `Sua sessão ou permissão de edição não foi confirmada pelo banco.${detail ? ` Detalhe informado: ${detail}` : ''} Recarregue e entre novamente se necessário.`;
   if (isTransientCloudError(error)) return 'A conexão com o banco falhou mesmo após uma nova tentativa. Recarregue e tente salvar novamente.';
   return String(error?.message || 'O banco recusou a alteração. Recarregue antes de tentar novamente.');
 }

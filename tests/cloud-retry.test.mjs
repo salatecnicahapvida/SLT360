@@ -27,6 +27,6 @@ test('does not retry database conflicts or permission failures', async () => {
 test('explains the actual save failure category', () => {
   assert.equal(isTransientCloudError(new TypeError('Failed to fetch')), true);
   assert.match(cloudSaveFailureMessage({ code: '40001' }), /outra sessão/);
-  assert.match(cloudSaveFailureMessage({ code: '42501' }), /permissão/);
+  assert.match(cloudSaveFailureMessage({ code: '42501', message: 'Sem permissão de gravação neste módulo' }), /Sem permissão de gravação neste módulo/);
   assert.match(cloudSaveFailureMessage(new TypeError('Failed to fetch')), /nova tentativa/);
 });

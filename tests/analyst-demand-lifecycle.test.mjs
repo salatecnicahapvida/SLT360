@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { database, seed, admin } from './helpers/database.mjs';
 
 const analyst = '66666666-6666-4666-8666-666666666666';
+const manager = '77777777-7777-4777-8777-777777777777';
 
 test('analista altera demandas existentes, mas não cria, exclui, arquiva ou restaura', async () => {
   const db = await database();
@@ -18,12 +19,15 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       ],
     }, datasets: {} };
     await seed(db, payload);
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/202608310005_users_team.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909174742_restrict_analyst_demand_lifecycle.sql', import.meta.url), 'utf8'));
-    await db.query('insert into auth.users(id) values($1)', [analyst]);
-    await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false)", [analyst]);
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260910143000_reassert_gestor_demand_permissions.sql', import.meta.url), 'utf8'));
+    await db.query('insert into auth.users(id) values($1),($2)', [analyst, manager]);
+    await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false),($2,'Gestor teste','Gestor',false)", [analyst, manager]);
     for (const module of ['projects', 'budget', 'maintenance', 'clinical']) {
       await db.query('insert into slt_core_module_access(user_id,module,can_read,can_write) values($1,$2,true,true)', [analyst, module]);
     }
+    await db.query("insert into slt_core_module_access(user_id,module,can_read,can_write) values($1,'budget',true,true)", [manager]);
 
     const as = async (role, id = '') => {
       await db.exec('reset role');
@@ -53,6 +57,12 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       change('clinical_orders', 'clinical-new', { id: 'clinical-new', titulo: 'Nova clínica', centroCusto: 'Engenharia clínica' }, 0),
     ];
     for (const insert of inserts) await assert.rejects(commit([insert]), { code: '42501' });
+
+    await as('authenticated', manager);
+    await commit([change('budget_demands', 'budget-manager', { id: 'budget-manager', titulo: 'Criado pelo Gestor', obraId: 'work-1' }, 0)]);
+    assert.equal((await db.query("select count(*)::integer as count from slt_budget_demands where record_key='budget-manager' and deleted_at is null")).rows[0].count, 1);
+
+    await as('authenticated', analyst);
 
     await assert.rejects(commit([change('projects_demands', 'project-1', {}, 2, 'delete')]), { code: '42501' });
     await assert.rejects(commit([
