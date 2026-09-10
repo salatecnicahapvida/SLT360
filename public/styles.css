@@ -3007,6 +3007,9 @@ button {
 }
 
 .management-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 34px;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -3014,6 +3017,22 @@ button {
   color: var(--navy);
   padding: 0 12px;
   font-weight: 800;
+}
+
+.management-tabs button span {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e8f0f8;
+  padding: 0 6px;
+  font-size: 0.75rem;
+}
+
+.management-tabs button.is-active span {
+  background: var(--blue);
+  color: #fff;
 }
 
 .management-tabs button.is-active {

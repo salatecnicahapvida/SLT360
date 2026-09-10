@@ -21,8 +21,9 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[]}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null}={}){
  const input=structuredClone(payload);
+ if(Array.isArray(demandRecords))input.state.demands=demandRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -157,6 +158,43 @@ test('module switching keeps one service order per id when source and database v
  await expect(page.getByRole('heading',{name:'Manutenção',exact:true})).toBeVisible();
  expect(b.errors).toEqual([]);
  await expect(page.getByText(/Identificador duplicado/)).toHaveCount(0);
+});
+
+test('management view recalculates every indicator and analyst row from the filtered demands',async({page})=>{
+ const demands=[
+  {id:'mgmt-1',obraId:'test-work',tipo:'SIC',coluna:'fazer',analistaResponsavel:'Ana',dataPrevistaEntrega:'2099-01-01',sicIds:[]},
+  {id:'mgmt-2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'fazendo',analistaResponsavel:'Bruno',dataPrevistaEntrega:'2000-01-01',sicIds:[]},
+  {id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',sicIds:[]},
+  {id:'mgmt-4',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',sicIds:[]},
+  {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',sicIds:[]},
+ ];
+ const b=await backend(page,'Admin',false,{analystNames:['Somente no diretório'],demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+
+ const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
+ await expect(kpiValue('Demandas no filtro')).toHaveText('5');
+ await expect(kpiValue('Dentro do prazo')).toHaveText('2 (67%)');
+ await expect(kpiValue('Atrasadas')).toHaveText('1');
+ await expect(kpiValue('Em fluxo')).toHaveText('2');
+ await expect(kpiValue('Concluídas')).toHaveText('2');
+ await expect(kpiValue('Analistas responsáveis')).toHaveText('2');
+ await expect(kpiValue('Sem data suficiente')).toHaveText('1');
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
+
+ const analystPanel=page.locator('.panel').filter({has:page.getByRole('heading',{name:'Detalhe por analista'})});
+ const analystTable=analystPanel.locator('table');
+ await expect(analystTable.locator('tbody tr')).toHaveCount(2);
+ await expect(analystTable.locator('tbody tr').filter({hasText:'Ana'}).locator('td')).toHaveText(['Ana','3','2','2','0','100%','—','R$ 300','1']);
+ await expect(analystTable).not.toContainText('Somente no diretório');
+
+ await page.locator('.management-tabs [data-filter="todo"]').click();
+ await expect(kpiValue('Demandas no filtro')).toHaveText('1');
+ await expect(kpiValue('Dentro do prazo')).toHaveText('1 (100%)');
+ await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
+ await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
+ await expect(analystPanel.locator('tbody tr')).toHaveCount(1);
+ expect(b.errors).toEqual([]);
 });
 
 test('analyst edits and moves existing demands but cannot create or delete them',async({page})=>{

@@ -5997,20 +5997,52 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function managementDeadlineReading(demand) {
+  if (demand.coluna === "cancelado") return { status: "excluded", delay: 0 };
+  const plannedDate = dateOnly(demand.dataPrevistaEntrega);
+  if (!plannedDate) return { status: "noDate", delay: 0 };
+  const referenceDate = demand.coluna === "concluido" ? dateOnly(demand.dataEntregaReal) : todayISO();
+  if (!referenceDate) return { status: "noDate", delay: 0 };
+  const delay = Math.max(daysBetween(plannedDate, referenceDate), 0);
+  return { status: delay > 0 ? "late" : "onTime", delay };
+}
+
+function managementDemandSummary(demands = []) {
+  const scoped = arrayOrFallback(demands);
+  const completed = scoped.filter((demand) => demand.coluna === "concluido");
+  const active = scoped.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
+  const canceled = scoped.filter((demand) => demand.coluna === "cancelado");
+  const deadlineRows = scoped.map((demand) => ({ demand, ...managementDeadlineReading(demand) }));
+  const onTime = deadlineRows.filter((row) => row.status === "onTime");
+  const late = deadlineRows.filter((row) => row.status === "late");
+  const noDate = deadlineRows.filter((row) => row.status === "noDate");
+  const assessed = onTime.length + late.length;
+  return {
+    scoped,
+    completed,
+    active,
+    canceled,
+    onTime,
+    late,
+    noDate,
+    punctualPercent: assessed ? (onTime.length / assessed) * 100 : 0,
+    averageDelay: late.length ? late.reduce((sum, row) => sum + row.delay, 0) / late.length : 0,
+  };
+}
+
+function analystsForDemands(demands = []) {
+  const names = arrayOrFallback(demands)
+    .map((demand) => String(demand.analistaResponsavel || "").trim())
+    .filter(Boolean);
+  return [...new Map(names.map((name) => [normalizeSearchText(name), name])).values()];
+}
+
 function renderWorksManagement() {
   const scopedDemands = managementFilteredDemands();
-  const completed = scopedDemands.filter((demand) => demand.coluna === "concluido");
-  const active = scopedDemands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
-  const canceled = scopedDemands.filter((demand) => demand.coluna === "cancelado");
-  const completedWithDates = completed.filter((demand) => demand.dataPrevistaEntrega && demand.dataEntregaReal);
-  const punctual = completedWithDates.filter((demand) => demandDeliveryDelay(demand) <= 0).length;
-  const delayedCompleted = completedWithDates.filter((demand) => demandDeliveryDelay(demand) > 0);
-  const noDateCompleted = completed.length - completedWithDates.length;
-  const averageDelay =
-    delayedCompleted.reduce((sum, demand) => sum + demandDeliveryDelay(demand), 0) /
-    Math.max(delayedCompleted.length, 1);
+  const summary = managementDemandSummary(scopedDemands);
+  const { completed, active, canceled, onTime, late, noDate, punctualPercent, averageDelay } = summary;
   const producedValue = completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
-  const punctualPercent = (punctual / Math.max(completedWithDates.length, 1)) * 100;
+  const analysts = analystsForDemands(scopedDemands);
 
   return `
     ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, capacidade, eficiência de prazo e valor entregue pela equipe", `
@@ -6021,25 +6053,25 @@ function renderWorksManagement() {
     ${renderManagementStatusTabs()}
 
     <section class="kpi-grid">
-      ${kpi("Demandas concluídas", String(completed.length), "Entregas finalizadas", "green")}
-      ${kpi("Entregas no prazo", `${number(punctualPercent)}%`, `${punctual} de ${completedWithDates.length} com datas`, "blue")}
+      ${kpi("Demandas no filtro", String(scopedDemands.length), "Mesma base da carteira operacional", "blue")}
+      ${kpi("Dentro do prazo", `${onTime.length} (${number(punctualPercent)}%)`, `${onTime.length + late.length} demandas com prazo avaliado`, "green")}
+      ${kpi("Atrasadas", String(late.length), late.length ? `${number(averageDelay, 1)} dias de atraso médio` : "Nenhuma demanda vencida", late.length ? "red" : "green")}
       ${kpi("Valor produzido", money(producedValue), "EV inicial, revisão ou SIC", "orange")}
-      ${kpi("Atraso médio", `${number(averageDelay, 1)} d`, "Demandas concluídas com atraso", delayedCompleted.length ? "red" : "green")}
-      ${kpi("Em andamento", String(active.length), "Demandas abertas no fluxo", "blue")}
-      ${kpi("Analistas", String(uniqueAnalysts().length), "Equipe mobilizada em obras", "green")}
-      ${kpi("Revisões/SICs", String(scopedDemands.filter((demand) => demandTypeKey(demand.tipo) !== "EmissaoInicial").length), "Mudanças sobre EV", "orange")}
-      ${kpi("Sem data registrada", String(noDateCompleted), "Concluídas sem ciclo completo", noDateCompleted ? "red" : "green")}
+      ${kpi("Em fluxo", String(active.length), "Demandas abertas, incluindo A iniciar", "blue")}
+      ${kpi("Concluídas", String(completed.length), "Entregas finalizadas", "green")}
+      ${kpi("Analistas responsáveis", String(analysts.length), "Líderes nas demandas do filtro", "green")}
+      ${kpi("Sem data suficiente", String(noDate.length), "Sem previsão ou conclusão necessária", noDate.length ? "orange" : "green")}
     </section>
 
     <div class="content-grid three">
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Produção por analista</h2>
-            <p class="panel-subtitle">Demandas concluídas no período</p>
+            <h2>Demandas por analista</h2>
+            <p class="panel-subtitle">Responsáveis pelas demandas do filtro atual</p>
           </div>
         </div>
-        ${barList(productionByAnalyst(completed), "valor", (value) => String(value))}
+        ${barList(productionByAnalyst(scopedDemands), "valor", (value) => String(value))}
       </section>
       <section class="panel">
         <div class="panel-header">
@@ -6053,11 +6085,11 @@ function renderWorksManagement() {
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Produção por sprint</h2>
-            <p class="panel-subtitle">Demandas concluídas em cada sprint</p>
+            <h2>Demandas por sprint</h2>
+            <p class="panel-subtitle">Distribuição das demandas do filtro atual</p>
           </div>
         </div>
-        ${barList(productionBySprint(completed), "valor", (value) => String(value))}
+        ${barList(productionBySprint(scopedDemands), "valor", (value) => String(value))}
       </section>
     </div>
 
@@ -6065,11 +6097,11 @@ function renderWorksManagement() {
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Entregas concluídas x prazo</h2>
-            <p class="panel-subtitle">Separação entre no prazo, com atraso e sem data registrada</p>
+            <h2>Situação dos prazos</h2>
+            <p class="panel-subtitle">Demandas ativas ou concluídas; canceladas não entram no prazo</p>
           </div>
         </div>
-        ${renderDeliveryDonut(punctual, delayedCompleted.length, noDateCompleted)}
+        ${renderDeliveryDonut(onTime.length, late.length, noDate.length)}
       </section>
 
       <section class="panel">
@@ -6103,7 +6135,8 @@ function renderWorksManagement() {
         </div>
         <div class="split-list">
           ${splitItem("Todas", String(scopedDemands.length))}
-          ${splitItem("Em andamento", String(active.length))}
+          ${splitItem("A iniciar", String(scopedDemands.filter((demand) => demand.coluna === "fazer").length))}
+          ${splitItem("Em fluxo", String(active.length))}
           ${splitItem("Concluídas", String(completed.length))}
           ${splitItem("Canceladas", String(canceled.length))}
         </div>
@@ -6118,7 +6151,7 @@ function renderWorksManagement() {
             <p class="panel-subtitle">Concluídas, prazo, valor e carga aberta</p>
           </div>
         </div>
-        ${renderAnalystDetailTable()}
+        ${renderAnalystDetailTable(scopedDemands)}
       </section>
 
       <section class="panel">
@@ -6129,8 +6162,9 @@ function renderWorksManagement() {
           </div>
         </div>
         <div class="split-list">
-          ${splitItem("No prazo", `${punctual} (${number(punctualPercent)}%)`)}
-          ${splitItem("Com atraso", String(delayedCompleted.length))}
+          ${splitItem("No prazo", `${onTime.length} (${number(punctualPercent)}%)`)}
+          ${splitItem("Com atraso", String(late.length))}
+          ${splitItem("Sem data suficiente", String(noDate.length))}
           ${splitItem("Tipo dominante", topLabel(demandCountByType(scopedDemands)))}
           ${splitItem("Classificação dominante", topLabel(workCountByForDemands(scopedDemands, "classificacaoObra")))}
         </div>
@@ -6144,20 +6178,22 @@ function renderWorksManagement() {
 }
 
 function managementFilteredDemands() {
-  if (managementStatusFilter === "completed") return state.demands.filter((demand) => demand.coluna === "concluido");
-  if (managementStatusFilter === "todo") return state.demands.filter((demand) => demand.coluna === "fazer");
-  if (managementStatusFilter === "progress") return state.demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
-  if (managementStatusFilter === "canceled") return state.demands.filter((demand) => demand.coluna === "cancelado");
-  return state.demands;
+  const demands = arrayOrFallback(state.demands);
+  if (managementStatusFilter === "completed") return demands.filter((demand) => demand.coluna === "concluido");
+  if (managementStatusFilter === "todo") return demands.filter((demand) => demand.coluna === "fazer");
+  if (managementStatusFilter === "progress") return demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
+  if (managementStatusFilter === "canceled") return demands.filter((demand) => demand.coluna === "cancelado");
+  return demands;
 }
 
 function renderManagementStatusTabs() {
+  const demands = arrayOrFallback(state.demands);
   const tabs = [
-    { id: "completed", label: "Concluídas" },
-    { id: "todo", label: "A fazer" },
-    { id: "progress", label: "Em andamento" },
-    { id: "canceled", label: "Canceladas" },
-    { id: "all", label: "Todas" },
+    { id: "completed", label: "Concluídas", count: demands.filter((demand) => demand.coluna === "concluido").length },
+    { id: "todo", label: "A fazer", count: demands.filter((demand) => demand.coluna === "fazer").length },
+    { id: "progress", label: "Em fluxo", count: demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna)).length },
+    { id: "canceled", label: "Canceladas", count: demands.filter((demand) => demand.coluna === "cancelado").length },
+    { id: "all", label: "Todas", count: demands.length },
   ];
   return `
     <section class="management-tabs">
@@ -6165,7 +6201,7 @@ function renderManagementStatusTabs() {
         .map(
           (tab) => `
             <button class="${managementStatusFilter === tab.id ? "is-active" : ""}" type="button" data-action="set-management-filter" data-filter="${tab.id}">
-              ${tab.label}
+              ${tab.label} <span>${tab.count}</span>
             </button>
           `
         )
@@ -6183,12 +6219,12 @@ function renderDeliveryDonut(onTime, delayed, noDate) {
     <div class="donut-panel">
       <div class="donut-chart" style="background:${gradient}">
         <span>${onTime + delayed + noDate}</span>
-        <small>concluídas</small>
+        <small>demandas</small>
       </div>
       <div class="donut-legend">
         ${legendItem("No prazo", `${onTime} (${number((onTime / total) * 100)}%)`, "green")}
         ${legendItem("Com atraso", `${delayed} (${number((delayed / total) * 100)}%)`, "red")}
-        ${legendItem("Sem data registrada", `${noDate} (${number((noDate / total) * 100)}%)`, "gray")}
+        ${legendItem("Sem data suficiente", `${noDate} (${number((noDate / total) * 100)}%)`, "gray")}
       </div>
     </div>
   `;
@@ -6475,46 +6511,51 @@ function topLabel(items) {
   return items[0] ? `${items[0].label} (${items[0].valor})` : "Sem dados";
 }
 
-function renderAnalystDetailTable() {
-  const analysts = uniqueAnalysts();
+function renderAnalystDetailTable(demands = []) {
+  const scopedDemands = arrayOrFallback(demands);
+  const analysts = analystsForDemands(scopedDemands)
+    .map((analyst) => ({
+      analyst,
+      demands: scopedDemands.filter((demand) => normalizeSearchText(demand.analistaResponsavel) === normalizeSearchText(analyst)),
+    }))
+    .sort((a, b) => b.demands.length - a.demands.length || a.analyst.localeCompare(b.analyst, "pt-BR"));
   return `
     <div class="table-wrap">
       <table class="data-table">
         <thead>
           <tr>
             <th>Analista</th>
+            <th class="numeric">Total</th>
             <th class="numeric">Concluídas</th>
             <th class="numeric">No prazo</th>
-            <th class="numeric">Com atraso</th>
+            <th class="numeric">Atrasadas</th>
             <th class="numeric">% no prazo</th>
             <th class="numeric">Atraso médio</th>
             <th class="numeric">Valor produzido</th>
-            <th class="numeric">Em andamento</th>
+            <th class="numeric">Em fluxo</th>
           </tr>
         </thead>
         <tbody>
-          ${analysts
-            .map((analyst) => {
-              const concluded = completedDemands().filter((demand) => demand.analistaResponsavel === analyst);
-              const open = pendingDemands().filter((demand) => demand.analistaResponsavel === analyst);
-              const onTime = concluded.filter((demand) => demandDeliveryDelay(demand) <= 0).length;
-              const late = concluded.filter((demand) => demandDeliveryDelay(demand) > 0);
-              const delay = late.reduce((sum, demand) => sum + demandDeliveryDelay(demand), 0) / Math.max(late.length, 1);
-              const value = concluded.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
+          ${analysts.length ? analysts
+            .map(({ analyst, demands: analystDemands }) => {
+              const summary = managementDemandSummary(analystDemands);
+              const assessed = summary.onTime.length + summary.late.length;
+              const value = summary.completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
               return `
                 <tr>
-                  <td><strong>${analyst}</strong></td>
-                  <td class="numeric">${concluded.length}</td>
-                  <td class="numeric">${onTime}</td>
-                  <td class="numeric">${late.length}</td>
-                  <td class="numeric">${concluded.length ? `${number((onTime / concluded.length) * 100)}%` : "—"}</td>
-                  <td class="numeric">${late.length ? `${number(delay, 1)} d` : "—"}</td>
+                  <td><strong>${escapeAttribute(analyst)}</strong></td>
+                  <td class="numeric">${analystDemands.length}</td>
+                  <td class="numeric">${summary.completed.length}</td>
+                  <td class="numeric">${summary.onTime.length}</td>
+                  <td class="numeric">${summary.late.length}</td>
+                  <td class="numeric">${assessed ? `${number((summary.onTime.length / assessed) * 100)}%` : "—"}</td>
+                  <td class="numeric">${summary.late.length ? `${number(summary.averageDelay, 1)} d` : "—"}</td>
                   <td class="numeric">${money(value)}</td>
-                  <td class="numeric">${open.length}</td>
+                  <td class="numeric">${summary.active.length}</td>
                 </tr>
               `;
             })
-            .join("")}
+            .join("") : `<tr><td colspan="9" class="empty-cell">Nenhum analista responsável nas demandas deste filtro.</td></tr>`}
         </tbody>
       </table>
     </div>
