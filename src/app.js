@@ -443,7 +443,10 @@ const canonicalCategoryMap = new Map([
   ["padronizacao de unidade", "Padronização de Unidade"],
   ["risco assistencial", "Risco Assistencial"],
 ]);
-const removedCategoryKeys = new Set(["historico importado", "historico importadado", "nao informada", "nao informado", "ambiental"]);
+const removedCategoryKeys = new Set([
+  "historico importado", "historico importadado", "nao informada", "nao informado", "ambiental",
+  "outro", "outros", "otro", "otros",
+]);
 const canonicalTypologyMap = new Map([
   ["nova unidade", "Nova Unidade"],
   ["retrofit", "Retrofit"],

@@ -6,7 +6,7 @@ const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[
     {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'São Paulo - Sudeste',cidade:'São Paulo',tipoUnidade:'Clínica',classificacaoObra:'Venda de Serviços',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorOrcado:100},{disciplinaId:'instalacoes-de-spda',valorOrcado:50}],versions:[],sicIds:[],demandaIds:[]}},
-    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Ambiental',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
+    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Outros',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
     {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':800,'taxa-risco':50,sics:150},items:[]},
@@ -517,6 +517,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.locator('[data-portfolio-quick-filter="tipologia"] option')).toHaveText(['Todas','Nova Unidade','Retrofit','Ampliação UE']);
  const categoryFilter=page.locator('[data-portfolio-quick-filter="categoria"]');
  await expect(categoryFilter).not.toContainText('Ambiental');
+ await expect(categoryFilter).not.toContainText('Outros');
  await expect(categoryFilter).not.toContainText('Não informada');
  await expect(categoryFilter).not.toContainText('Histórico importado');
  await expect(categoryFilter).not.toContainText('Venda de Serviços');
