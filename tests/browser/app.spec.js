@@ -528,6 +528,7 @@ test('portfolio includes works without EV, selectable filters and the single req
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
   'Área equivalente (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
  ]);
+ await expect(page.locator('.portfolio-works-table thead [data-action="sort-generic-table"]')).toHaveCount(0);
  await page.locator('[data-portfolio-quick-filter="year"]').selectOption('2024');
  await expect(kpis).toContainText('2');
  await expect(kpis).toContainText('2 obras possuem EVs associados');

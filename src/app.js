@@ -6666,7 +6666,7 @@ function renderPortfolioTable(rows) {
     <div class="portfolio-table-scroll-shell">
       ${renderKanbanTopScrollbar("Rolagem horizontal da carteira de obras")}
       <div class="table-wrap portfolio-plan-table-wrap" data-kanban-scroll-board>
-      <table class="data-table portfolio-table portfolio-works-table">
+      <table class="data-table portfolio-table portfolio-works-table" data-no-sort>
         <thead>
           <tr>
             <th>Código</th>
