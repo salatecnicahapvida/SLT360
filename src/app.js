@@ -2057,6 +2057,30 @@ function demandTypeKey(value) {
   return value;
 }
 
+const workDemandTypeDefinitions = [
+  {
+    id: "EmissaoInicial",
+    label: "Emissão Inicial",
+    description: "Primeira análise orçamentária de uma obra nova",
+    icon: "▣",
+    iconClass: "",
+  },
+  {
+    id: "ReemissaoCompleta",
+    label: "Revisão de Orçamento",
+    description: "Atualiza o EV de uma obra que já possui estudo de viabilidade",
+    icon: "↻",
+    iconClass: "demand-type-icon--blue",
+  },
+  {
+    id: "SIC",
+    label: "SIC",
+    description: "Solicitação de Informação da Contratada vinculada a uma obra e ao EV",
+    icon: "?",
+    iconClass: "demand-type-icon--green",
+  },
+];
+
 function demandTypeLabel(value) {
   const map = {
     EmissaoInicial: "Emissão Inicial",
@@ -5434,7 +5458,7 @@ function renderOperationalFilters() {
           <span>Tipo de atividade</span>
           <select data-operational-filter="type">
             <option value="">Todas</option>
-            ${["EmissaoInicial", "ReemissaoCompleta", "SIC"].map((type) => `<option value="${type}" ${operationalFilters.type === type ? "selected" : ""}>${type === "SIC" ? "SIC" : demandTypeLabel(type)}</option>`).join("")}
+            ${workDemandTypeDefinitions.map((type) => `<option value="${type.id}" ${operationalFilters.type === type.id ? "selected" : ""}>${type.label}</option>`).join("")}
           </select>
         </label>
         <label class="field">
@@ -15321,27 +15345,15 @@ function openDemandModal(mode = "demand") {
         </header>
         <div class="modal-body">
           <div class="demand-type-options">
-            <button class="demand-type-option" type="button" data-action="start-demand-wizard" data-type="EmissaoInicial">
-              <span class="demand-type-icon" aria-hidden="true">▣</span>
-              <span>
-                <strong>Emissão Inicial</strong>
-                <small>Primeira análise orçamentária de uma obra nova</small>
-              </span>
-            </button>
-            <button class="demand-type-option" type="button" data-action="start-demand-wizard" data-type="ReemissaoCompleta">
-              <span class="demand-type-icon demand-type-icon--blue" aria-hidden="true">↻</span>
-              <span>
-                <strong>Revisão de Orçamento</strong>
-                <small>Atualiza o EV de uma obra que já possui estudo de viabilidade</small>
-              </span>
-            </button>
-            <button class="demand-type-option" type="button" data-action="start-demand-wizard" data-type="SIC">
-              <span class="demand-type-icon demand-type-icon--green" aria-hidden="true">?</span>
-              <span>
-                <strong>SIC</strong>
-                <small>Solicitação de Informação da Contratada vinculada a uma obra e ao EV</small>
-              </span>
-            </button>
+            ${workDemandTypeDefinitions.map((type) => `
+              <button class="demand-type-option" type="button" data-action="start-demand-wizard" data-type="${type.id}">
+                <span class="demand-type-icon ${type.iconClass}" aria-hidden="true">${type.icon}</span>
+                <span>
+                  <strong>${type.label}</strong>
+                  <small>${type.description}</small>
+                </span>
+              </button>
+            `).join("")}
           </div>
         </div>
       </div>

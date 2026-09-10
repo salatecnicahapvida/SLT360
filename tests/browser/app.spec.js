@@ -100,8 +100,13 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
  await expect(page.locator('[data-operational-filter="type"] option')).toHaveText([
-  'Todas','Emissão Inicial','Revisão completa do EV','SIC',
+  'Todas','Emissão Inicial','Revisão de Orçamento','SIC',
  ]);
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ const registeredDemandTypes=await page.locator('.demand-type-option strong').allTextContents();
+ const operationalDemandTypes=await page.locator('[data-operational-filter="type"] option').allTextContents();
+ expect(operationalDemandTypes.slice(1)).toEqual(registeredDemandTypes);
+ await page.getByRole('button',{name:'Fechar'}).click();
  await page.locator('[data-operational-filter="type"]').selectOption('SIC');
  await expect(page.locator('.operational-board-panel article[data-id="test-demand"]')).toBeVisible();
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
