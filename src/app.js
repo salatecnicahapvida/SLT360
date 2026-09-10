@@ -2357,9 +2357,9 @@ function mountKanbanTopScrollbars() {
   });
 }
 
-function renderKanbanTopScrollbar() {
+function renderKanbanTopScrollbar(label = "Rolagem horizontal do Kanban") {
   return `
-    <div class="kanban-top-scroll" data-kanban-top-scroll role="scrollbar" aria-label="Rolagem horizontal do Kanban" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0">
+    <div class="kanban-top-scroll" data-kanban-top-scroll role="scrollbar" aria-label="${escapeAttribute(label)}" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0">
       <div class="kanban-top-scroll-track" data-kanban-scroll-track>
         <div class="kanban-top-scroll-thumb" data-kanban-scroll-thumb></div>
       </div>
@@ -6217,11 +6217,6 @@ function renderWorksStrategic() {
     label: discipline.nome,
     valor: sourceRecords.reduce((sum, record) => sum + Number(record.disciplines?.[discipline.id] || 0), 0),
   })).filter((row) => row.valor > 0).sort((a, b) => b.valor - a.valor);
-  const decisionRows = investmentRows.map((row) => strategicEVDecision(row, totalValue));
-  const filteredDecisionRows = decisionRows.filter(matchesStrategicEVDecisionFilters);
-  const visibleDecisionRows = filteredDecisionRows;
-  const filteredDecisionValue = filteredDecisionRows.reduce((sum, row) => sum + row.valor, 0);
-  const decisionYears = [...new Set(decisionRows.map((row) => String(row.record.year)).filter(Boolean))].sort((a, b) => b.localeCompare(a, "pt-BR", { numeric: true }));
 
   return `
     ${renderWorksToolbar("worksStrategic", "Visão Estratégica", `Base oficial de ${sourceRecords.length} EVs · mesma fonte da DADOS EVS`, `
@@ -6259,7 +6254,7 @@ function renderWorksStrategic() {
       <p>Valores abreviados para leitura rápida, com o montante exato logo abaixo.</p>
     </div>
     <section class="strategic-kpis">
-      ${executiveKpi("EVs oficiais", number(sourceRecords.length), `${historicalCount} iniciais + ${currentCount} novos`, "Quantidade da mesma base exibida na aba EV", "blue", "strategicUnifiedEV", "EV")}
+      ${executiveKpi("EVs oficiais", number(sourceRecords.length), `${historicalCount} iniciais + ${currentCount} novos`, "Quantidade da mesma base vinculada no Portfólio de Obras", "blue", "strategicUnifiedEV", "EV")}
       ${executiveKpi("Valor total dos EVs", moneyCompact(totalValue), money(totalValue), "Soma dos valores dos EVs unificados", "green", "strategicUnifiedEV", "VALOR")}
       ${executiveKpi("Área equivalente válida", metricCompact(totalArea, " m²"), `${number(totalArea, 2)} m²`, `${validAreaRecords.length} EVs com valor e área`, "blue", "strategicUnifiedEV", "ÁREA")}
       ${executiveKpi("Registros históricos", number(historicalCount), `${number((historicalCount / Math.max(sourceRecords.length, 1)) * 100, 1)}% da base`, "EVs históricos disponíveis para inteligência", "green", "strategicUnifiedEV", "HIST")}
@@ -6269,40 +6264,15 @@ function renderWorksStrategic() {
       ${executiveKpi("Concentração Top 5", `${number(topFiveShare, 1)}%`, `${moneyCompact(topFiveValue)} · ${money(topFiveValue)}`, "Participação dos cinco maiores EVs", topFiveShare > 80 ? "orange" : "blue", "strategicUnifiedTop5", "TOP 5")}
     </section>
 
-    ${renderEVHistoricalIntelligence()}
+    ${renderEVHistoricalIntelligence({ summaryOnly: true })}
 
-    <section class="panel strategic-investment-panel strategic-intelligence-ranking">
-      <div class="panel-header">
-        <div>
-          <h2>EVs prioritários para decisão</h2>
-          <p class="panel-subtitle">Valor, concentração e aderência às metas oficiais de custo por m² da Sala Técnica</p>
-        </div>
-        <div class="inline-actions">
-          <span class="historical-source-badge">${sourceRecords.length} EVs analisados</span>
-          <button class="secondary-action compact-action" type="button" data-action="open-ev-reference-targets">Ajustar referências</button>
-        </div>
+    <section class="panel strategic-portfolio-link">
+      <div>
+        <span class="eyebrow">Carteira detalhada</span>
+        <h2>A lista única de obras e EVs fica no Portfólio de Obras</h2>
+        <p class="panel-subtitle">Abra o Portfólio para consultar todas as obras cadastradas e acessar visualização, edição e reajuste por INCC de cada EV.</p>
       </div>
-      <div class="strategic-decision-filters">
-        <label><span>Buscar EV</span><input type="search" value="${escapeAttribute(strategicEVDecisionFilters.query)}" placeholder="Código ou nome do EV..." data-strategic-decision-search></label>
-        <label><span>Situação da meta</span><select data-strategic-decision-filter="status"><option value="">Todas as situações</option><option value="outside" ${strategicEVDecisionFilters.status === "outside" ? "selected" : ""}>Fora da meta</option><option value="above" ${strategicEVDecisionFilters.status === "above" ? "selected" : ""}>Acima do limite</option><option value="below" ${strategicEVDecisionFilters.status === "below" ? "selected" : ""}>Abaixo da faixa</option><option value="within" ${strategicEVDecisionFilters.status === "within" ? "selected" : ""}>Dentro da meta</option><option value="unclassified" ${strategicEVDecisionFilters.status === "unclassified" ? "selected" : ""}>Sem meta vinculada</option></select></label>
-        <label><span>Classificação</span><select data-strategic-decision-filter="targetId"><option value="">Todas as metas</option>${effectiveStrategicCostTargets().map((target) => `<option value="${target.id}" ${strategicEVDecisionFilters.targetId === target.id ? "selected" : ""}>${escapeAttribute(target.label)}</option>`).join("")}</select></label>
-        <label><span>Ano do EV</span><select data-strategic-decision-filter="year"><option value="">Todos os anos</option>${decisionYears.map((year) => `<option value="${year}" ${strategicEVDecisionFilters.year === year ? "selected" : ""}>${year}</option>`).join("")}</select></label>
-        <button class="ghost-button compact-action" type="button" data-action="clear-strategic-decision-filters">Limpar filtros</button>
-      </div>
-      <div class="strategic-filter-summary"><strong>${number(filteredDecisionRows.length)} EVs encontrados</strong><span>Todos os registros filtrados estão na planilha</span><span>${moneyCompact(filteredDecisionValue)} em valor analisado</span><span>${number((filteredDecisionValue / Math.max(totalValue, 1)) * 100, 1)}% da base financeira</span></div>
-      <div class="table-wrap strategic-intelligence-table-wrap">
-        <table class="data-table strategic-intelligence-table">
-          <thead><tr><th class="numeric">#</th><th>EV / CONTEXTO</th><th class="numeric">VALOR</th><th class="numeric">PARTICIPAÇÃO</th><th class="numeric">R$/M²</th><th class="numeric">REFERÊNCIA</th><th>LEITURA EXECUTIVA</th><th>AÇÃO</th></tr></thead>
-          <tbody>
-            ${visibleDecisionRows.map((row, index) => {
-              const { costM2, target, share, reading, tone } = row;
-              const openAction = row.record.sourceKind === "historical" ? "open-historical-ev" : "open-ev-modal";
-              const openId = row.record.sourceKind === "historical" ? row.record.id : row.record.workId;
-              return `<tr><td class="numeric"><strong>${index + 1}</strong></td><td><strong>${escapeAttribute(row.record.project)}</strong><br><span class="muted">${escapeAttribute(String(row.record.year))} · ${escapeAttribute(row.record.typology)} · ${escapeAttribute(row.record.code || "Sem código")}</span></td><td class="numeric"><strong>${moneyCompact(row.valor)}</strong><br><span class="muted">${money(row.valor)}</span></td><td class="numeric">${number(share, 1)}%</td><td class="numeric">${costM2 ? `${money(costM2)}/m²` : "—"}<br><span class="muted">${row.record.area ? `${number(row.record.area, 0)} m²` : "Sem área"}</span></td><td class="numeric">${target ? escapeAttribute(target.targetLabel) : "—"}<br><span class="muted">${target ? escapeAttribute(target.label) : "Sem meta vinculada"}</span></td><td><span class="executive-reading" data-tone="${tone}">${reading}</span></td><td><button class="ghost-button compact-action" type="button" data-action="${openAction}" data-id="${escapeAttribute(openId)}">Ver EV</button></td></tr>`;
-            }).join("") || `<tr><td colspan="8"><div class="empty-state">Nenhum EV encontrado para os filtros selecionados.</div></td></tr>`}
-          </tbody>
-        </table>
-      </div>
+      <button class="primary-action" type="button" data-view="portfolio">Abrir carteira única</button>
     </section>
   `;
 }
@@ -6585,8 +6555,7 @@ function renderPortfolio() {
 
   return `
     ${renderWorksToolbar("portfolio", "Portfólio de Obras e EVs", `${allRows.length} obras cadastradas e ${evCount} EVs vinculados em uma única visão`, `
-      <button class="secondary-action" type="button" data-action="clear-ev-filters">Limpar filtros de EVs</button>
-      <span class="tag">${allRows.length} obras oficiais</span>
+      <span class="tag">${allRows.length} obras cadastradas</span>
       <button class="primary-action" type="button" data-action="open-work">+ Nova obra</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
     `)}
@@ -6605,12 +6574,6 @@ function renderPortfolio() {
       ${renderPortfolioFilters(allRows)}
       ${renderPortfolioTable(rows)}
     </section>
-
-    <div class="strategic-section-heading">
-      <div><span>Estudos de Viabilidade</span><h2>EVs vinculados ao portfólio</h2></div>
-      <p>Consulta, composição por disciplina, histórico e ferramentas de análise na mesma tela das obras.</p>
-    </div>
-    ${renderEVHistoricalIntelligence()}
     ${renderSLTCalculator()}
     ${renderBudgetingFlowPanel()}
   `;
@@ -6645,7 +6608,9 @@ function renderPortfolioFilters(rows) {
 
 function renderPortfolioTable(rows) {
   return `
-    <div class="table-wrap portfolio-plan-table-wrap">
+    <div class="portfolio-table-scroll-shell">
+      ${renderKanbanTopScrollbar("Rolagem horizontal da carteira de obras")}
+      <div class="table-wrap portfolio-plan-table-wrap" data-kanban-scroll-board>
       <table class="data-table portfolio-table portfolio-works-table">
         <thead>
           <tr>
@@ -6683,7 +6648,9 @@ function renderPortfolioTable(rows) {
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
               <td><div class="table-actions portfolio-actions">
                 ${row.hasAssociatedEV
-                  ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
+                  ? `<button class="secondary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Visualizar EV</button>
+                    <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "edit-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Editar EV</button>
+                    <button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${escapeAttribute(row.inccId)}">Reajustar INCC</button>`
                   : `<span class="muted">Sem EV</span>`}
                 <button class="ghost-button compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
               </div></td>
@@ -6691,6 +6658,7 @@ function renderPortfolioTable(rows) {
           `).join("") || `<tr><td colspan="14"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
       </table>
+      </div>
     </div>
   `;
 }
@@ -6708,7 +6676,9 @@ function openPortfolioWorkOptions(workId) {
         </header>
         <div class="modal-body">
           ${row.hasAssociatedEV ? `<p>EV vinculado · ${escapeAttribute(row.evStatus || "")} · ${moneyCents(row.capex)}</p>
-          <button class="primary-action full-width" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
+          <button class="secondary-action full-width" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Visualizar EV</button>
+          <button class="primary-action full-width" type="button" data-action="${row.isHistorical ? "edit-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Editar EV</button>
+          <button class="ghost-button full-width" type="button" data-action="load-ev-incc" data-id="${escapeAttribute(row.inccId)}">Reajustar INCC</button>`
           : `<p class="empty-state">Esta obra ainda não possui EV vinculado.</p>`}
           <button class="secondary-action full-width" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
         </div>
@@ -6837,6 +6807,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       isHistorical: Boolean(work._historicalBudgetWork),
       hasAssociatedEV,
       openId: work._historicalBudgetWork ? work.historicalRecordId : work.id,
+      inccId: work._historicalBudgetWork ? work.historicalRecordId : `current-${work.id}`,
       evId: work.ev.id || (work._historicalBudgetWork ? work.historicalRecordId : `EV-${work.id}`),
       prazo: work.prazoDias || plannedDurationForWork(work),
       areaEquivalente,
@@ -7297,15 +7268,15 @@ function evSortableHeader(label, key, numeric = false) {
   return `<th class="${numeric ? "numeric " : ""}ev-sortable-th"><button type="button" data-action="sort-ev-history" data-sort-key="${key}" title="${title}"><span>${label}</span><i>${icon}</i></button></th>`;
 }
 
-function renderEVHistoricalIntelligence() {
+function renderEVHistoricalIntelligence({ summaryOnly = false } = {}) {
   const source = evUnifiedRecords();
   if (!source.length) return "";
   const officialCount = source.filter((record) => record.sourceKind === "historical").length;
   const newCount = source.length - officialCount;
-  const records = evHistoricalFilteredRecords();
-  const benchmarkBase = evHistoricalFilteredRecords({ ignoreDiscipline: true });
+  const records = summaryOnly ? source : evHistoricalFilteredRecords();
+  const benchmarkBase = summaryOnly ? source : evHistoricalFilteredRecords({ ignoreDiscipline: true });
   let benchmarks = evHistoricalBenchmarkRows(benchmarkBase);
-  if (evHistoricalFilters.discipline) benchmarks = benchmarks.filter((row) => row.discipline.id === evHistoricalFilters.discipline);
+  if (!summaryOnly && evHistoricalFilters.discipline) benchmarks = benchmarks.filter((row) => row.discipline.id === evHistoricalFilters.discipline);
   const total = records.reduce((sum, record) => sum + Number(record.total || 0), 0);
   const totalArea = records.reduce((sum, record) => sum + Number(record.area || 0), 0);
   const costM2Records = records.filter((record) => Number(record.area) > 0 && Number(record.total) > 0);
@@ -7318,24 +7289,24 @@ function renderEVHistoricalIntelligence() {
   const selectableDisciplines = configuredDisciplines({ includeInactive: false }).filter((d) => !["taxa-risco", "sics"].includes(d.id));
   return `
     <section class="panel ev-history-panel">
-      <div class="panel-header ev-history-heading"><div><span class="eyebrow">Fonte única de inteligência · DADOS EVS + novos cadastros</span><h2>Todos os EVs oficiais em uma única visão</h2><p class="panel-subtitle">${source.length} EVs vinculados a obras: ${officialCount} da carga inicial DADOS EVS${newCount ? ` + ${newCount} novo(s) cadastro(s)` : ""}.</p></div><span class="ev-history-badge">Base oficial</span></div>
-      <div class="ev-history-filters">
+      <div class="panel-header ev-history-heading"><div><span class="eyebrow">Fonte única de inteligência · DADOS EVS + novos cadastros</span><h2>${summaryOnly ? "Inteligência consolidada dos EVs" : "Todos os EVs oficiais em uma única visão"}</h2><p class="panel-subtitle">${source.length} EVs vinculados a obras: ${officialCount} da carga inicial DADOS EVS${newCount ? ` + ${newCount} novo(s) cadastro(s)` : ""}.</p></div><span class="ev-history-badge">Base oficial</span></div>
+      ${summaryOnly ? "" : `<div class="ev-history-filters">
         <label class="field ev-history-search"><span>Buscar EV histórico</span><input data-ev-history-search value="${escapeAttribute(evHistoricalFilters.query)}" placeholder="Código ou nome do projeto..." /></label>
         <label class="field"><span>Ano</span><select data-ev-history-filter="year">${evHistoricalFilterOptions(source.map((r) => String(r.year)), evHistoricalFilters.year, "Todos os anos")}</select></label>
         <label class="field"><span>Tipologia</span><select data-ev-history-filter="typology">${evHistoricalFilterOptions(source.map((r) => r.typology), evHistoricalFilters.typology, "Todas as tipologias")}</select></label>
         <label class="field"><span>Disciplina</span><select data-ev-history-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((d) => d.id), evHistoricalFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
-      </div>
+      </div>`}
       <div class="ev-history-kpis">
         <article><span>EVs encontrados</span><strong>${number(records.length)}</strong><small>${number((records.length / Math.max(source.length, 1)) * 100, 1)}% da base</small></article>
         <article><span>Valor histórico</span><strong>${moneyCompact(total)}</strong><small>${money(total)}</small></article>
         <article><span>Área equivalente</span><strong>${metricCompact(totalArea, " m²")}</strong><small>${number(totalArea, 0)} m²</small></article>
-        ${evHistoricalFilters.typology ? `<article class="ev-history-cost-m2"><span>Valor da tipologia por m²</span><strong>${typologyCostM2 ? `${money(typologyCostM2)}/m²` : "Sem leitura"}</strong><small>${escapeAttribute(evHistoricalFilters.typology)} · média ponderada de ${number(costM2Records.length)} EVs com área válida</small></article>` : ""}
+        ${!summaryOnly && evHistoricalFilters.typology ? `<article class="ev-history-cost-m2"><span>Valor da tipologia por m²</span><strong>${typologyCostM2 ? `${money(typologyCostM2)}/m²` : "Sem leitura"}</strong><small>${escapeAttribute(evHistoricalFilters.typology)} · média ponderada de ${number(costM2Records.length)} EVs com área válida</small></article>` : ""}
         <article><span>${selectedBenchmark ? escapeAttribute(selectedBenchmark.discipline.nome) : "Média por disciplina"}</span><strong>${selectedBenchmark ? `${number(selectedBenchmark.mean, 1)}%` : `${number(benchmarks.reduce((s, r) => s + r.mean, 0) / Math.max(benchmarks.length, 1), 1)}%`}</strong><small>${selectedBenchmark ? `mediana ${number(selectedBenchmark.median, 1)}% · σ ${number(selectedBenchmark.stdDev, 1)} p.p.` : `${benchmarks.length} disciplinas com histórico`}</small></article>
       </div>
-      <div class="ev-history-grid">
-        <article class="ev-history-table-card ev-history-primary-table"><div class="panel-header"><div><span class="eyebrow">Base principal</span><h3>Carteira unificada de EVs</h3><p class="panel-subtitle">Clique nos títulos das colunas: maior → menor, menor → maior e ordem original.</p></div><span class="tag">${records.length} EVs</span></div><div class="table-wrap ev-history-table-wrap"><table class="data-table ev-unified-table"><thead><tr>${evSortableHeader("Ano", "year")}${evSortableHeader("EV", "project")}${evSortableHeader("Tipologia", "typology")}${evSortableHeader("Valor", "total", true)}${evSortableHeader("Área", "area", true)}${evSortableHeader("% disciplina", "discipline", true)}<th>Ação</th></tr></thead><tbody>
+      <div class="ev-history-grid ${summaryOnly ? "ev-history-grid--summary" : ""}">
+        ${summaryOnly ? "" : `<article class="ev-history-table-card ev-history-primary-table"><div class="panel-header"><div><span class="eyebrow">Base principal</span><h3>Carteira unificada de EVs</h3><p class="panel-subtitle">Clique nos títulos das colunas: maior → menor, menor → maior e ordem original.</p></div><span class="tag">${records.length} EVs</span></div><div class="table-wrap ev-history-table-wrap"><table class="data-table ev-unified-table"><thead><tr>${evSortableHeader("Ano", "year")}${evSortableHeader("EV", "project")}${evSortableHeader("Tipologia", "typology")}${evSortableHeader("Valor", "total", true)}${evSortableHeader("Área", "area", true)}${evSortableHeader("% disciplina", "discipline", true)}<th>Ação</th></tr></thead><tbody>
           ${sortedRecords.slice(0, 60).map((record) => { const disciplineValue = evHistoricalFilters.discipline ? Number(record.disciplines?.[evHistoricalFilters.discipline] || 0) : 0; const share = record.baseTotal ? (disciplineValue / record.baseTotal) * 100 : 0; const historical = record.sourceKind === "historical"; const openAction = historical ? "open-historical-ev" : "open-ev-modal"; const openId = historical ? record.id : record.workId; const deleteAction = canDeleteEVRecords() ? `<button class="ghost-button compact-action danger-action" type="button" data-action="delete-ev-record" data-id="${escapeAttribute(record.id)}">Excluir</button>` : ""; return `<tr><td class="ev-year-cell"><strong>${escapeAttribute(String(record.year || "—"))}</strong><small>Elaboração</small></td><td><button class="ev-history-project-link" type="button" data-action="${openAction}" data-id="${openId}">${escapeAttribute(record.project)}</button><br /><span class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${number(record.items?.length || 0)} filhas</span><br /><span class="ev-unified-source" data-source="${record.sourceKind}">${escapeAttribute(record.sourceLabel)}</span></td><td><strong>${escapeAttribute(record.typology)}</strong><br /><button class="ev-typology-edit" type="button" data-action="edit-ev-typology" data-id="${escapeAttribute(record.id)}">Editar tipologia</button></td><td class="numeric">${moneyCompact(record.total)}</td><td class="numeric">${record.area ? `${number(record.area, 0)} m²` : "—"}</td><td class="numeric">${evHistoricalFilters.discipline ? `${number(share, 1)}%` : "Selecione"}</td><td><div class="table-actions">${historical ? `<button class="secondary-action compact-action" type="button" data-action="open-historical-ev" data-id="${record.id}">Ver composição</button><button class="primary-action compact-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button>` : `<button class="primary-action compact-action" type="button" data-action="open-ev-modal" data-id="${record.workId}">Editar EV</button>`}<button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button>${deleteAction}</div></td></tr>`; }).join("") || `<tr><td colspan="7"><div class="empty-state">Nenhum EV encontrado.</div></td></tr>`}
-        </tbody></table></div></article>
+        </tbody></table></div></article>`}
         <article class="ev-history-chart-card"><div class="panel-header"><div><span class="eyebrow">Leitura complementar</span><h3>Composição histórica</h3><p class="panel-subtitle">Percentual médio nos EVs em que a disciplina foi utilizada</p></div></div><div class="ev-history-bars">
           ${benchmarks.slice(0, 10).map((row, index) => `<div class="ev-history-bar"><span class="ev-history-rank">${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeAttribute(row.discipline.nome)}</strong><small>${row.count} EVs · mediana ${number(row.median, 1)}% · σ ${number(row.stdDev, 1)} p.p.</small></div><i><b style="width:${Math.max(3, (row.mean / maxMean) * 100)}%"></b></i><em>${number(row.mean, 1)}%</em></div>`).join("") || `<div class="empty-state">Sem dados para os filtros selecionados.</div>`}
         </div></article>

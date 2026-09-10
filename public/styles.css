@@ -8974,6 +8974,16 @@ button.analyst-chip {
   overflow: auto;
 }
 
+.portfolio-table-scroll-shell > .kanban-top-scroll {
+  margin: 2px 2px 8px;
+}
+
+.portfolio-table-scroll-shell > .portfolio-plan-table-wrap {
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-top: 0;
+}
+
 .portfolio-plan-table thead th {
   position: sticky;
   top: 0;
@@ -9098,7 +9108,7 @@ button.analyst-chip {
 
 .portfolio-works-table th:nth-child(14),
 .portfolio-works-table td:nth-child(14) {
-  min-width: 140px;
+  min-width: 410px;
 }
 
 .portfolio-actions {
@@ -9107,6 +9117,18 @@ button.analyst-chip {
 
 .portfolio-actions .compact-action {
   min-width: 76px;
+}
+
+.strategic-portfolio-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.strategic-portfolio-link > div {
+  display: grid;
+  gap: 5px;
 }
 
 .portfolio-plan-table th:first-child,
