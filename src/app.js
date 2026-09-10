@@ -6681,6 +6681,7 @@ function renderPortfolioTable(rows) {
             <th>CNPJ</th>
             <th>Endereço</th>
             <th class="numeric">Área equivalente (m²)</th>
+            <th class="numeric">Área construída (m²)</th>
             <th class="numeric">Tempo de obra (dias)</th>
             <th class="numeric">Total orçado</th>
             <th class="numeric">Custo por m²</th>
@@ -6700,6 +6701,7 @@ function renderPortfolioTable(rows) {
               <td>${escapeAttribute(row.cnpj || "")}</td>
               <td>${escapeAttribute(row.endereco || "")}</td>
               <td class="numeric">${row.areaEquivalente ? number(row.areaEquivalente, 2) : ""}</td>
+              <td class="numeric">${row.areaConstruida ? number(row.areaConstruida, 2) : ""}</td>
               <td class="numeric">${row.prazo ? escapeAttribute(row.prazo) : ""}</td>
               <td class="numeric">${row.hasAssociatedEV ? `<strong>${moneyCents(row.capex)}</strong>` : ""}</td>
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
@@ -6708,7 +6710,7 @@ function renderPortfolioTable(rows) {
                 <button class="secondary-action compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar Obra</button>
               </div></td>
             </tr>
-          `).join("") || `<tr><td colspan="14"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
+          `).join("") || `<tr><td colspan="15"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
       </table>
       </div>

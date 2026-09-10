@@ -490,11 +490,14 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
+ await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
  await page.locator('#evForm').getByRole('button',{name:'Salvar rascunho',exact:true}).click();
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- await expect(page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'}).locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ await expect(updatedEmpty.locator('td').nth(10)).toHaveText('75,00');
+ await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
  expect(b.errors).toEqual([]);
 });
 
@@ -528,7 +531,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
  await expect(page.locator('.portfolio-works-table thead th')).toContainText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
-  'Área equivalente (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
+  'Área equivalente (m²)','Área construída (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
  ]);
  await expect(page.locator('.portfolio-works-table thead [data-action="sort-generic-table"]')).toHaveCount(0);
  await page.locator('[data-portfolio-quick-filter="year"]').selectOption('2024');
@@ -549,8 +552,9 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
  await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(9)).toHaveText('200,00');
- await expect(historicalRow.locator('td').nth(11)).toHaveText('R$ 1.000,00');
- await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 5,00');
+ await expect(historicalRow.locator('td').nth(10)).toHaveText('200,00');
+ await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 1.000,00');
+ await expect(historicalRow.locator('td').nth(13)).toHaveText('R$ 5,00');
  await expect(historicalRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
  await historicalRow.getByRole('button',{name:'Editar Obra'}).click();
  const historicalWorkForm=page.locator('#workForm');
@@ -575,9 +579,10 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(currentRow.locator('td').nth(5)).toBeEmpty();
  await expect(currentRow.locator('td').nth(6)).toHaveText('Venda de Serviço');
  await expect(currentRow.locator('td').nth(9)).toHaveText('100,00');
- await expect(currentRow.locator('td').nth(10)).toHaveText('120');
- await expect(currentRow.locator('td').nth(11)).toHaveText('R$ 150,00');
- await expect(currentRow.locator('td').nth(12)).toHaveText('R$ 1,50');
+ await expect(currentRow.locator('td').nth(10)).toHaveText('100,00');
+ await expect(currentRow.locator('td').nth(11)).toHaveText('120');
+ await expect(currentRow.locator('td').nth(12)).toHaveText('R$ 150,00');
+ await expect(currentRow.locator('td').nth(13)).toHaveText('R$ 1,50');
  await expect(currentRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
  await currentRow.getByRole('button',{name:'Editar Obra'}).click();
  const currentWorkForm=page.locator('#workForm');
@@ -589,8 +594,9 @@ test('portfolio includes works without EV, selectable filters and the single req
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
  await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit');
  await expect(noEvRow.locator('td').nth(6)).toBeEmpty();
- await expect(noEvRow.locator('td').nth(11)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(10)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(12)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(13)).toBeEmpty();
  await expect(noEvRow.locator('.portfolio-actions button')).toHaveText(['Criar EV','Editar Obra']);
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
  await expect(ambiguousPaRow.locator('td').nth(2)).toBeEmpty();
