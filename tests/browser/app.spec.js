@@ -277,7 +277,7 @@ test('configuration catalogs can be created and edited and feed work and EV form
  expect(b.errors).toEqual([]);
 });
 
-test('initial budget demand is optional, shows work year and accepts every portfolio work',async({page})=>{
+test('initial budget demand waits for database confirmation and accepts every portfolio work',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
@@ -309,6 +309,8 @@ test('initial budget demand is optional, shows work year and accepts every portf
  await expect(page.locator('#formError')).not.toContainText('Selecione uma obra válida');
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
  await expect(page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'})).toBeVisible();
+ await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ expect(b.requests.some(request=>request.changes.some(change=>change.entity==='budget_demands'))).toBe(true);
  expect(b.errors).toEqual([]);
 });
 

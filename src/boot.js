@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { decorateProfile, moduleAllowed, entityWritable, MODULE_OPTIONS } from './access.js';
 import { createLazyModuleStore, dataModuleForUI } from './lazy-module-store.js';
+import { cloudSaveFailureMessage, retryTransientCloud } from './cloud-retry.js';
 
 function createPersistentAuthStorage() {
   const persistent = globalThis.localStorage;
@@ -133,7 +134,9 @@ function showAccessError(text) {
 }
 
 function blockApp(text) {
+  if (document.querySelector('#cloudWriteFailure')) return;
   const dialog = document.createElement('dialog');
+  dialog.id = 'cloudWriteFailure';
   dialog.innerHTML = cleanHTML(`<h2>Alterações não confirmadas no banco</h2><p>${text}</p><p>A tela foi bloqueada para evitar novas alterações. Copie suas anotações antes de recarregar; não há salvamento local de segurança.</p><button id="reloadCloud">Recarregar do banco</button>`);
   document.body.append(dialog);
   dialog.querySelector('button').onclick = () => location.reload();
@@ -271,15 +274,17 @@ async function startInternal() {
     canWriteEntity: entity => entityWritable(currentProfile, entity),
     async commit(request_id, changes) {
       if (!cloudWritesEnabled) throw new Error('Os dados da nuvem ainda não foram confirmados para edição.');
-      const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
-      if (error) throw error;
-      return data;
+      return retryTransientCloud(async () => {
+        const { data, error } = await client.rpc('slt_commit_changes', { request_id, changes });
+        if (error) throw error;
+        return data;
+      });
     },
-    onStatus(status) {
+    onStatus(status, error) {
       const node = document.querySelector('#cloudStatus');
       node.textContent = status === 'saving' ? 'Salvando no banco…' : status === 'saved' ? 'Salvo no banco' : 'Não salvo — recarregue antes de continuar';
       node.dataset.state = status;
-      if (status === 'failed') blockApp('Houve falha de conexão, perda de permissão ou outra sessão salvou uma versão mais recente.');
+      if (status === 'failed') blockApp(cloudSaveFailureMessage(error));
     },
   });
 

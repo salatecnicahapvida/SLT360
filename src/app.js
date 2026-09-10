@@ -860,6 +860,12 @@ function saveState() {
   return globalThis.SLT_CLOUD.save(module, persistedStatePayload());
 }
 
+async function saveStateAndWait() {
+  const module = dataUIModuleForView(currentView);
+  if (!globalThis.SLT_CLOUD.canWrite(module)) throw new Error("Aguarde o carregamento completo do banco ou confira sua permissão de edição.");
+  await globalThis.SLT_CLOUD.saveAndWait(module, persistedStatePayload());
+}
+
 function persistedStatePayload() {
   const works = arrayOrFallback(state.works).map((work) => {
       if (!work?.ev?._virtualEmptyEV) return work;
@@ -16843,7 +16849,15 @@ async function handleDemandSubmit(form) {
     valorNovo: `${demandTypeLabel(tipo)} criada`,
   });
 
-  saveState();
+  const submitButton = form.querySelector('[data-action="submit-demand-form"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (submitButton) submitButton.disabled = false;
+    showFormError("A demanda não foi confirmada no banco. Recarregue os dados e tente novamente.", form);
+    return;
+  }
   closeModal();
   selectedWorkId = obraId;
   if (tipo === "SIC") {
