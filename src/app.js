@@ -143,12 +143,69 @@ const projectDemandTypes = [
   },
 ];
 
-const demandProjectOptions = [
-  { id: "ARQ", label: "Arquitetura" },
-  { id: "CLI", label: "Climatização" },
-  { id: "ELE", label: "Elétrica" },
-  { id: "HID", label: "Hidráulica" },
-];
+const demandProjectDisciplineAcronyms = {
+  "fundacoes-e-contencoes": "FND",
+  estruturas: "EST",
+  "adequacoes-civis": "CIV",
+  fachadas: "FAC",
+  "instalacoes-eletricas-e-spda": "ELE",
+  "instalacoes-hidrossanitarias": "HID",
+  "instalacoes-de-gases-medicinais": "GAS",
+  "instalacoes-de-combate-a-incendio": "INC",
+  "instalacoes-de-climatizacao-e-exaustao": "CLI",
+  "dados-voz-cftv-chamada": "CFTV",
+  "custos-indiretos": "IND",
+  "site-planning": "SITE",
+  diversos: "DIV",
+  "instalacoes-de-glp": "GLP",
+  "projetos-tecnicos": "PRT",
+  "projetos-legalizacao": "LEG",
+  "dados-e-voz-seguranca-patrimonial-chamada-hospitalar": "DVZ",
+  "equipamentos-de-climatizacao": "EQC",
+  "artefatos-inox": "INX",
+  marcenaria: "MAR",
+  "reguas-medicinais": "RGM",
+  "gerador-subestacao-transformador-cubiculos": "GER",
+  "elevadores-plataforma-elevatoria": "ELEV",
+  "compressor-bomba-de-vacuo-driox": "VAC",
+  "it-medico-nobreak": "ITM",
+  "ete-eta": "ETA",
+  "correio-pneumatico": "CPN",
+  "controle-acessos": "CTA",
+  "planejamento-obras": "PLJ",
+  "contas-consumo": "CON",
+  "comunicacao-visual-externa-e-interna": "CVI",
+  "quadros-eletricos": "QEL",
+  "sistemas-de-automacao": "AUT",
+  blindagem: "BLD",
+  "paisagismo-e-ou-compensacao-ambiental": "PAI",
+  "camara-fria": "CFR",
+  "sistema-de-aquecimento-de-agua": "SAA",
+};
+
+function generatedDisciplineAcronym(discipline = {}) {
+  const words = normalizeSearchText(discipline.nome)
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word && !["a", "as", "de", "do", "dos", "e", "em"].includes(word));
+  if (words.length > 1) return words.slice(0, 5).map((word) => word[0]).join("").toUpperCase();
+  return String(words[0] || discipline.id || "PRJ").replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "PRJ";
+}
+
+function demandProjectOptions() {
+  const options = [{ id: "ARQ", label: "Arquitetura" }];
+  const used = new Set(options.map((item) => item.id));
+  configuredDisciplines({ includeInactive: false })
+    .filter((discipline) => discipline.selecionavelParaSIC !== false)
+    .forEach((discipline) => {
+      const baseAcronym = demandProjectDisciplineAcronyms[discipline.id] || generatedDisciplineAcronym(discipline);
+      let acronym = baseAcronym;
+      let suffix = 2;
+      while (used.has(acronym)) acronym = `${baseAcronym}${suffix++}`;
+      used.add(acronym);
+      options.push({ id: acronym, label: discipline.nome, disciplineId: discipline.id });
+    });
+  return options;
+}
 
 const projectViewIds = [
   "projectsHome",
@@ -774,10 +831,23 @@ function normalizeDemandAnalysts(demand = {}) {
   };
 }
 
+function normalizeDemandProjectDetails(details = {}) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  return Object.fromEntries(Object.entries(details).map(([projectId, value]) => {
+    const item = value && typeof value === "object" ? value : {};
+    return [String(projectId || "").trim().toUpperCase(), {
+      responsavelPostagem: String(item.responsavelPostagem || "").trim(),
+      dataPostagem: String(item.dataPostagem || "").trim(),
+      localArquivo: String(item.localArquivo || "").trim(),
+    }];
+  }).filter(([projectId]) => projectId));
+}
+
 function normalizeDemandRecord(item = {}, works = []) {
   const demand = normalizeDemandAnalysts({
     ...item,
     projetosEnvolvidos: arrayOrFallback(item.projetosEnvolvidos),
+    projetosEnvolvidosDetalhes: normalizeDemandProjectDetails(item.projetosEnvolvidosDetalhes),
     sicIds: arrayOrFallback(item.sicIds),
     anexos: arrayOrFallback(item.anexos),
   });
@@ -14953,19 +15023,57 @@ function clearDemandAnalystSelector(button) {
   if (summary) summary.textContent = analystSelectionSummary([]);
 }
 
-function renderDemandProjectsSelector(selected = []) {
+function renderDemandProjectsSelector(selected = [], savedDetails = {}) {
   const selectedIds = new Set(arrayOrFallback(selected).map((id) => String(id || "").trim().toUpperCase()).filter(Boolean));
+  const details = normalizeDemandProjectDetails(savedDetails);
   return `
-    <div class="analyst-chip-grid demand-project-selector">
-      ${demandProjectOptions.map((project) => `
-        <label class="analyst-chip ${selectedIds.has(project.id) ? "is-active" : ""}">
-          <input type="checkbox" name="projetosEnvolvidos" value="${project.id}" ${selectedIds.has(project.id) ? "checked" : ""} />
-          <span>${project.id} · ${project.label}</span>
-        </label>
-      `).join("")}
+    <div class="demand-project-selector">
+      ${demandProjectOptions().map((project) => {
+        const detail = details[project.id] || {};
+        return `
+        <details class="demand-project-item ${selectedIds.has(project.id) ? "is-active" : ""}" data-demand-project="${project.id}">
+          <summary title="${escapeAttribute(project.label)}">${project.id}</summary>
+          <div class="demand-project-posting-box">
+            <label class="demand-project-inclusion">
+              <input type="checkbox" name="projetosEnvolvidos" value="${project.id}" ${selectedIds.has(project.id) ? "checked" : ""} />
+              <span>Incluir na demanda</span>
+            </label>
+            <label class="field">
+              <span>Responsável pela postagem</span>
+              <input data-project-posting-owner value="${escapeAttribute(detail.responsavelPostagem || "")}" placeholder="Nome do responsável" />
+            </label>
+            <label class="field">
+              <span>Data de postagem</span>
+              <input data-project-posting-date type="date" value="${escapeAttribute(detail.dataPostagem || "")}" />
+            </label>
+            <label class="field">
+              <span>Local do arquivo</span>
+              <input data-project-file-location value="${escapeAttribute(detail.localArquivo || "")}" placeholder="Pasta, link ou caminho do arquivo" />
+            </label>
+          </div>
+        </details>
+      `; }).join("")}
     </div>
-    <p class="muted">Marque os projetos complementares envolvidos nesta demanda.</p>
+    <p class="muted">Clique na sigla para informar os dados de postagem e incluir a disciplina na demanda.</p>
   `;
+}
+
+function readDemandProjectsFromForm(form) {
+  const selected = [];
+  const details = {};
+  form.querySelectorAll("[data-demand-project]").forEach((card) => {
+    const checkbox = card.querySelector('[name="projetosEnvolvidos"]');
+    if (!checkbox?.checked) return;
+    const projectId = String(checkbox.value || "").trim().toUpperCase();
+    if (!projectId) return;
+    selected.push(projectId);
+    details[projectId] = {
+      responsavelPostagem: String(card.querySelector("[data-project-posting-owner]")?.value || "").trim(),
+      dataPostagem: String(card.querySelector("[data-project-posting-date]")?.value || "").trim(),
+      localArquivo: String(card.querySelector("[data-project-file-location]")?.value || "").trim(),
+    };
+  });
+  return { selected, details };
 }
 
 function demandTypeOptions(selected, includeSic = true) {
@@ -15017,7 +15125,7 @@ function renderDemandProjects(demand) {
     entries.push(`${name}: ${formatMasterStatus(item.status || item.caminho || item)}`);
   });
   return `
-    ${renderDemandProjectsSelector(demand.projetosEnvolvidos)}
+    ${renderDemandProjectsSelector(demand.projetosEnvolvidos, demand.projetosEnvolvidosDetalhes)}
     ${entries.length ? `<div class="master-list">${entries.slice(0, 12).map((item) => `<span class="tag">${item}</span>`).join("")}</div>` : ""}
   `;
 }
@@ -15389,6 +15497,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
     analistasComplementares: analystAssignment.analistasComplementares,
     descricao: draft.descricao || "",
     projetosEnvolvidos: arrayOrFallback(draft.projetosEnvolvidos),
+    projetosEnvolvidosDetalhes: normalizeDemandProjectDetails(draft.projetosEnvolvidosDetalhes),
     prioridade: draft.prioridade || "Média",
     dataPrevistaInicio: draft.dataPrevistaInicio || "",
     dataInicioReal: draft.dataInicioReal || "",
@@ -15599,7 +15708,7 @@ function renderDemandWizardStep2(draft) {
             <div class="section-title">
               <span>Projetos envolvidos</span>
             </div>
-            ${renderDemandProjectsSelector(draft.projetosEnvolvidos)}
+            ${renderDemandProjectsSelector(draft.projetosEnvolvidos, draft.projetosEnvolvidosDetalhes)}
           </section>
 
           <section class="modal-section demand-ev-section">
@@ -16678,6 +16787,7 @@ async function handleDemandSubmit(form) {
   const analystAssignment = analystAssignmentFromForm(form, {
     analistaResponsavel: formData.get("analistaSalaTecnica") || formData.get("analistaResponsavel") || formData.get("analista"),
   });
+  const projectSelection = readDemandProjectsFromForm(form);
   const tipo = formData.get("tipo");
   let obraId = resolveWorkIdFromDemandForm(formData);
   // Demandas excluídas continuam reservando o código no banco. Considerá-las
@@ -16793,7 +16903,8 @@ async function handleDemandSubmit(form) {
     naoEnviarValidacaoObras: formData.get("naoEnviarValidacaoObras") === "on",
     observacao: formData.get("descricao") || formData.get("observacao"),
     nota: formData.get("nota") || "",
-    projetosEnvolvidos: formData.getAll("projetosEnvolvidos").map((value) => String(value)),
+    projetosEnvolvidos: projectSelection.selected,
+    projetosEnvolvidosDetalhes: projectSelection.details,
     sicMetadata,
     sicDraftDisciplines,
     sicApprovalStatus: tipo === "SIC" ? "Pendente" : "",
@@ -16976,6 +17087,7 @@ async function handleDemandDetailSubmit(form) {
   const formData = new FormData(form);
   const previousAnalysts = demandAnalystNames(demand);
   const previousProjects = arrayOrFallback(demand.projetosEnvolvidos).map((value) => String(value));
+  const previousProjectDetails = normalizeDemandProjectDetails(demand.projetosEnvolvidosDetalhes);
   const analystAssignment = analystAssignmentFromForm(form, demand);
   const previousSprint = demand.sprintId || "";
   const previousPriority = demand.prioridade || "";
@@ -17027,7 +17139,9 @@ async function handleDemandDetailSubmit(form) {
     demand.observacao = formData.get("observacao") || "";
   }
   demand.nota = formData.get("nota") || "";
-  demand.projetosEnvolvidos = formData.getAll("projetosEnvolvidos").map((value) => String(value));
+  const projectSelection = readDemandProjectsFromForm(form);
+  demand.projetosEnvolvidos = projectSelection.selected;
+  demand.projetosEnvolvidosDetalhes = projectSelection.details;
   if (isSicDemand && !(demand.sicIds || []).length) {
     const draftDisciplines = readSicDraftDisciplinesFromForm(form);
     if (draftDisciplines.length) demand.sicDraftDisciplines = draftDisciplines;
@@ -17079,7 +17193,7 @@ async function handleDemandDetailSubmit(form) {
   if (JSON.stringify(previousProjects) !== JSON.stringify(demand.projetosEnvolvidos)) {
     const projectLabels = (items) =>
       items
-        .map((id) => demandProjectOptions.find((option) => option.id === id)?.label || id)
+        .map((id) => demandProjectOptions().find((option) => option.id === id)?.label || id)
         .join(", ") || "Nenhum";
     addHistory({
       entidade: "demanda",
@@ -17087,6 +17201,15 @@ async function handleDemandDetailSubmit(form) {
       campo: "projetosEnvolvidos",
       valorAnterior: projectLabels(previousProjects),
       valorNovo: projectLabels(demand.projetosEnvolvidos),
+    });
+  }
+  if (JSON.stringify(previousProjectDetails) !== JSON.stringify(demand.projetosEnvolvidosDetalhes)) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "detalhesProjetosEnvolvidos",
+      valorAnterior: "Dados de postagem anteriores",
+      valorNovo: "Responsáveis, datas ou locais dos arquivos atualizados",
     });
   }
   if (previousSprint !== demand.sprintId) {

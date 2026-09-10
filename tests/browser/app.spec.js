@@ -300,6 +300,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await page.locator('#workForm [data-action="close-modal"]').first().click();
  await page.getByRole('button',{name:'Nova SIC',exact:true}).click();
  await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
+ await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveText('DC');
+ await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveAttribute('title','Disciplina Configurável');
  await page.locator('#demandForm [data-action="close-modal"]').first().click();
  expect(b.errors).toEqual([]);
 });
@@ -343,7 +345,7 @@ test('initial budget demand waits for database confirmation and accepts every po
  expect(b.errors).toEqual([]);
 });
 
-test('first selected analyst is the leader, the others are complementary and involved projects persist',async({page})=>{
+test('first selected analyst leads and every involved discipline persists its posting details',async({page})=>{
  const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Carla']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
@@ -359,8 +361,22 @@ test('first selected analyst is the leader, the others are complementary and inv
 
  const step2=page.locator('#demandForm');
  await expect(step2.getByText('Projetos envolvidos',{exact:true})).toBeVisible();
- await step2.locator('label.analyst-chip').filter({hasText:'ARQ'}).click();
- await step2.locator('label.analyst-chip').filter({hasText:'ELE'}).click();
+ const projectItems=step2.locator('[data-demand-project]');
+ await expect(projectItems).toHaveCount(38);
+ await expect(step2.locator('[data-demand-project="ARQ"] summary')).toHaveText('ARQ');
+ await expect(step2.locator('[data-demand-project="ELE"] summary')).toHaveText('ELE');
+ const architecture=step2.locator('[data-demand-project="ARQ"]');
+ await architecture.locator('summary').click();
+ await architecture.locator('[name="projetosEnvolvidos"]').check();
+ await architecture.locator('[data-project-posting-owner]').fill('Bruno');
+ await architecture.locator('[data-project-posting-date]').fill('2026-09-10');
+ await architecture.locator('[data-project-file-location]').fill('SharePoint/Projetos/ARQ');
+ const electrical=step2.locator('[data-demand-project="ELE"]');
+ await electrical.locator('summary').click();
+ await electrical.locator('[name="projetosEnvolvidos"]').check();
+ await electrical.locator('[data-project-posting-owner]').fill('Ana');
+ await electrical.locator('[data-project-posting-date]').fill('2026-09-11');
+ await electrical.locator('[data-project-file-location]').fill('SharePoint/Projetos/ELE');
  await step2.getByRole('button',{name:'Salvar demanda',exact:true}).click();
  await expect.poll(()=>{
   const change=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
@@ -368,8 +384,17 @@ test('first selected analyst is the leader, the others are complementary and inv
    leader:change.document.analistaResponsavel,
    complementary:change.document.analistasComplementares,
    projects:change.document.projetosEnvolvidos,
+   projectDetails:change.document.projetosEnvolvidosDetalhes,
   }:null;
- }).toEqual({leader:'Bruno',complementary:['Ana','Carla'],projects:['ARQ','ELE']});
+ }).toEqual({
+  leader:'Bruno',
+  complementary:['Ana','Carla'],
+  projects:['ARQ','ELE'],
+  projectDetails:{
+   ARQ:{responsavelPostagem:'Bruno',dataPostagem:'2026-09-10',localArquivo:'SharePoint/Projetos/ARQ'},
+   ELE:{responsavelPostagem:'Ana',dataPostagem:'2026-09-11',localArquivo:'SharePoint/Projetos/ELE'},
+  },
+ });
 
  const saved=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
  await page.locator(`[data-action="open-demand-detail"][data-id="${saved.document.id}"]`).click();
@@ -377,6 +402,9 @@ test('first selected analyst is the leader, the others are complementary and inv
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ARQ"]')).toBeChecked();
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ELE"]')).toBeChecked();
+ await expect(detail.locator('[data-demand-project="ARQ"] [data-project-posting-owner]')).toHaveValue('Bruno');
+ await expect(detail.locator('[data-demand-project="ARQ"] [data-project-posting-date]')).toHaveValue('2026-09-10');
+ await expect(detail.locator('[data-demand-project="ARQ"] [data-project-file-location]')).toHaveValue('SharePoint/Projetos/ARQ');
  await detail.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
  await page.getByRole('button',{name:'Manutenção',exact:true}).click();

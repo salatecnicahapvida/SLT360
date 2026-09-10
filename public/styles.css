@@ -8006,6 +8006,82 @@ button.analyst-chip {
   box-shadow: 0 8px 16px rgba(0, 92, 169, 0.18);
 }
 
+.demand-project-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.demand-project-item {
+  min-width: 58px;
+}
+
+.demand-project-item[open] {
+  flex: 1 0 100%;
+}
+
+.demand-project-item summary {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfdaea;
+  border-radius: 999px;
+  background: #eef3fa;
+  color: #41536b;
+  cursor: pointer;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.demand-project-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.demand-project-item:has([name="projetosEnvolvidos"]:checked) summary,
+.demand-project-item[open] summary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(0, 92, 169, 0.18);
+}
+
+.demand-project-posting-box {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  border: 1px solid #cfdaea;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.demand-project-inclusion {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.demand-project-inclusion input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--blue);
+}
+
+@media (max-width: 760px) {
+  .demand-project-posting-box {
+    grid-template-columns: 1fr;
+  }
+}
+
 .demand-status-control {
   margin-bottom: 0;
   background: #f3edff;
