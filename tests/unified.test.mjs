@@ -49,6 +49,13 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role '+role);};
   let request=1;
   const commit=changes=>db.query('select slt_commit_changes($1,$2) result',[`00000000-0000-4000-8000-${String(request++).padStart(12,'0')}`,JSON.stringify(changes)]);
+  await as('authenticated',admin);
+  await commit([{
+   entity:'budget_demands',key:'created-demand',operation:'upsert',expected_revision:0,ordinal:1,child_fields:[],
+   document:{id:'created-demand',tipo:'EmissaoInicial',coluna:'fazer',obraId:'w',titulo:'Demanda criada'},
+  }]);
+  assert.equal((await db.query("select count(*)::integer total from slt_budget_demands where record_key='created-demand' and deleted_at is null")).rows[0].total,1);
+  assert.equal((await db.query("select has_table_privilege('authenticated','slt_projects_works','UPDATE') allowed")).rows[0].allowed,false,'criar demanda não concede edição direta das obras');
   await as('anon');await assert.rejects(db.query('select * from slt_budget_approval_works'),{code:'42501'});
   await as('authenticated',admin);
   const state={configurationCatalog:[{id:'category/test',type:'category',label:'Teste',active:true}],sicApprovalWorks:[{id:'aw',descricao:'Approval'}],sicApprovalWeeks:[{id:'week',start:'2026-09-01'}],sicApprovalSnapshots:[{weekId:'week',obraId:'aw',ev:{total:123}}],evReferenceTargets:{hospital:{value:100}},deletedEVRecordIds:['hist']};
@@ -62,7 +69,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   const home=(await db.query('select slt_home_summary() result')).rows[0].result;
   assert.equal(home.schema_version,2);
   assert.equal(Number(home.works.totalWorks),1);
-  assert.equal(Number(home.works.activeCount),1);
+  assert.equal(Number(home.works.activeCount),2);
   await assert.rejects(commit([{entity:'budget_demands',key:'d',operation:'delete',expected_revision:1}]),{code:'22023'});
   const backup=(await db.query("select slt_backup_manual('test') result")).rows[0].result;
   const daily=(await db.query('select slt_backup_daily() result')).rows[0].result;
@@ -72,7 +79,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.ok((await db.query('select count(*)::integer total from slt_backup_list()')).rows[0].total<=2);
   assert.equal((await db.query('select description from slt_budget_approval_works')).rows[0].description,'Approval');
   await assert.rejects(commit([{...changes.find(c=>c.entity==='budget_approval_works'),expected_revision:2}]),{code:'40001'});
-  assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,1);
+  assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,2);
   await as('authenticated','22222222-2222-4222-8222-222222222222');
   await assert.rejects(db.query('select slt_backup_restore($1)',[backup.id]),{code:'42501'});
   assert.equal((await db.query('select * from slt_budget_approval_works')).rows.length,0);
