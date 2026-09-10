@@ -6613,7 +6613,6 @@ function renderPortfolio() {
     ${renderWorksToolbar("portfolio", "Portfólio de Obras e EVs", `${allRows.length} obras cadastradas e ${evCount} EVs vinculados em uma única visão`, `
       <span class="tag">${allRows.length} obras cadastradas</span>
       <button class="primary-action" type="button" data-action="open-work">+ Nova obra</button>
-      <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
     `)}
 
     <section class="kpi-grid portfolio-kpis">
@@ -12994,9 +12993,7 @@ function renderSics() {
   const active = sicViewMeta().find((view) => view.id === sicViewMode) || sicViewMeta()[0];
 
   return `
-    ${renderWorksToolbar("sics", "Estudo de SIC's", `${active.title} · ${active.subtitle}`, `
-      <button class="primary-action" type="button" data-action="open-demand">Nova SIC</button>
-    `)}
+    ${renderWorksToolbar("sics", "Estudo de SIC's", `${active.title} · ${active.subtitle}`)}
     ${renderSicViewTabs()}
     ${sicViewMode === "approval" ? "" : renderSicFilterBar(data)}
     ${renderSicView(data)}

@@ -128,6 +128,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  for(const view of ['worksOperational','worksManagement','worksStrategic','portfolio','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
   await page.locator(`[data-view="${view}"]`).filter({visible:true}).first().click();
   await expect(page.locator('#app')).not.toBeEmpty();
+  if(view==='portfolio'||view==='sics')await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
  }
  await expect(page.locator('[data-team-action="create"]')).toBeVisible();
  const settingsHistory=page.locator('.settings-history-panel');
@@ -298,11 +299,17 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(page.locator('#classificacaoOptions option[value="Não informada"]')).toHaveCount(0);
  expect(await page.locator('#tipologiaOptions option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['Nova Unidade','Retrofit','Ampliação UE']);
  await page.locator('#workForm [data-action="close-modal"]').first().click();
- await page.getByRole('button',{name:'Nova SIC',exact:true}).click();
+ await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await page.getByRole('button',{name:'Obras',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await expect(page.locator('.demand-type-card')).toBeVisible();
+ await page.locator('.demand-type-option[data-type="SIC"]').click();
  await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
  await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveText('DC');
  await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveAttribute('title','Disciplina Configurável');
  await page.locator('#demandForm [data-action="close-modal"]').first().click();
+ await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
 
