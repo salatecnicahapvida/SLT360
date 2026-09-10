@@ -5,8 +5,8 @@ import * as XLSX from 'xlsx';
 const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[
-    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'SP',cidade:'São Paulo',tipoUnidade:'Clínica',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[],versions:[],sicIds:[],demandaIds:[]}},
-    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
+    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'São Paulo - Sudeste',cidade:'São Paulo',tipoUnidade:'Clínica',classificacaoObra:'Venda de Serviços',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorOrcado:100},{disciplinaId:'instalacoes-de-spda',valorOrcado:50}],versions:[],sicIds:[],demandaIds:[]}},
+    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Ambiental',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
     {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':800,'taxa-risco':50,sics:150},items:[]},
@@ -261,6 +261,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(categoryCard).not.toContainText('Categoria Configurável');
 
  const disciplineCard=page.locator('[data-configuration-type="discipline"]');
+ await expect(disciplineCard).not.toContainText('Instalações de SPDA');
+ await expect(disciplineCard.locator('.configuration-catalog-item').filter({hasText:'Instalações Elétricas e SPDA'})).toHaveCount(1);
  await expect(disciplineCard).toContainText('Site Planning');
  await expect(disciplineCard).toContainText('Diversos');
  await disciplineCard.getByRole('button',{name:'Novo'}).click();
@@ -272,10 +274,24 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(disciplineCard).toContainText('Disciplina Configurável');
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='core_configuration_catalog'))).toBe(true);
 
+ const typologyLabels=page.locator('[data-configuration-type="typology"] .configuration-catalog-item strong');
+ await expect(typologyLabels).toHaveText(['Nova Unidade','Retrofit','Ampliação UE']);
+ const stateCard=page.locator('[data-configuration-type="state"]');
+ await expect(stateCard.locator('.configuration-catalog-item strong')).toHaveText([
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
+  'PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+ ]);
+ await expect(stateCard).not.toContainText('Acre');
+
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
  await expect(page.locator('#classificacaoOptions option[value="Categoria Editada"]')).toHaveCount(1);
+ await expect(page.locator('#classificacaoOptions option[value="Venda de Serviço"]')).toHaveCount(1);
+ await expect(page.locator('#classificacaoOptions option[value="Venda de Serviços"]')).toHaveCount(0);
+ await expect(page.locator('#classificacaoOptions option[value="Ambiental"]')).toHaveCount(0);
+ await expect(page.locator('#classificacaoOptions option[value="Não informada"]')).toHaveCount(0);
+ expect(await page.locator('#tipologiaOptions option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['Nova Unidade','Retrofit','Ampliação UE']);
  await page.locator('#workForm [data-action="close-modal"]').first().click();
  await page.getByRole('button',{name:'Nova SIC',exact:true}).click();
  await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
@@ -450,6 +466,16 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(kpis).not.toContainText('Projetos atrasados');
  await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(7);
  await expect(page.locator('[data-portfolio-quick-filter="origem"]')).toHaveCount(0);
+ await expect(page.locator('[data-portfolio-quick-filter="tipologia"] option')).toHaveText(['Todas','Nova Unidade','Retrofit','Ampliação UE']);
+ const categoryFilter=page.locator('[data-portfolio-quick-filter="categoria"]');
+ await expect(categoryFilter).not.toContainText('Ambiental');
+ await expect(categoryFilter).not.toContainText('Não informada');
+ await expect(categoryFilter).not.toContainText('Histórico importado');
+ await expect(categoryFilter).not.toContainText('Venda de Serviços');
+ await expect(page.locator('[data-portfolio-quick-filter="uf"] option')).toHaveText([
+  'Todas','AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
+  'PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+ ]);
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
  await expect(page.locator('.portfolio-works-table thead th')).toContainText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
@@ -471,7 +497,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(historicalRow.locator('td').nth(2)).toHaveText('AM');
  await expect(historicalRow.locator('td').nth(3)).toHaveText('Norte');
  await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
- await expect(historicalRow.locator('td').nth(5)).toHaveText('Hospital');
+ await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(9)).toHaveText('200,00');
  await expect(historicalRow.locator('td').nth(11)).toHaveText('R$ 1.000,00');
  await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 5,00');
@@ -497,10 +523,12 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(currentRow.locator('td').nth(2)).toHaveText('SP');
  await expect(currentRow.locator('td').nth(3)).toHaveText('Sudeste');
  await expect(currentRow.locator('td').nth(4)).toHaveText('2026');
- await expect(currentRow.locator('td').nth(5)).toHaveText('Reforma');
- await expect(currentRow.locator('td').nth(6)).toBeEmpty();
+ await expect(currentRow.locator('td').nth(5)).toBeEmpty();
+ await expect(currentRow.locator('td').nth(6)).toHaveText('Venda de Serviço');
  await expect(currentRow.locator('td').nth(9)).toHaveText('100,00');
  await expect(currentRow.locator('td').nth(10)).toHaveText('120');
+ await expect(currentRow.locator('td').nth(11)).toHaveText('R$ 150,00');
+ await expect(currentRow.locator('td').nth(12)).toHaveText('R$ 1,50');
  await expect(currentRow.getByRole('button',{name:'Visualizar EV'})).toBeVisible();
  await expect(currentRow.getByRole('button',{name:'Editar EV'})).toBeVisible();
  await expect(currentRow.getByRole('button',{name:'Reajustar INCC'})).toBeVisible();
@@ -512,6 +540,8 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(currentRow.locator('td').nth(8)).toHaveText('Rua editada, 100');
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'&&change.document.endereco==='Rua editada, 100'))).toBe(true);
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit');
+ await expect(noEvRow.locator('td').nth(6)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(11)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(12)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(13)).toContainText('Sem EV');

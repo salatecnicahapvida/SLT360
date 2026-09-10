@@ -178,7 +178,7 @@ returns text language sql immutable set search_path='' as $$
     when 'instalacoes de gases medicinais' then 'instalacoes-de-gases-medicinais'
     when 'instalacoes de combate a incendio' then 'instalacoes-de-combate-a-incendio'
     when 'instalacoes de glp' then 'instalacoes-de-glp'
-    when 'instalacoes de spda' then 'instalacoes-de-spda'
+    when 'instalacoes de spda' then 'instalacoes-eletricas-e-spda'
     when 'instalacoes de climatizacao e exaustao' then 'instalacoes-de-climatizacao-e-exaustao'
     when 'infraestrutura de dados voz seg patrimonial cftv chamada' then 'dados-voz-cftv-chamada'
     when 'custos indiretos' then 'custos-indiretos'
@@ -198,7 +198,7 @@ begin
   if n ~ 'gas(es)? medicin|regua medic' then return case when n ~ 'regua' then 'reguas-medicinais' else 'instalacoes-de-gases-medicinais' end; end if;
   if n ~ 'incendio|hidrante|ppci|firebee' then return 'instalacoes-de-combate-a-incendio'; end if;
   if n ~ '\\mglp\\M' then return 'instalacoes-de-glp'; end if;
-  if n ~ '\\mspda\\M' then return 'instalacoes-de-spda'; end if;
+  if n ~ '\\mspda\\M' then return 'instalacoes-eletricas-e-spda'; end if;
   if n ~ 'climat|exaust|chiller|split|vrv' then return case when n ~ 'equip|chiller|split|vrv|maquina' then 'equipamentos-de-climatizacao' else 'instalacoes-de-climatizacao-e-exaustao' end; end if;
   if n ~ 'dados|voz|cftv|chamada|logica|seguranca patrimonial|\\melo\\M' then return 'dados-e-voz-seguranca-patrimonial-chamada-hospitalar'; end if;
   if n ~ 'custo indireto|gerenciamento|mobilizacao|desmobilizacao' then return 'custos-indiretos'; end if;
@@ -286,7 +286,7 @@ returns text language sql immutable set search_path='' as $$
     when 'instalacoes de gases medicinais' then 'instalacoes-de-gases-medicinais'
     when 'instalacoes de combate a incendio' then 'instalacoes-de-combate-a-incendio'
     when 'instalacoes de glp' then 'instalacoes-de-glp'
-    when 'instalacoes de spda' then 'instalacoes-de-spda'
+    when 'instalacoes de spda' then 'instalacoes-eletricas-e-spda'
     when 'instalacoes de climatizacao e exaustao' then 'instalacoes-de-climatizacao-e-exaustao'
     when 'infraestrutura de dados voz seg patrimonial cftv chamada' then 'dados-voz-cftv-chamada'
     when 'custos indiretos' then 'custos-indiretos'
@@ -307,7 +307,7 @@ begin
   if n ~ 'gas(es)? medicin|regua medic' then return case when n ~ 'regua' then 'reguas-medicinais' else 'instalacoes-de-gases-medicinais' end; end if;
   if n ~ 'incendio|hidrante|ppci|firebee' then return 'instalacoes-de-combate-a-incendio'; end if;
   if n ~ '\\mglp\\M' then return 'instalacoes-de-glp'; end if;
-  if n ~ '\\mspda\\M' then return 'instalacoes-de-spda'; end if;
+  if n ~ '\\mspda\\M' then return 'instalacoes-eletricas-e-spda'; end if;
   if n ~ 'climat|exaust|chiller|split|vrv' then return case when n ~ 'equip|chiller|split|vrv|maquina' then 'equipamentos-de-climatizacao' else 'instalacoes-de-climatizacao-e-exaustao' end; end if;
   if n ~ 'dados|voz|cftv|chamada|logica|seguranca patrimonial|\\melo\\M' then return 'dados-e-voz-seguranca-patrimonial-chamada-hospitalar'; end if;
   if n ~ 'custo indireto|gerenciamento|mobilizacao|desmobilizacao' then return 'custos-indiretos'; end if;

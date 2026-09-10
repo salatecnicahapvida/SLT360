@@ -298,7 +298,6 @@ const baseDisciplines = [
   ["instalacoes-hidrossanitarias", "Instalações Hidrossanitárias", "CustosDaObra", true],
   ["instalacoes-de-gases-medicinais", "Instalações de Gases Medicinais", "CustosDaObra", true],
   ["instalacoes-de-combate-a-incendio", "Instalações de Combate a Incêndio", "CustosDaObra", true],
-  ["instalacoes-de-spda", "Instalações de SPDA", "CustosDaObra", true],
   ["instalacoes-de-climatizacao-e-exaustao", "Instalações de Climatização e Exaustão", "CustosDaObra", true],
   ["dados-voz-cftv-chamada", "Infraestrutura de Dados/Voz/Seg. Patrimonial/CFTV/Chamada", "CustosDaObra", true],
   ["custos-indiretos", "Custos Indiretos", "CustosDaObra", true],
@@ -345,7 +344,8 @@ const disciplineAliases = {
   "instalacoes-eletricas-spda": "instalacoes-eletricas-e-spda",
   "gases-medicinais": "instalacoes-de-gases-medicinais",
   "combate-incendio": "instalacoes-de-combate-a-incendio",
-  "instalacoes-spda": "instalacoes-de-spda",
+  "instalacoes-spda": "instalacoes-eletricas-e-spda",
+  "instalacoes-de-spda": "instalacoes-eletricas-e-spda",
   "climatizacao-exaustao": "instalacoes-de-climatizacao-e-exaustao",
   glp: "instalacoes-de-glp",
   "dados-voz-seguranca-chamada": "dados-e-voz-seguranca-patrimonial-chamada-hospitalar",
@@ -372,6 +372,90 @@ const baseStates = [
   ["SC", "Santa Catarina", "Sul"], ["SP", "São Paulo", "Sudeste"], ["SE", "Sergipe", "Nordeste"],
   ["TO", "Tocantins", "Norte"],
 ];
+
+const canonicalCategoryMap = new Map([
+  ["adequacao regulatoria", "Adequação Regulatória"],
+  ["eficiencia operacional", "Eficiência Operacional"],
+  ["fachada", "Fachada"],
+  ["obra emergencial", "Obra Emergencial"],
+  ["obra estrategica", "Obra Estratégica"],
+  ["suficiencia de rede", "Suficiência de Rede"],
+  ["verticalizacao", "Verticalização"],
+  ["venda de servico", "Venda de Serviço"],
+  ["venda de servicos", "Venda de Serviço"],
+  ["padronizacao de unidade", "Padronização de Unidade"],
+  ["risco assistencial", "Risco Assistencial"],
+]);
+const removedCategoryKeys = new Set(["historico importado", "historico importadado", "nao informada", "nao informado", "ambiental"]);
+const canonicalTypologyMap = new Map([
+  ["nova unidade", "Nova Unidade"],
+  ["retrofit", "Retrofit"],
+  ["ampliacao", "Ampliação UE"],
+  ["ampliacao ue", "Ampliação UE"],
+]);
+
+function canonicalWorkCategory(value) {
+  const label = String(value || "").trim();
+  const key = normalizeSearchText(label);
+  if (!key || removedCategoryKeys.has(key)) return "";
+  return canonicalCategoryMap.get(key) || label;
+}
+
+function canonicalWorkTypology(value) {
+  return canonicalTypologyMap.get(normalizeSearchText(value)) || "";
+}
+
+function canonicalStateCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const validCodes = new Set(baseStates.map(([code]) => code));
+  const code = raw.toUpperCase().split(/[^A-Z]+/).find((part) => validCodes.has(part));
+  if (code) return code;
+  const normalized = ` ${normalizeSearchText(raw)} `;
+  return baseStates.find(([, label]) => normalized.includes(` ${normalizeSearchText(label)} `))?.[0] || "";
+}
+
+function canonicalStateRegion(code) {
+  return baseStates.find(([stateCode]) => stateCode === canonicalStateCode(code))?.[2] || "";
+}
+
+function normalizeEVLines(lines = []) {
+  const merged = new Map();
+  arrayOrFallback(lines).forEach((sourceLine) => {
+    const disciplineId = canonicalDisciplineId(sourceLine.disciplinaId);
+    const line = { ...sourceLine, disciplinaId: disciplineId };
+    const current = merged.get(disciplineId);
+    if (!current) {
+      merged.set(disciplineId, line);
+      return;
+    }
+    ["valorOrcado", "valorContratado", "quantidade", "valorUnitario"].forEach((field) => {
+      current[field] = Number(current[field] || 0) + Number(line[field] || 0);
+    });
+  });
+  return [...merged.values()];
+}
+
+function normalizeWorkTaxonomy(work = {}) {
+  const uf = canonicalStateCode(work.uf || work.estado);
+  const ev = work.ev ? {
+    ...work.ev,
+    lines: normalizeEVLines(work.ev.lines),
+    versions: arrayOrFallback(work.ev.versions).map((version) => ({
+      ...version,
+      diffPorDisciplina: arrayOrFallback(version.diffPorDisciplina).map((diff) => ({ ...diff, disciplinaId: canonicalDisciplineId(diff.disciplinaId) })),
+    })),
+  } : work.ev;
+  return {
+    ...work,
+    uf,
+    estado: uf,
+    regiao: canonicalStateRegion(uf) || String(work.regiao || "").trim(),
+    classificacaoObra: canonicalWorkCategory(work.classificacaoObra),
+    tipologiaObra: canonicalWorkTypology(work.tipologiaObra),
+    ev,
+  };
+}
 
 const configurationCatalogDefinitions = {
   discipline: { label: "Disciplinas do EV", singular: "disciplina" },
@@ -630,7 +714,7 @@ function normalizeState(saved) {
     ? saved.localMaintenanceDemands
     : arrayOrFallback(saved.maintenanceDemands);
   const baseMaintenanceDemands = arrayOrFallback(base.maintenanceDemands);
-  const works = arrayOrFallback(saved.works, base.works);
+  const works = arrayOrFallback(saved.works, base.works).map(normalizeWorkTaxonomy);
   return {
     ...base,
     ...saved,
@@ -773,13 +857,12 @@ function defaultConfigurationItems(type) {
   if (type === "category") {
     const defaults = [
       "Adequação Regulatória", "Eficiência Operacional", "Fachada", "Obra Emergencial", "Obra Estratégica",
-      "Suficiência de Rede", "Verticalização", "Venda de Serviços", "Padronização de Unidade", "Histórico importado", "Não informada",
+      "Suficiência de Rede", "Verticalização", "Venda de Serviço", "Padronização de Unidade", "Risco Assistencial",
     ].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
-    return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => work.classificacaoObra));
+    return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => canonicalWorkCategory(work.classificacaoObra)));
   }
   if (type === "typology") {
-    const defaults = ["Nova Unidade", "Retrofit", "Ampliação", "Reforma", "Adequação"].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
-    return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => work.tipologiaObra));
+    return ["Nova Unidade", "Retrofit", "Ampliação UE"].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
   }
   if (type === "year") {
     const currentYear = new Date().getFullYear();
@@ -789,14 +872,38 @@ function defaultConfigurationItems(type) {
   }
   if (type === "region") return baseRegions.map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
   if (type === "state") {
-    return baseStates.map(([code, label, region]) => catalogEntry(type, code.toLowerCase(), label, { code, region }));
+    return baseStates.map(([code, , region]) => catalogEntry(type, code.toLowerCase(), code, { code, region }));
   }
   return [];
 }
 
+function normalizeConfigurationItems(type, items = []) {
+  const normalized = [];
+  const seen = new Set();
+  items.forEach((sourceItem) => {
+    const item = { ...sourceItem };
+    if (type === "category") item.label = canonicalWorkCategory(item.label);
+    if (type === "typology") item.label = canonicalWorkTypology(item.label);
+    if (type === "state") {
+      item.code = canonicalStateCode(item.code || item.label);
+      item.label = item.code;
+      item.region = String(item.region || "").trim() || canonicalStateRegion(item.code);
+    }
+    if (type === "discipline") {
+      item.code = canonicalDisciplineId(item.code || item.id.replace(/^discipline\//, ""));
+      if (item.code === "instalacoes-eletricas-e-spda") item.label = "Instalações Elétricas e SPDA";
+    }
+    const identity = type === "discipline" ? item.code : type === "state" ? item.code : normalizeSearchText(item.label);
+    if (!identity || seen.has(identity)) return;
+    seen.add(identity);
+    normalized.push(item);
+  });
+  return normalized;
+}
+
 function configurationItems(type, { includeInactive = false } = {}) {
   const stored = arrayOrFallback(state?.configurationCatalog).filter((item) => item.type === type);
-  const items = stored.length ? stored : defaultConfigurationItems(type);
+  const items = normalizeConfigurationItems(type, stored.length ? stored : defaultConfigurationItems(type));
   return items
     .map((item, index) => ({ ...item, active: item.active !== false, position: Number(item.position || index + 1) }))
     .filter((item) => includeInactive || item.active !== false)
@@ -821,7 +928,7 @@ function configuredDisciplines({ includeInactive = true } = {}) {
 function persistConfigurationType(type, items) {
   state.configurationCatalog = [
     ...arrayOrFallback(state.configurationCatalog).filter((item) => item.type !== type),
-    ...items,
+    ...normalizeConfigurationItems(type, items),
   ];
 }
 
@@ -6434,9 +6541,10 @@ function renderPortfolio() {
   `;
 }
 
-function portfolioFilterOptions(rows, field, selected, allLabel) {
-  const values = [...new Set(rows.map((row) => row[field]).filter((value) => value !== "" && value !== null && value !== undefined))]
-    .sort((left, right) => String(left).localeCompare(String(right), "pt-BR", { numeric: true }));
+function portfolioFilterOptions(rows, field, selected, allLabel, configuredValues = null) {
+  const sourceValues = configuredValues || rows.map((row) => row[field]);
+  const values = [...new Set(sourceValues.filter((value) => value !== "" && value !== null && value !== undefined))];
+  if (!configuredValues) values.sort((left, right) => String(left).localeCompare(String(right), "pt-BR", { numeric: true }));
   return `<option value="">${allLabel}</option>${values
     .map((value) => `<option value="${escapeAttribute(value)}" ${String(value) === String(selected) ? "selected" : ""}>${escapeAttribute(value)}</option>`)
     .join("")}`;
@@ -6449,12 +6557,12 @@ function renderPortfolioFilters(rows) {
         <span>Buscar obra</span>
         <input data-portfolio-search value="${escapeAttribute(portfolioQuickFilters.query)}" placeholder="Nome, código, cidade ou região..." />
       </label>
-      <label class="field"><span>Ano</span><select data-portfolio-quick-filter="year">${portfolioFilterOptions(rows, "year", portfolioQuickFilters.year, "Todos os anos")}</select></label>
-      <label class="field"><span>Categoria</span><select data-portfolio-quick-filter="categoria">${portfolioFilterOptions(rows, "categoria", portfolioQuickFilters.categoria, "Todas")}</select></label>
+      <label class="field"><span>Ano</span><select data-portfolio-quick-filter="year">${portfolioFilterOptions(rows, "year", portfolioQuickFilters.year, "Todos os anos", configurationLabels("year"))}</select></label>
+      <label class="field"><span>Categoria</span><select data-portfolio-quick-filter="categoria">${portfolioFilterOptions(rows, "categoria", portfolioQuickFilters.categoria, "Todas", configurationLabels("category"))}</select></label>
       <label class="field"><span>Tipo</span><select data-portfolio-quick-filter="tipoUnidade">${portfolioFilterOptions(rows, "tipoUnidade", portfolioQuickFilters.tipoUnidade, "Todos")}</select></label>
-      <label class="field"><span>Tipologia</span><select data-portfolio-quick-filter="tipologia">${portfolioFilterOptions(rows, "tipologia", portfolioQuickFilters.tipologia, "Todas")}</select></label>
-      <label class="field"><span>Região</span><select data-portfolio-quick-filter="regional">${portfolioFilterOptions(rows, "regional", portfolioQuickFilters.regional, "Todas")}</select></label>
-      <label class="field"><span>UF</span><select data-portfolio-quick-filter="uf">${portfolioFilterOptions(rows, "uf", portfolioQuickFilters.uf, "Todas")}</select></label>
+      <label class="field"><span>Tipologia</span><select data-portfolio-quick-filter="tipologia">${portfolioFilterOptions(rows, "tipologia", portfolioQuickFilters.tipologia, "Todas", configurationLabels("typology"))}</select></label>
+      <label class="field"><span>Região</span><select data-portfolio-quick-filter="regional">${portfolioFilterOptions(rows, "regional", portfolioQuickFilters.regional, "Todas", configurationLabels("region"))}</select></label>
+      <label class="field"><span>UF</span><select data-portfolio-quick-filter="uf">${portfolioFilterOptions(rows, "uf", portfolioQuickFilters.uf, "Todas", configurationLabels("state"))}</select></label>
       <label class="field"><span>Status do EV</span><select data-portfolio-quick-filter="evStatus">${portfolioFilterOptions(rows, "evStatus", portfolioQuickFilters.evStatus, "Todos")}</select></label>
       <button class="secondary-action" type="button" data-action="clear-portfolio-filters">Limpar filtros</button>
     </div>
@@ -6640,8 +6748,8 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const saldoRatio = totals.saldo / Math.max(capex, 1);
     const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);
     const year = String(work.anoObra || historicalRecord?.year || latestVersion?.data || "").slice(0, 4);
-    const tipologia = work.tipologiaObra || "";
-    const uf = String(work.uf || ufFromWorkName(work.nome) || "").trim().toUpperCase();
+    const tipologia = canonicalWorkTypology(work.tipologiaObra);
+    const uf = canonicalStateCode(work.uf || ufFromWorkName(work.nome));
     const regional = String(work.regiao || regionFromUf(uf) || "").trim();
     const areaEquivalente = Number(work.areaEquivalente || 0);
     const hasAssociatedEV = Boolean(work._historicalBudgetWork || (work.ev && !work.ev._virtualEmptyEV));
@@ -6655,8 +6763,8 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       cidadeUf: [work.cidade, uf].filter(Boolean).join(" / "),
       tipoUnidade: work.tipoUnidade,
       tipologia,
-      classificacao: work.classificacaoObra,
-      categoria: work.classificacaoObra || "",
+      classificacao: canonicalWorkCategory(work.classificacaoObra),
+      categoria: canonicalWorkCategory(work.classificacaoObra),
       year,
       tecnico: historicalRecord?.technician || "",
       isHistorical: Boolean(work._historicalBudgetWork),
@@ -6835,8 +6943,8 @@ function manualInvestmentPlanRows(planRows = []) {
       regiao: work.regiao || "",
       etapa: "Projetos",
       status: "Cadastro SLT 360",
-      classificacaoObra: work.classificacaoObra || "Não informada",
-      tipologiaObra: work.tipologiaObra || "Não informada",
+      classificacaoObra: canonicalWorkCategory(work.classificacaoObra),
+      tipologiaObra: canonicalWorkTypology(work.tipologiaObra),
       observacoes: "Obra cadastrada diretamente no SLT 360 e integrada ao Controle de Verbas.",
       slaDias: work.prazoDias || "",
       inicioPlanejado: "",
@@ -7254,8 +7362,8 @@ function ensureEditableHistoricalEV(recordId) {
     cidade: "Não informada",
     uf,
     regiao: "Não informada",
-    classificacaoObra: "Histórico importado",
-    tipologiaObra: record.typology || "Não informada",
+    classificacaoObra: "",
+    tipologiaObra: canonicalWorkTypology(record.typology),
     areaConstruida: Number(record.area || 0),
     areaEquivalente: Number(record.area || 0),
     area: Number(record.area || 0),
@@ -13972,8 +14080,8 @@ function renderKeyLegend() {
       </div>
       <div class="support-grid compact">
         ${supportList("Tipo de Unidade", ["01 Clínica", "02 Hospital", "03 Diagnóstico", "04 Pronto Atendimento", "05 Administrativo", "06 Centro de Distribuição", "07 TEA", "08 Coleta", "09 Medprev"])}
-        ${supportList("Classificação", ["AR Adequação Regulatória", "EO Eficiência Operacional", "FC Fachada", "EM Obra Emergencial", "EE Obra Estratégica", "SR Suficiência de Rede", "VZ Verticalização", "VS Venda de Serviços", "PU Padronização de Unidade"])}
-        ${supportList("Tipologia", ["NVU Nova Unidade", "RFT Retrofit", "AMP Ampliação"])}
+        ${supportList("Classificação", ["AR Adequação Regulatória", "EO Eficiência Operacional", "FC Fachada", "EM Obra Emergencial", "EE Obra Estratégica", "SR Suficiência de Rede", "VZ Verticalização", "VS Venda de Serviço", "PU Padronização de Unidade"])}
+        ${supportList("Tipologia", ["NVU Nova Unidade", "RFT Retrofit", "AMP Ampliação UE"])}
         ${supportList("Seq + Ano + UF", ["001-999 Nº sequencial", "26, 27... Ano de cadastro", "CE, SP... UF padrão IBGE"])}
       </div>
     </div>
@@ -14094,7 +14202,7 @@ function configurationItemDetail(type, item) {
   if (type === "discipline") {
     return `${String(item.position || 0).padStart(2, "0")} · ${categoryLabel(item.category)} · ${item.selectableForSIC === false ? "bloqueada para SIC" : "selecionável para SIC"}`;
   }
-  if (type === "state") return `${item.code || "Sem UF"} · ${item.region || "Sem região"}`;
+  if (type === "state") return item.active === false ? "Inativo" : "Ativo";
   return item.active === false ? "Inativo" : "Ativo";
 }
 
@@ -14111,7 +14219,7 @@ function renderConfigurationCatalogCard(type) {
         ${items.map((item) => `
           <div class="configuration-catalog-item ${item.active === false ? "is-inactive" : ""}">
             <div>
-              <strong>${escapeAttribute(type === "state" ? `${item.code || ""} · ${item.label}` : item.label)}</strong>
+              <strong>${escapeAttribute(type === "state" ? item.code || "" : item.label)}</strong>
               <small>${escapeAttribute(configurationItemDetail(type, item))}</small>
             </div>
             <button class="ghost-button compact-action" type="button" data-action="open-config-catalog" data-catalog-type="${type}" data-catalog-id="${escapeAttribute(item.id)}">Editar</button>
@@ -14164,7 +14272,6 @@ function openConfigurationCatalogModal(type, itemId = "") {
           <div class="form-grid">
             ${type === "state" ? `
               <label class="field"><span>UF *</span><input name="code" required minlength="2" maxlength="2" value="${escapeAttribute(item?.code || "")}" placeholder="SP" /></label>
-              <label class="field"><span>Nome do estado *</span><input name="label" required minlength="2" maxlength="120" value="${escapeAttribute(item?.label || "")}" /></label>
               <label class="field"><span>Região *</span><select name="region" required><option value="">Selecione</option>${regionOptions.map((region) => `<option value="${escapeAttribute(region.label)}" ${region.label === item?.region ? "selected" : ""}>${escapeAttribute(region.label)}${region.active === false ? " · inativa" : ""}</option>`).join("")}</select></label>
             ` : `
               <label class="field"><span>${type === "year" ? "Ano" : "Nome"} *</span><input name="label" required minlength="${type === "year" ? "4" : "2"}" maxlength="${type === "year" ? "4" : "160"}" ${type === "year" ? 'inputmode="numeric" pattern="\\d{4}"' : ""} value="${escapeAttribute(item?.label || "")}" /></label>
@@ -14185,7 +14292,7 @@ function openConfigurationCatalogModal(type, itemId = "") {
       </form>
     </div>
   `);
-  modalRoot.querySelector('[name="label"]')?.focus();
+  modalRoot.querySelector(type === "state" ? '[name="code"]' : '[name="label"]')?.focus();
 }
 
 function handleConfigurationCatalogSubmit(form) {
@@ -14197,8 +14304,17 @@ function handleConfigurationCatalogSubmit(form) {
   const items = configurationItems(type, { includeInactive: true }).map((item) => ({ ...item }));
   const existingIndex = items.findIndex((item) => item.id === itemId);
   const existing = existingIndex >= 0 ? items[existingIndex] : null;
-  const label = String(formData.get("label") || "").trim();
   const code = String(formData.get("code") || "").trim().toUpperCase();
+  const submittedLabel = String(formData.get("label") || "").trim();
+  const label = type === "state" ? code : submittedLabel;
+  if (type === "category" && !canonicalWorkCategory(label)) {
+    showFormError("Esta categoria deve permanecer vazia nas obras.", form);
+    return;
+  }
+  if (type === "typology" && !canonicalWorkTypology(label)) {
+    showFormError("Use somente Nova Unidade, Retrofit ou Ampliação UE.", form);
+    return;
+  }
   if (items.some((item) => item.id !== itemId && normalizeSearchText(item.label) === normalizeSearchText(label))) {
     showFormError(`Esta ${definition.singular} já está cadastrada.`, form);
     return;
@@ -14957,8 +15073,8 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
     cidade: "",
     uf: historicalUf,
     regiao: historicalRecord.region || regionFromUf(historicalUf) || "",
-    classificacaoObra: "Histórico importado",
-    tipologiaObra: historicalRecord.typology || "Não informada",
+    classificacaoObra: "",
+    tipologiaObra: canonicalWorkTypology(historicalRecord.typology),
     areaConstruida: Number(historicalRecord.area || 0),
     areaEquivalente: Number(historicalRecord.area || 0),
     tipoVerba: "CAPEX",
@@ -16431,8 +16547,8 @@ function handleWorkSubmit(form) {
     cidade,
     uf,
     regiao,
-    classificacaoObra: String(formData.get("classificacaoObra") || "").trim() || "Não informada",
-    tipologiaObra: String(formData.get("tipologiaObra") || "").trim() || "Não informada",
+    classificacaoObra: canonicalWorkCategory(formData.get("classificacaoObra")),
+    tipologiaObra: canonicalWorkTypology(formData.get("tipologiaObra")),
     metaCustoM2TargetId: String(formData.get("metaCustoM2TargetId") || "").trim(),
     areaConstruida,
     areaEquivalente,
@@ -16539,7 +16655,8 @@ function generateWorkKey(index, uf, tipoUnidade, tipologia) {
         : typeText.includes("pronto") || typeText === "pa"
           ? "PA"
           : "UND";
-  const typologyCode = normalizeSearchText(tipologia).includes("retrofit") ? "RFT" : "NVU";
+  const normalizedTypology = canonicalWorkTypology(tipologia);
+  const typologyCode = normalizedTypology === "Retrofit" ? "RFT" : normalizedTypology === "Ampliação UE" ? "AMP" : "NVU";
   return `${String(index).padStart(5, "0")}_SLT_${typeCode}_${typologyCode}_${cleanUf}`;
 }
 
@@ -17429,8 +17546,8 @@ function workDraftFromPlanRow(row) {
     cidade: row.praca || "",
     uf: row.uf || "",
     regiao: row.regiao || "",
-    classificacaoObra: row.classificacaoObra || "Não informada",
-    tipologiaObra: row.tipologiaObra || "Não informada",
+    classificacaoObra: canonicalWorkCategory(row.classificacaoObra),
+    tipologiaObra: canonicalWorkTypology(row.tipologiaObra),
     prazoDias: row.slaDias || "",
   };
 }
@@ -18559,15 +18676,15 @@ document.addEventListener("input", (event) => {
 });
 
 function historicalBudgetWorkFromRecord(record, linkedWork = null) {
-  const typology = record?.typology || "";
+  const typology = canonicalWorkTypology(record?.typology);
   const area = Number(record?.area || 0);
   const revisionMatch = String(record?.revision || "").match(/\d+/);
   const revisionNumber = revisionMatch ? Number(revisionMatch[0]) : 0;
-  const lines = Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
+  const lines = normalizeEVLines(Object.entries(record?.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({
     disciplinaId,
     valorOrcado: Number(valorOrcado || 0),
     status: "Orçado",
-  }));
+  })));
   const historicalEV = {
     id: record.id,
     versaoAtual: revisionNumber,
@@ -18594,8 +18711,8 @@ function historicalBudgetWorkFromRecord(record, linkedWork = null) {
     areaConstruida: linkedWork?.areaConstruida || area,
     areaEquivalente: linkedWork?.areaEquivalente || area,
     anoObra: linkedWork?.anoObra || String(record?.year || "").slice(0, 4),
-    uf: linkedWork?.uf || record?.uf || "",
-    regiao: linkedWork?.regiao || record?.region || "",
+    uf: canonicalStateCode(linkedWork?.uf || record?.uf),
+    regiao: linkedWork?.regiao || canonicalStateRegion(record?.uf) || record?.region || "",
     status: linkedWork?.status || "Histórico",
     _historicalBudgetWork: true,
     historicalRecordId: record.id,
