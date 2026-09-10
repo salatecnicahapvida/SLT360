@@ -302,6 +302,8 @@ const baseDisciplines = [
   ["instalacoes-de-climatizacao-e-exaustao", "Instalações de Climatização e Exaustão", "CustosDaObra", true],
   ["dados-voz-cftv-chamada", "Infraestrutura de Dados/Voz/Seg. Patrimonial/CFTV/Chamada", "CustosDaObra", true],
   ["custos-indiretos", "Custos Indiretos", "CustosDaObra", true],
+  ["site-planning", "Site Planning", "CustosDaObra", true],
+  ["diversos", "Diversos", "CustosDaObra", true],
   ["instalacoes-de-glp", "Instalações de GLP", "CustosDaObra", true],
   ["projetos-tecnicos", "Projetos Técnicos", "OutrasCategorias", true],
   ["projetos-legalizacao", "Projetos Legalização", "OutrasCategorias", true],

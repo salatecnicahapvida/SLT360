@@ -258,6 +258,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(categoryCard).not.toContainText('Categoria Configurável');
 
  const disciplineCard=page.locator('[data-configuration-type="discipline"]');
+ await expect(disciplineCard).toContainText('Site Planning');
+ await expect(disciplineCard).toContainText('Diversos');
  await disciplineCard.getByRole('button',{name:'Novo'}).click();
  const disciplineForm=page.locator('#configurationCatalogForm');
  await disciplineForm.locator('[name="label"]').fill('Disciplina Configurável');
