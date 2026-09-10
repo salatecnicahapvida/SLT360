@@ -5443,7 +5443,6 @@ function renderWorksOperational() {
     `)}
     <section class="status-line module-status-line">
       <span class="tag">Sprint atual: ${activeSprint?.nome || "Sem sprint ativa"}</span>
-      <span class="tag">Pendências de cotação: ${state.works.filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo").length}</span>
     </section>
 
     ${renderOperationalFilters()}
