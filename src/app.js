@@ -143,68 +143,18 @@ const projectDemandTypes = [
   },
 ];
 
-const demandProjectDisciplineAcronyms = {
-  "fundacoes-e-contencoes": "FND",
-  estruturas: "EST",
-  "adequacoes-civis": "CIV",
-  fachadas: "FAC",
-  "instalacoes-eletricas-e-spda": "ELE",
-  "instalacoes-hidrossanitarias": "HID",
-  "instalacoes-de-gases-medicinais": "GAS",
-  "instalacoes-de-combate-a-incendio": "INC",
-  "instalacoes-de-climatizacao-e-exaustao": "CLI",
-  "dados-voz-cftv-chamada": "CFTV",
-  "custos-indiretos": "IND",
-  "site-planning": "SITE",
-  diversos: "DIV",
-  "instalacoes-de-glp": "GLP",
-  "projetos-tecnicos": "PRT",
-  "projetos-legalizacao": "LEG",
-  "dados-e-voz-seguranca-patrimonial-chamada-hospitalar": "DVZ",
-  "equipamentos-de-climatizacao": "EQC",
-  "artefatos-inox": "INX",
-  marcenaria: "MAR",
-  "reguas-medicinais": "RGM",
-  "gerador-subestacao-transformador-cubiculos": "GER",
-  "elevadores-plataforma-elevatoria": "ELEV",
-  "compressor-bomba-de-vacuo-driox": "VAC",
-  "it-medico-nobreak": "ITM",
-  "ete-eta": "ETA",
-  "correio-pneumatico": "CPN",
-  "controle-acessos": "CTA",
-  "planejamento-obras": "PLJ",
-  "contas-consumo": "CON",
-  "comunicacao-visual-externa-e-interna": "CVI",
-  "quadros-eletricos": "QEL",
-  "sistemas-de-automacao": "AUT",
-  blindagem: "BLD",
-  "paisagismo-e-ou-compensacao-ambiental": "PAI",
-  "camara-fria": "CFR",
-  "sistema-de-aquecimento-de-agua": "SAA",
-};
-
-function generatedDisciplineAcronym(discipline = {}) {
-  const words = normalizeSearchText(discipline.nome)
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word && !["a", "as", "de", "do", "dos", "e", "em"].includes(word));
-  if (words.length > 1) return words.slice(0, 5).map((word) => word[0]).join("").toUpperCase();
-  return String(words[0] || discipline.id || "PRJ").replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "PRJ";
-}
-
 function demandProjectOptions() {
-  const options = [{ id: "ARQ", label: "Arquitetura" }];
-  const used = new Set(options.map((item) => item.id));
-  configuredDisciplines({ includeInactive: false })
-    .filter((discipline) => discipline.selecionavelParaSIC !== false)
-    .forEach((discipline) => {
-      const baseAcronym = demandProjectDisciplineAcronyms[discipline.id] || generatedDisciplineAcronym(discipline);
-      let acronym = baseAcronym;
-      let suffix = 2;
-      while (used.has(acronym)) acronym = `${baseAcronym}${suffix++}`;
-      used.add(acronym);
-      options.push({ id: acronym, label: discipline.nome, disciplineId: discipline.id });
-    });
-  return options;
+  return [
+    { id: "ARQ", label: "Arquitetura" },
+    { id: "ELE", label: "Instalações Elétricas" },
+    { id: "HID", label: "Instalações Hidrosanitárias" },
+    { id: "ELO", label: "Instalações de Dados e Voz" },
+    { id: "SUB", label: "Subestação" },
+    { id: "GMD", label: "Instalações de Gases Medicinais" },
+    { id: "SCI", label: "Sistema de Combate a Incêndio" },
+    { id: "CLI", label: "Instalações de Climatização e Exaustão" },
+    { id: "SPDA", label: "Instalações de SPDA" },
+  ];
 }
 
 const projectViewIds = [
@@ -5496,7 +5446,6 @@ function renderWorksOperational() {
             <button class="${operationalViewMode === "kanban" ? "is-active" : ""}" type="button" data-action="set-operational-view" data-mode="kanban">Kanban</button>
             <button class="${operationalViewMode === "list" ? "is-active" : ""}" type="button" data-action="set-operational-view" data-mode="list">Lista</button>
           </div>
-          <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
         </div>
       </div>
       ${renderOperationalFilterBanner()}
@@ -5571,6 +5520,9 @@ function renderOperationalFilters() {
             <option value="onTime" ${operationalFilters.punctuality === "onTime" ? "selected" : ""}>No prazo</option>
           </select>
         </label>
+      </div>
+      <div class="operational-filter-actions">
+        <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
       </div>
     </section>
   `;
@@ -14912,7 +14864,7 @@ function renderDemandUnitContext(demand, work = null) {
       <div class="section-title">
         <span>Contexto da unidade</span>
       </div>
-      <div class="split-list compact">
+      <div class="split-list compact demand-context-grid">
         ${splitItem("Tipo de intervenção", isExisting ? "Obra em unidade existente" : "Unidade nova")}
         ${splitItem("Unidade", unitName || "Não vinculada")}
         ${splitItem("Tipo / Local", [unitType, unitCity].filter(Boolean).join(" | ") || "—")}

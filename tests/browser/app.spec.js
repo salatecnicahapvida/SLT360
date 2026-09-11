@@ -117,7 +117,11 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(pendingSicCard.locator('.sic-approval-badge')).toHaveCount(0);
  await expect(pendingSicCard.getByRole('button',{name:'Aprovação'})).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
- await page.locator('[data-operational-filter="type"]').selectOption('');
+ const clearDemandFilters=page.locator('.filter-panel').getByRole('button',{name:'Limpar filtros',exact:true});
+ await expect(clearDemandFilters).toBeVisible();
+ await clearDemandFilters.click();
+ await expect(page.locator('[data-operational-filter="type"]')).toHaveValue('');
+ await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
  await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
   'Todas','Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
   'Aguardando Aprovação Diretoria','Concluído','Cancelado',
@@ -398,8 +402,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(page.locator('.demand-type-card')).toBeVisible();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
- await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveText('DC');
- await expect(page.locator('#demandForm [data-demand-project="DC"] summary')).toHaveAttribute('title','Disciplina Configurável');
+ await expect(page.locator('#demandForm [data-demand-project]')).toHaveCount(9);
+ await expect(page.locator('#demandForm [data-demand-project="DC"]')).toHaveCount(0);
  await page.locator('#demandForm [data-action="close-modal"]').first().click();
  await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
  expect(b.errors).toEqual([]);
@@ -477,9 +481,12 @@ test('first selected analyst leads and every involved discipline persists its po
  const step2=page.locator('#demandForm');
  await expect(step2.getByText('Projetos envolvidos',{exact:true})).toBeVisible();
  const projectItems=step2.locator('[data-demand-project]');
- await expect(projectItems).toHaveCount(38);
- await expect(step2.locator('[data-demand-project="ARQ"] summary')).toHaveText('ARQ');
- await expect(step2.locator('[data-demand-project="ELE"] summary')).toHaveText('ELE');
+ await expect(projectItems).toHaveCount(9);
+ await expect(projectItems.locator('summary')).toHaveText(['ARQ','ELE','HID','ELO','SUB','GMD','SCI','CLI','SPDA']);
+ expect(await projectItems.locator('summary').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('title')))).toEqual([
+  'Arquitetura','Instalações Elétricas','Instalações Hidrosanitárias','Instalações de Dados e Voz','Subestação',
+  'Instalações de Gases Medicinais','Sistema de Combate a Incêndio','Instalações de Climatização e Exaustão','Instalações de SPDA',
+ ]);
  const architecture=step2.locator('[data-demand-project="ARQ"]');
  await architecture.locator('summary').click();
  await architecture.locator('[name="projetosEnvolvidos"]').check();
@@ -514,6 +521,9 @@ test('first selected analyst leads and every involved discipline persists its po
  const saved=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
  await page.locator(`[data-action="open-demand-detail"][data-id="${saved.document.id}"]`).click();
  const detail=page.locator('#demandDetailForm');
+ const contextGrid=detail.locator('.demand-context-grid');
+ await expect(contextGrid).toBeVisible();
+ expect(await contextGrid.locator('.split-item').first().evaluate(node=>({display:getComputedStyle(node).display,textAlign:getComputedStyle(node.querySelector('span')).textAlign}))).toEqual({display:'grid',textAlign:'left'});
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ARQ"]')).toBeChecked();
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ELE"]')).toBeChecked();

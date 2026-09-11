@@ -2885,6 +2885,11 @@ button {
   gap: 10px;
 }
 
+.operational-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .portfolio-filter-bar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -7967,6 +7972,31 @@ button.alert-item {
 
 .demand-detail-form .modal-section {
   margin-top: 0;
+}
+
+.demand-context-grid {
+  gap: 10px;
+}
+
+.demand-context-grid .split-item {
+  display: grid;
+  justify-content: stretch;
+  align-content: start;
+  gap: 5px;
+  min-height: 68px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fbff;
+}
+
+.demand-context-grid .split-item strong,
+.demand-context-grid .split-item span {
+  text-align: left;
+}
+
+.demand-context-grid .split-item span {
+  line-height: 1.35;
 }
 
 .section-title {
