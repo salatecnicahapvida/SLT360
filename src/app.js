@@ -6335,7 +6335,7 @@ function strategicDisciplineRows(records) {
   return configuredDisciplines({ includeInactive: false })
     .filter((discipline) => !["taxa-risco", "sics", "outras-linhas-ev"].includes(discipline.id))
     .map((discipline) => {
-      const withValue = records.filter((record) => Number(record.disciplines?.[discipline.id] || 0) > 0);
+      const withValue = records.filter((record) => Number(record.disciplines?.[discipline.id] || 0) !== 0);
       const values = withValue.map((record) => Number(record.disciplines[discipline.id]) || 0);
       const total = values.reduce((sum, value) => sum + value, 0);
       const withArea = withValue.filter((record) => Number(record.area) > 0);
@@ -6354,7 +6354,7 @@ function strategicDisciplineRows(records) {
         benchmark,
       };
     })
-    .filter((row) => row.total > 0)
+    .filter((row) => row.count > 0)
     .sort((left, right) => right.total - left.total);
 }
 

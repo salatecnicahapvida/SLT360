@@ -201,7 +201,7 @@ test('management view recalculates every indicator and analyst row from the filt
 test('strategic view sums discipline values exactly and recalculates every indicator from its filters',async({page})=>{
  const evRecords=[
   {id:'strategic-1',code:'EV-001',project:'Hospital Estratégico A - SP',year:2025,date:'2025-06-01',revision:'REV01',typology:'Hospital',technician:'Técnico A',area:100,total:1000,baseTotal:1000,disciplines:{'instalacoes-de-climatizacao-e-exaustao':120,'equipamentos-de-climatizacao':80,'adequacoes-civis':800},items:[]},
-  {id:'strategic-2',code:'EV-002',project:'Hospital Estratégico B - RJ',year:2024,date:'2024-06-01',revision:'REV01',typology:'Hospital',technician:'Técnico B',area:50,total:500,baseTotal:500,disciplines:{'instalacoes-de-climatizacao-e-exaustao':50,'equipamentos-de-climatizacao':50,'adequacoes-civis':400},items:[]},
+  {id:'strategic-2',code:'EV-002',project:'Hospital Estratégico B - RJ',year:2024,date:'2024-06-01',revision:'REV01',typology:'Hospital',technician:'Técnico B',area:50,total:500,baseTotal:500,disciplines:{'instalacoes-de-climatizacao-e-exaustao':-20,'equipamentos-de-climatizacao':50,'adequacoes-civis':470},items:[]},
  ];
  const b=await backend(page,'Admin',false,{evRecords});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -211,13 +211,13 @@ test('strategic view sums discipline values exactly and recalculates every indic
  const table=page.locator('.strategic-discipline-table');
  const climateRow=table.locator('tbody tr').filter({hasText:'Instalações de Climatização e Exaustão'});
  await expect(climateRow.locator('td')).toHaveText([
-  /Instalações de Climatização e Exaustão/,'R$ 170,00','10,3%','2','66,7%','R$ 85,00','R$ 85,00','R$ 1,13\/m²',
+  /Instalações de Climatização e Exaustão/,'R$ 100,00','6,1%','2','66,7%','R$ 50,00','R$ 50,00','R$ 0,67\/m²',
  ]);
 
  await climateRow.getByRole('button',{name:'Instalações de Climatização e Exaustão'}).click();
  const detail=page.locator('.strategic-discipline-detail');
- await expect(detail).toContainText('R$ 170,00');
- await expect(detail).toContainText('11,33% do total filtrado');
+ await expect(detail).toContainText('R$ 100,00');
+ await expect(detail).toContainText('6,67% do total filtrado');
  await expect(detail.locator('.strategic-project-ranking tbody tr')).toHaveCount(2);
  await expect(detail.locator('.strategic-project-ranking tbody tr').first().locator('td').nth(3)).toHaveText('R$ 120,00');
 
