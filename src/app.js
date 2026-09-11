@@ -816,9 +816,19 @@ function normalizeDemands(demands = [], works = []) {
   return arrayOrFallback(demands).map((item) => normalizeDemandRecord(item, works));
 }
 
+function canonicalAnalystName(name) {
+  const cleanName = String(name || "").trim();
+  const key = normalizeSearchText(cleanName);
+  if (!key) return "";
+  const directoryName = (globalThis.SLT_CLOUD?.analysts || [])
+    .map((analyst) => String(analyst.nome || "").trim())
+    .find((analystName) => normalizeSearchText(analystName) === key);
+  return directoryName || cleanName;
+}
+
 function demandAnalystNames(demand = {}) {
   const names = [demand.analistaResponsavel, ...arrayOrFallback(demand.analistasComplementares)]
-    .map((name) => String(name || "").trim())
+    .map(canonicalAnalystName)
     .filter(Boolean);
   const seen = new Set();
   return names.filter((name) => {
@@ -5913,7 +5923,15 @@ function uniqueAnalysts() {
     demand.analistaResponsavel,
     ...(demand.analistasComplementares || []),
   ]);
-  return [...new Set([...directory, ...assigned].map((name) => String(name || "").trim()).filter(Boolean))];
+  const namesByKey = new Map();
+  [...directory, ...assigned]
+    .map(canonicalAnalystName)
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = normalizeSearchText(name);
+      if (!namesByKey.has(key)) namesByKey.set(key, name);
+    });
+  return [...namesByKey.values()];
 }
 
 function daysBetween(start, end) {
@@ -15099,7 +15117,11 @@ function analystSelectionSummary(analysts = []) {
 
 function analystChipOptions(demand = {}) {
   const selected = demandAnalystNames(demand);
-  const options = [...selected, ...uniqueAnalysts().filter((analyst) => !selected.includes(analyst))];
+  const selectedKeys = new Set(selected.map(normalizeSearchText));
+  const options = [
+    ...selected,
+    ...uniqueAnalysts().filter((analyst) => !selectedKeys.has(normalizeSearchText(analyst))),
+  ];
   return `
     <div class="demand-analyst-selector" data-demand-analyst-selector>
       <input type="hidden" name="analistasSelecionados" value="${escapeAttribute(JSON.stringify(selected))}" />

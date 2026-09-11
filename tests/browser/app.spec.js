@@ -518,6 +518,18 @@ test('first selected analyst leads and every involved discipline persists its po
  expect(b.errors).toEqual([]);
 });
 
+test('analyst chips use the configured spelling without case duplicates',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),analistaResponsavel:'SKARTH'};
+ const b=await backend(page,'Admin',false,{analystNames:['Skarth'],demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('.operational-board-panel [data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[data-demand-analyst-option][value="Skarth"]')).toHaveCount(1);
+ await expect(detail.locator('[data-demand-analyst-option][value="SKARTH"]')).toHaveCount(0);
+ await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Skarth · Complementares: Nenhum');
+ expect(b.errors).toEqual([]);
+});
+
 test('historical EV shows original and additive totals with an unobstructed title',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
