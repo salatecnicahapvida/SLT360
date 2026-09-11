@@ -5693,10 +5693,9 @@ function renderDemandCard(demand) {
       <h3>${work?.nome || "Obra não localizada"}</h3>
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
-        approval
+        approval && approval.status !== "Pendente"
           ? `<div class="sic-card-sync">
-              ${approval.status === "Pendente" ? "" : `<span class="sic-approval-badge" data-status="${approval.dataStatus}">${approval.label}</span>`}
-              <button class="sic-card-sync-button" type="button" data-action="open-sic-approval" data-id="${demand.id}">Aprovação</button>
+              <span class="sic-approval-badge" data-status="${approval.dataStatus}">${approval.label}</span>
             </div>`
           : ""
       }
@@ -5737,6 +5736,26 @@ function renderDemandLabelsField(labels = []) {
   `;
 }
 
+function demandCardDateInfo(demand) {
+  const validationSent = Boolean(
+    demand.dataEnvioRealValidacaoObras
+    || demand.dataValidacaoObras
+    || ["validacaoObras", "aprovacaoDiretoria", "concluido"].includes(demand.coluna),
+  );
+  if (!validationSent && demand.dataPrevEnvioValidacaoObras) {
+    return {
+      date: demand.dataPrevEnvioValidacaoObras,
+      dateLabel: `Envio p/ validação: ${dateText(demand.dataPrevEnvioValidacaoObras)}`,
+      isValidation: true,
+    };
+  }
+  return {
+    date: demand.dataPrevistaEntrega || "",
+    dateLabel: demand.dataPrevistaEntrega ? `Entrega prevista: ${dateText(demand.dataPrevistaEntrega)}` : "Sem data prevista",
+    isValidation: false,
+  };
+}
+
 function demandTimingInfo(demand) {
   if (demand.coluna === "cancelado") {
     return { tone: "gray", label: "Cancelada", dateLabel: "Sem entrega ativa" };
@@ -5748,28 +5767,29 @@ function demandTimingInfo(demand) {
       dateLabel: demand.dataEntregaReal ? `Concluída em ${dateText(demand.dataEntregaReal)}` : "Concluída",
     };
   }
+  const activeDate = demandCardDateInfo(demand);
   if (isDemandLate(demand)) {
     const lateDays = daysBetween(demand.dataPrevistaEntrega, todayISO());
     return {
       tone: "red",
       label: `Atrasada há ${lateDays} dia${lateDays === 1 ? "" : "s"}`,
-      dateLabel: `Entrega prevista: ${dateText(demand.dataPrevistaEntrega)}`,
+      dateLabel: activeDate.dateLabel,
     };
   }
-  if (demand.dataPrevEnvioValidacaoObras) {
-    const daysToValidation = daysBetween(todayISO(), demand.dataPrevEnvioValidacaoObras);
+  if (activeDate.isValidation) {
+    const daysToValidation = daysBetween(todayISO(), activeDate.date);
     if (daysToValidation >= 0 && daysToValidation <= 5) {
       return {
         tone: "orange",
         label: "Próximo do envio p/ validação",
-        dateLabel: `Envio p/ validação: ${dateText(demand.dataPrevEnvioValidacaoObras)}`,
+        dateLabel: activeDate.dateLabel,
       };
     }
   }
   return {
     tone: "green",
     label: "Em dia",
-    dateLabel: demand.dataPrevistaEntrega ? `Entrega prevista: ${dateText(demand.dataPrevistaEntrega)}` : "Sem data prevista",
+    dateLabel: activeDate.dateLabel,
   };
 }
 

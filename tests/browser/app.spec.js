@@ -115,7 +115,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(pendingSicCard).toBeVisible();
  await expect(pendingSicCard.locator('.demand-card-labels')).toHaveText('Urgente');
  await expect(pendingSicCard.locator('.sic-approval-badge')).toHaveCount(0);
- await expect(pendingSicCard.getByRole('button',{name:'Aprovação'})).toBeVisible();
+ await expect(pendingSicCard.getByRole('button',{name:'Aprovação'})).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.locator('[data-operational-filter="type"]').selectOption('');
  await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
@@ -147,6 +147,23 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(settingsHistory.getByText('Recolher')).toBeVisible();
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
  await page.screenshot({path:'outputs/settings-audit.png',fullPage:true});
+});
+
+test('operational cards prioritize the validation date until validation is sent',async({page})=>{
+ const base={...structuredClone(payload.state.demands[0]),tipo:'EmissaoInicial',sicApprovalStatus:''};
+ const demands=[
+  {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2026-10-01',dataPrevistaEntrega:'2026-10-20'},
+  {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataPrevistaEntrega:'2026-10-21'},
+  {...base,id:'validation-date-missing',coluna:'fazer',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'2026-10-22'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const board=page.locator('.operational-board-panel');
+ await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2026');
+ await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText('Entrega prevista: 21/10/2026');
+ await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
+ await expect(board.getByRole('button',{name:'Aprovação'})).toHaveCount(0);
+ expect(b.errors).toEqual([]);
 });
 
 test('module switching keeps one service order per id when source and database versions overlap',async({page})=>{
