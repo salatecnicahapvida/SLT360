@@ -400,11 +400,24 @@ const removedCategoryKeys = new Set([
   "historico importado", "historico importadado", "nao informada", "nao informado", "ambiental",
   "outro", "outros", "otro", "otros",
 ]);
+const workTypologyOptions = Object.freeze([
+  "Nova Unidade",
+  "Retrofit Unidade Existente",
+  "Ampliação Unidade Existente",
+  "Retrofit + Ampliação",
+]);
 const canonicalTypologyMap = new Map([
   ["nova unidade", "Nova Unidade"],
-  ["retrofit", "Retrofit"],
-  ["ampliacao", "Ampliação UE"],
-  ["ampliacao ue", "Ampliação UE"],
+  ["retrofit", "Retrofit Unidade Existente"],
+  ["retrofit unidade existente", "Retrofit Unidade Existente"],
+  ["retrofit de unidade existente", "Retrofit Unidade Existente"],
+  ["ampliacao", "Ampliação Unidade Existente"],
+  ["ampliacao ue", "Ampliação Unidade Existente"],
+  ["ampliacao unidade existente", "Ampliação Unidade Existente"],
+  ["ampliacao de unidade existente", "Ampliação Unidade Existente"],
+  ["retrofit + ampliacao", "Retrofit + Ampliação"],
+  ["retrofit ampliacao", "Retrofit + Ampliação"],
+  ["retrofit e ampliacao", "Retrofit + Ampliação"],
 ]);
 
 function canonicalWorkCategory(value) {
@@ -415,7 +428,9 @@ function canonicalWorkCategory(value) {
 }
 
 function canonicalWorkTypology(value) {
-  return canonicalTypologyMap.get(normalizeSearchText(value)) || "";
+  const key = normalizeSearchText(value).trim();
+  if (key.includes("retrofit") && key.includes("ampliacao")) return "Retrofit + Ampliação";
+  return canonicalTypologyMap.get(key) || "";
 }
 
 function canonicalStateCode(value) {
@@ -911,7 +926,7 @@ function defaultConfigurationItems(type) {
     return appendCatalogValues(defaults, type, arrayOrFallback(state?.works).map((work) => canonicalWorkCategory(work.classificacaoObra)));
   }
   if (type === "typology") {
-    return ["Nova Unidade", "Retrofit", "Ampliação UE"].map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
+    return workTypologyOptions.map((label, index) => catalogEntry(type, `default-${index + 1}`, label));
   }
   if (type === "year") {
     const currentYear = new Date().getFullYear();
@@ -952,9 +967,16 @@ function normalizeConfigurationItems(type, items = []) {
 
 function configurationItems(type, { includeInactive = false } = {}) {
   const stored = arrayOrFallback(state?.configurationCatalog).filter((item) => item.type === type);
-  const items = normalizeConfigurationItems(type, stored.length ? stored : defaultConfigurationItems(type));
+  const source = type === "typology" && stored.length
+    ? [...stored, ...defaultConfigurationItems(type)]
+    : stored.length ? stored : defaultConfigurationItems(type);
+  const items = normalizeConfigurationItems(type, source);
   return items
-    .map((item, index) => ({ ...item, active: item.active !== false, position: Number(item.position || index + 1) }))
+    .map((item, index) => ({
+      ...item,
+      active: type === "typology" ? true : item.active !== false,
+      position: type === "typology" ? workTypologyOptions.indexOf(item.label) + 1 : Number(item.position || index + 1),
+    }))
     .filter((item) => includeInactive || item.active !== false)
     .sort((left, right) => Number(left.position || 999) - Number(right.position || 999) || String(left.label).localeCompare(String(right.label), "pt-BR"));
 }
@@ -6427,7 +6449,7 @@ function renderWorksStrategic() {
       <div><span class="eyebrow">Inteligência de custos dos EVs</span><h2>Investimento orçado, composição e referências históricas</h2><p class="panel-subtitle">Os valores representam os custos previstos nos Estudos de Viabilidade. Eles não correspondem a pagamentos realizados. Use os filtros para recalcular todos os indicadores e detalhar qualquer disciplina da base.</p></div>
       <div class="strategic-analysis-filters">
         <label class="field"><span>Ano do EV</span><select data-strategic-ev-filter="year">${evHistoricalFilterOptions(sourceRecords.map((record) => String(record.year)), strategicEVFilters.year, "Todos os anos")}</select></label>
-        <label class="field"><span>Tipologia</span><select data-strategic-ev-filter="typology">${evHistoricalFilterOptions(sourceRecords.map((record) => record.typology), strategicEVFilters.typology, "Todas as tipologias")}</select></label>
+        <label class="field"><span>Tipologia</span><select data-strategic-ev-filter="typology">${evHistoricalFilterOptions(workTypologyOptions, strategicEVFilters.typology, "Todas as tipologias", (value) => value, true)}</select></label>
         <label class="field"><span>Disciplina</span><select data-strategic-ev-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((discipline) => discipline.id), strategicEVFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
         <button class="secondary-action" type="button" data-action="clear-strategic-ev-filters">Limpar filtros</button>
       </div>
@@ -6839,6 +6861,54 @@ function renderPortfolioFilters(rows) {
   `;
 }
 
+const workNameAcronyms = new Set([
+  ...baseStates.map(([code]) => code),
+  "HTL", "HS", "HO", "TEA", "HC", "HAP", "PA", "NTE", "NTO", "AME", "CD",
+  "EV", "SIC", "SPDA", "UTI", "UPA", "UBS", "CDI", "CME", "CTI", "UCI", "SADT",
+  "CCIH", "AVCB", "PPCI", "PPC", "AVC", "HVAC", "CEO", "CER", "CAPS", "PS", "PSF",
+  "RH", "TI", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
+  "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU",
+]);
+
+function portfolioWorkDisplayCode(row) {
+  const explicitCode = String(row?.codigo || "").trim().replace(/[.\s]+$/g, "");
+  if (explicitCode && !/^(undefined|null)$/i.test(explicitCode)) return explicitCode;
+  const embeddedCode = String(row?.nome || "").match(/^\s*(\d{1,10})\s*\.\s*/)?.[1];
+  return embeddedCode || "0000";
+}
+
+function titleCaseWorkNamePart(part, sourceWasAllUpper) {
+  const coreMatch = String(part).match(/[0-9\p{L}]+(?:['’][0-9\p{L}]+)*/u);
+  if (!coreMatch) return part;
+  const core = coreMatch[0];
+  const prefix = part.slice(0, coreMatch.index);
+  const suffix = part.slice(coreMatch.index + core.length);
+  const lower = core.toLocaleLowerCase("pt-BR");
+  const upper = core.toLocaleUpperCase("pt-BR");
+  if (lower === "de") return `${prefix}de${suffix}`;
+  const intentionallyUpper = !sourceWasAllUpper && core === upper && core !== lower && core.length <= 6;
+  if (workNameAcronyms.has(upper) || intentionallyUpper || /\d/.test(core) && core === upper) {
+    return `${prefix}${upper}${suffix}`;
+  }
+  const titled = lower.replace(/^\p{L}/u, (letter) => letter.toLocaleUpperCase("pt-BR"));
+  return `${prefix}${titled}${suffix}`;
+}
+
+function portfolioWorkDisplayName(row) {
+  let name = String(row?.nome || "").replace(/^\s*\d{1,10}\s*\.\s*/, "").trim();
+  const suffix = name.match(/\s*-\s*([A-Za-z]{2})\s*$/);
+  const rowUf = canonicalStateCode(row?.uf);
+  if (suffix && rowUf && suffix[1].toUpperCase() === rowUf) name = name.slice(0, suffix.index).trim();
+  const letters = name.replace(/[^\p{L}]/gu, "");
+  const sourceWasAllUpper = Boolean(letters) && letters === letters.toLocaleUpperCase("pt-BR");
+  return name
+    .split(/(\s+|\/|-)/)
+    .map((part) => /^(\s+|\/|-)$/.test(part) ? part : titleCaseWorkNamePart(part, sourceWasAllUpper))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function renderPortfolioTable(rows) {
   return `
     <div class="portfolio-table-scroll-shell">
@@ -6865,10 +6935,13 @@ function renderPortfolioTable(rows) {
           </tr>
         </thead>
         <tbody>
-          ${rows.map((row) => `
+          ${rows.map((row) => {
+            const displayCode = portfolioWorkDisplayCode(row);
+            const displayName = portfolioWorkDisplayName(row);
+            return `
             <tr class="portfolio-work-row">
-              <td><strong>${escapeAttribute(row.codigo || "")}</strong></td>
-              <td><strong>${escapeAttribute(row.nome)}</strong></td>
+              <td><strong>${escapeAttribute(displayCode)}</strong></td>
+              <td><strong>${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
               <td>${escapeAttribute(row.regional || "")}</td>
               <td>${escapeAttribute(row.year || "")}</td>
@@ -6886,7 +6959,8 @@ function renderPortfolioTable(rows) {
                 <button class="secondary-action compact-action" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar Obra</button>
               </div></td>
             </tr>
-          `).join("") || `<tr><td colspan="15"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
+          `;
+          }).join("") || `<tr><td colspan="15"><div class="empty-state">Nenhuma obra encontrada com os filtros selecionados.</div></td></tr>`}
         </tbody>
       </table>
       </div>
@@ -7360,8 +7434,9 @@ function evUnifiedRecords() {
   const historicalRows = evHistoricalSourceRecords().map((record) => {
     const work = evUnifiedWorkForHistorical(record);
     if (work) matchedWorkIds.add(work.id);
-    const typology = evTypologyFromProjectName(record.project) || state.evTypologyOverrides?.[record.id] || record.typology || "Não informada";
-    return { ...record, typology, sourceKind: "historical", workId: work?.id || "", sourceLabel: work ? "Histórico + cadastro" : "Histórico", searchAliases: work?.nome || "" };
+    const sourceUnitType = record.typology || "";
+    const typology = canonicalWorkTypology(state.evTypologyOverrides?.[record.id] || work?.tipologiaObra || record.tipologiaObra);
+    return { ...record, unitType: sourceUnitType, typology, sourceKind: "historical", workId: work?.id || "", sourceLabel: work ? "Histórico + cadastro" : "Histórico", searchAliases: work?.nome || "" };
   });
   const currentRows = state.works
     .filter((work) => work?.ev && !work.ev._virtualEmptyEV && !matchedWorkIds.has(work.id))
@@ -7380,7 +7455,7 @@ function evUnifiedRecords() {
       return {
         id: `current-${work.id}`, code: work.chaveUnica || work.codigoOriginal || "", project: work.nome,
         revision: `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")}`, date,
-        year: date ? String(date).slice(0, 4) : "Atual", typology: evTypologyFromProjectName(work.nome) || state.evTypologyOverrides?.[`current-${work.id}`] || evHistoricalTypologyForWork(work) || work.tipologiaObra || work.tipoUnidade || "Não informada",
+        year: date ? String(date).slice(0, 4) : "Atual", typology: canonicalWorkTypology(state.evTypologyOverrides?.[`current-${work.id}`] || work.tipologiaObra),
         area: Number(work.areaEquivalente || work.areaConstruida || 0), total: totals.orcado + totals.aditivado,
         baseTotal: Math.max(0, totals.orcado - risk), disciplines: values, items,
         sourceKind: "current", workId: work.id, sourceLabel: "Novo cadastro SLT 360", searchAliases: `${work.nome} ${work.chaveUnica || ""} ${work.codigoOriginal || ""}`,
@@ -7438,8 +7513,10 @@ function evHistoricalBenchmarkRows(records) {
     .sort((a, b) => b.mean - a.mean);
 }
 
-function evHistoricalFilterOptions(values, selected, allLabel, labelFor = (value) => value) {
-  return `<option value="">${allLabel}</option>${[...new Set(values)].filter(Boolean).sort((a, b) => String(labelFor(a)).localeCompare(String(labelFor(b)), "pt-BR"))
+function evHistoricalFilterOptions(values, selected, allLabel, labelFor = (value) => value, preserveOrder = false) {
+  const options = [...new Set(values)].filter(Boolean);
+  if (!preserveOrder) options.sort((a, b) => String(labelFor(a)).localeCompare(String(labelFor(b)), "pt-BR"));
+  return `<option value="">${allLabel}</option>${options
     .map((value) => `<option value="${escapeAttribute(value)}" ${String(value) === String(selected) ? "selected" : ""}>${escapeAttribute(labelFor(value))}</option>`).join("")}`;
 }
 
@@ -7499,7 +7576,7 @@ function renderEVHistoricalIntelligence({ summaryOnly = false } = {}) {
       ${summaryOnly ? "" : `<div class="ev-history-filters">
         <label class="field ev-history-search"><span>Buscar EV histórico</span><input data-ev-history-search value="${escapeAttribute(evHistoricalFilters.query)}" placeholder="Código ou nome do projeto..." /></label>
         <label class="field"><span>Ano</span><select data-ev-history-filter="year">${evHistoricalFilterOptions(source.map((r) => String(r.year)), evHistoricalFilters.year, "Todos os anos")}</select></label>
-        <label class="field"><span>Tipologia</span><select data-ev-history-filter="typology">${evHistoricalFilterOptions(source.map((r) => r.typology), evHistoricalFilters.typology, "Todas as tipologias")}</select></label>
+        <label class="field"><span>Tipologia</span><select data-ev-history-filter="typology">${evHistoricalFilterOptions(workTypologyOptions, evHistoricalFilters.typology, "Todas as tipologias", (value) => value, true)}</select></label>
         <label class="field"><span>Disciplina</span><select data-ev-history-filter="discipline">${evHistoricalFilterOptions(selectableDisciplines.map((d) => d.id), evHistoricalFilters.discipline, "Todas as disciplinas", (id) => disciplineById(id).nome)}</select></label>
       </div>`}
       <div class="ev-history-kpis">
@@ -7635,16 +7712,13 @@ function editHistoricalEV(recordId) {
 function openEVTypologyModal(recordId) {
   const record = evUnifiedRecords().find((item) => item.id === recordId);
   if (!record) return;
-  const options = [...new Set(evUnifiedRecords().map((item) => item.typology).concat(configurationLabels("typology"), [
-    "Hospital", "Pronto Atendimento", "Clínica e Medicina Preventiva", "Diagnóstico, Laboratório e Terapias",
-    "TEA", "Administrativo e Logística", "Adequação Regulatória", "Outros", "Não informada",
-  ]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const options = configurationLabels("typology");
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card compact-modal" aria-labelledby="evTypologyTitle">
         <header class="modal-header"><div><span class="eyebrow">Classificação unificada</span><h2 id="evTypologyTitle">Editar tipologia do EV</h2><p class="muted">${escapeAttribute(record.project)} · ${escapeAttribute(record.code || "Sem código")}</p></div><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></header>
         <form id="evTypologyForm" class="modal-body" data-record-id="${escapeAttribute(record.id)}">
-          <label class="field"><span>Tipologia</span><select name="typology" required>${options.map((option) => `<option value="${escapeAttribute(option)}" ${option === record.typology ? "selected" : ""}>${escapeAttribute(option)}</option>`).join("")}</select></label>
+          <label class="field"><span>Tipologia</span><select name="typology" required><option value="">Selecione</option>${options.map((option) => `<option value="${escapeAttribute(option)}" ${option === record.typology ? "selected" : ""}>${escapeAttribute(option)}</option>`).join("")}</select></label>
           <div class="info-callout"><strong>Atualização integrada</strong><span>A nova tipologia atualizará a aba EV, os filtros, o R$/m², os gráficos estratégicos e a inteligência do Haptec.</span></div>
           <footer class="modal-actions"><button class="secondary-action" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Salvar tipologia</button></footer>
         </form>
@@ -7654,20 +7728,18 @@ function openEVTypologyModal(recordId) {
 
 function handleEVTypologySubmit(form) {
   const recordId = form.dataset.recordId;
-  const typology = String(new FormData(form).get("typology") || "").trim();
+  const typology = canonicalWorkTypology(new FormData(form).get("typology"));
   const record = evUnifiedRecords().find((item) => item.id === recordId);
   if (!record || !typology) return;
   state.evTypologyOverrides = { ...(state.evTypologyOverrides || {}), [record.id]: typology };
   if (record.sourceKind === "historical") {
     const linked = evUnifiedWorkForHistorical(record);
     if (linked) {
-      linked.tipoUnidade = typology;
       linked.tipologiaObra = typology;
     }
   } else {
     const work = workById(record.workId);
     if (work) {
-      work.tipoUnidade = typology;
       work.tipologiaObra = typology;
     }
   }
@@ -14429,7 +14501,7 @@ function renderKeyLegend() {
       <div class="support-grid compact">
         ${supportList("Tipo de Unidade", ["01 Clínica", "02 Hospital", "03 Diagnóstico", "04 Pronto Atendimento", "05 Administrativo", "06 Centro de Distribuição", "07 TEA", "08 Coleta", "09 Medprev"])}
         ${supportList("Classificação", ["AR Adequação Regulatória", "EO Eficiência Operacional", "FC Fachada", "EM Obra Emergencial", "EE Obra Estratégica", "SR Suficiência de Rede", "VZ Verticalização", "VS Venda de Serviço", "PU Padronização de Unidade"])}
-        ${supportList("Tipologia", ["NVU Nova Unidade", "RFT Retrofit", "AMP Ampliação UE"])}
+        ${supportList("Tipologia", ["NVU Nova Unidade", "RFT Retrofit Unidade Existente", "AMP Ampliação Unidade Existente", "RFA Retrofit + Ampliação"])}
         ${supportList("Seq + Ano + UF", ["001-999 Nº sequencial", "26, 27... Ano de cadastro", "CE, SP... UF padrão IBGE"])}
       </div>
     </div>
@@ -14660,7 +14732,7 @@ function handleConfigurationCatalogSubmit(form) {
     return;
   }
   if (type === "typology" && !canonicalWorkTypology(label)) {
-    showFormError("Use somente Nova Unidade, Retrofit ou Ampliação UE.", form);
+    showFormError(`Use somente: ${workTypologyOptions.join(", ")}.`, form);
     return;
   }
   if (items.some((item) => item.id !== itemId && normalizeSearchText(item.label) === normalizeSearchText(label))) {
@@ -15571,7 +15643,10 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
             </label>
             <label class="field">
               <span>Tipologia</span>
-              <input name="tipologiaObra" list="tipologiaOptions" placeholder="Nova unidade" value="${fieldValue("tipologiaObra")}" />
+              <select name="tipologiaObra">
+                <option value="">Selecione</option>
+                ${workTypologyOptions.map((option) => `<option value="${escapeAttribute(option)}" ${option === (work?.tipologiaObra || draft?.tipologiaObra || "") ? "selected" : ""}>${escapeAttribute(option)}</option>`).join("")}
+              </select>
             </label>
             <label class="field full-span">
               <span>Meta de custo por m²</span>
@@ -15641,7 +15716,6 @@ function workFormDatalists() {
     ${datalist("regiaoOptions", configurationLabels("region"))}
     ${datalist("anoObraOptions", configurationLabels("year"))}
     ${datalist("classificacaoOptions", configurationLabels("category"))}
-    ${datalist("tipologiaOptions", configurationLabels("typology"))}
   `;
 }
 
@@ -17033,7 +17107,11 @@ function generateWorkKey(index, uf, tipoUnidade, tipologia) {
           ? "PA"
           : "UND";
   const normalizedTypology = canonicalWorkTypology(tipologia);
-  const typologyCode = normalizedTypology === "Retrofit" ? "RFT" : normalizedTypology === "Ampliação UE" ? "AMP" : "NVU";
+  const typologyCode = normalizedTypology === "Retrofit Unidade Existente"
+    ? "RFT"
+    : normalizedTypology === "Ampliação Unidade Existente"
+      ? "AMP"
+      : normalizedTypology === "Retrofit + Ampliação" ? "RFA" : "NVU";
   return `${String(index).padStart(5, "0")}_SLT_${typeCode}_${typologyCode}_${cleanUf}`;
 }
 

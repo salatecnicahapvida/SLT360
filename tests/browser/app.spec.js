@@ -6,7 +6,7 @@ const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[
     {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'São Paulo - Sudeste',cidade:'São Paulo',tipoUnidade:'Clínica',classificacaoObra:'Venda de Serviços',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorOrcado:100},{disciplinaId:'instalacoes-de-spda',valorOrcado:50}],versions:[],sicIds:[],demandaIds:[]}},
-    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'NEW',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Outros',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
+    {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Outros',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
     {id:'evh-test-1',code:'HIST-1',project:'Obra histórica Norte - AM',year:2025,date:'2025-06-01',revision:'REV02',typology:'Hospital',technician:'Técnico A',area:200,total:1000,baseTotal:950,disciplines:{'adequacoes-civis':800,'taxa-risco':50,sics:150},items:[]},
@@ -21,8 +21,9 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null}={}){
  const input=structuredClone(payload);
+ if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
  if(Array.isArray(evRecords))input.state.evs=evRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
@@ -262,6 +263,9 @@ test('strategic view sums discipline values exactly and recalculates every indic
  await page.locator('[data-view="worksStrategic"]').filter({visible:true}).first().click();
 
  await expect(page.getByRole('heading',{name:'Investimento por disciplina'})).toBeVisible();
+ await expect(page.locator('[data-strategic-ev-filter="typology"] option')).toHaveText([
+  'Todas as tipologias','Nova Unidade','Retrofit Unidade Existente','Ampliação Unidade Existente','Retrofit + Ampliação',
+ ]);
  const table=page.locator('.strategic-discipline-table');
  const climateRow=table.locator('tbody tr').filter({hasText:'Instalações de Climatização e Exaustão'});
  await expect(climateRow.locator('td')).toHaveText([
@@ -410,7 +414,7 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='core_configuration_catalog'))).toBe(true);
 
  const typologyLabels=page.locator('[data-configuration-type="typology"] .configuration-catalog-item strong');
- await expect(typologyLabels).toHaveText(['Nova Unidade','Retrofit','Ampliação UE']);
+ await expect(typologyLabels).toHaveText(['Nova Unidade','Retrofit Unidade Existente','Ampliação Unidade Existente','Retrofit + Ampliação']);
  const stateCard=page.locator('[data-configuration-type="state"]');
  await expect(stateCard.locator('.configuration-catalog-item strong')).toHaveText([
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
@@ -434,7 +438,9 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(page.locator('#classificacaoOptions option[value="Venda de Serviços"]')).toHaveCount(0);
  await expect(page.locator('#classificacaoOptions option[value="Ambiental"]')).toHaveCount(0);
  await expect(page.locator('#classificacaoOptions option[value="Não informada"]')).toHaveCount(0);
- expect(await page.locator('#tipologiaOptions option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['Nova Unidade','Retrofit','Ampliação UE']);
+ await expect(newWorkForm.locator('[name="tipologiaObra"] option')).toHaveText([
+  'Selecione','Nova Unidade','Retrofit Unidade Existente','Ampliação Unidade Existente','Retrofit + Ampliação',
+ ]);
  await newWorkForm.locator('[name="nome"]').fill('Obra sem origem de verba');
  await newWorkForm.locator('[name="tipoUnidade"]').fill('Hospital');
  await newWorkForm.locator('[name="cidade"]').fill('Recife');
@@ -614,7 +620,7 @@ test('historical EV shows original and additive totals with an unobstructed titl
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
+ const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Norte/i});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
  const modal=page.locator('.ev-historical-modal');
  await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
@@ -631,7 +637,7 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await title.click(); // Also checks that the site header does not cover the title.
  await page.screenshot({path:'outputs/ev-summary-layout.png',fullPage:false});
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
- const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Sul'});
+ const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Sul/i});
  await safeRow.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(metric('SICs / Aditivos')).toContainText('R$ 20');
  await expect(metric('Percentual de SICs / Aditivos')).toContainText('3,85%');
@@ -650,7 +656,7 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  const rows=page.locator('.portfolio-works-table tbody tr');
- const historical=rows.filter({hasText:'Obra histórica Norte'});
+ const historical=rows.filter({hasText:/Obra Histórica Norte/i});
  await expect(historical.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
  await historical.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
@@ -658,7 +664,7 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Editar EV',exact:true})).toBeVisible();
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
- const current=rows.filter({hasText:'Obra de teste'});
+ const current=rows.filter({hasText:/Obra de Teste/i});
  await expect(current.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
  await current.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
@@ -666,7 +672,7 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
- const empty=rows.filter({hasText:'Obra nova sem EV'});
+ const empty=rows.filter({hasText:/Obra Nova Sem EV/i});
  await expect(empty.locator('.portfolio-actions button')).toHaveText(['Criar EV','Editar Obra']);
  await empty.getByRole('button',{name:'Criar EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
@@ -677,9 +683,28 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(updatedEmpty.locator('td').nth(10)).toHaveText('75,00');
  await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ expect(b.errors).toEqual([]);
+});
+
+test('portfolio standardizes work names, preserves acronyms and supplies missing codes',async({page})=>{
+ const works=[
+  {id:'upper-work',nome:'9902. PA BARRA DE HTL / HS - RJ',codigoOriginal:'',uf:'RJ',cidade:'Rio de Janeiro',tipoUnidade:'Pronto Atendimento'},
+  {id:'lower-work',nome:'novo centro de tea - sp',codigoOriginal:'1234',uf:'SP',cidade:'São Paulo',tipoUnidade:'TEA'},
+  {id:'missing-code-work',nome:'clínica de apoio - ce',codigoOriginal:'',uf:'CE',cidade:'Fortaleza',tipoUnidade:'Clínica'},
+ ];
+ const b=await backend(page,'Admin',false,{workRecords:works,demandRecords:[],evRecords:[]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const rows=page.locator('.portfolio-works-table tbody tr');
+ await expect(rows).toHaveCount(3);
+ await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(0)).toHaveText('9902');
+ await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(1)).toHaveText('9902. PA Barra de HTL / HS');
+ await expect(rows.filter({hasText:'Novo Centro'}).locator('td').nth(1)).toHaveText('1234. Novo Centro de TEA');
+ await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(0)).toHaveText('0000');
+ await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(1)).toHaveText('0000. Clínica de Apoio');
  expect(b.errors).toEqual([]);
 });
 
@@ -688,7 +713,7 @@ test('admin deletes an unlinked work and linked works remain protected',async({p
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
 
- const unlinkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ const unlinkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await unlinkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
  const workForm=page.locator('#workForm');
  await expect(workForm.getByRole('button',{name:'Excluir obra',exact:true})).toBeVisible();
@@ -708,7 +733,7 @@ test('admin deletes an unlinked work and linked works remain protected',async({p
  await expect(unlinkedRow).toHaveCount(0);
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.key==='work-without-ev'&&change.operation==='delete')).toBe(true);
 
- const linkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
+ const linkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
  await linkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
  await page.locator('#workForm').getByRole('button',{name:'Excluir obra',exact:true}).click();
  const blockedModal=page.locator('.work-delete-modal');
@@ -736,7 +761,9 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(kpis).not.toContainText('Projetos atrasados');
  await expect(page.locator('[data-portfolio-quick-filter]')).toHaveCount(7);
  await expect(page.locator('[data-portfolio-quick-filter="origem"]')).toHaveCount(0);
- await expect(page.locator('[data-portfolio-quick-filter="tipologia"] option')).toHaveText(['Todas','Nova Unidade','Retrofit','Ampliação UE']);
+ await expect(page.locator('[data-portfolio-quick-filter="tipologia"] option')).toHaveText([
+  'Todas','Nova Unidade','Retrofit Unidade Existente','Ampliação Unidade Existente','Retrofit + Ampliação',
+ ]);
  const categoryFilter=page.locator('[data-portfolio-quick-filter="categoria"]');
  await expect(categoryFilter).not.toContainText('Ambiental');
  await expect(categoryFilter).not.toContainText('Outros');
@@ -759,11 +786,12 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(2);
  await page.locator('[data-portfolio-search]').fill('Sul');
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(1);
- await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra histórica Sul');
+ await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra Histórica Sul');
  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
- const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra histórica Norte'});
- await expect(historicalRow.locator('td').nth(1)).toHaveText('Obra histórica Norte - AM');
+ const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Norte/i});
+ await expect(historicalRow.locator('td').nth(0)).toHaveText('HIST-1');
+ await expect(historicalRow.locator('td').nth(1)).toHaveText('HIST-1. Obra Histórica Norte');
  await expect(historicalRow).not.toContainText('Histórico');
  await expect(historicalRow).not.toContainText('Técnico A');
  await expect(historicalRow.locator('td').nth(2)).toHaveText('AM');
@@ -791,7 +819,8 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC'})).toBeVisible();
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
- const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
+ const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
+ await expect(currentRow.locator('td').nth(1)).toHaveText('TEST. Obra de Teste');
  await expect(currentRow.locator('td').nth(2)).toHaveText('SP');
  await expect(currentRow.locator('td').nth(3)).toHaveText('Sudeste');
  await expect(currentRow.locator('td').nth(4)).toHaveText('2026');
@@ -810,14 +839,17 @@ test('portfolio includes works without EV, selectable filters and the single req
  await currentWorkForm.getByRole('button',{name:'Salvar alterações'}).click();
  await expect(currentRow.locator('td').nth(8)).toHaveText('Rua editada, 100');
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'&&change.document.endereco==='Rua editada, 100'))).toBe(true);
- const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
- await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit');
+ const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
+ await expect(noEvRow.locator('td').nth(0)).toHaveText('0000');
+ await expect(noEvRow.locator('td').nth(1)).toHaveText('0000. Obra Nova Sem EV');
+ await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit Unidade Existente');
  await expect(noEvRow.locator('td').nth(6)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(10)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(12)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(13)).toBeEmpty();
  await expect(noEvRow.locator('.portfolio-actions button')).toHaveText(['Criar EV','Editar Obra']);
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
+ await expect(ambiguousPaRow.locator('td').nth(1)).toHaveText('HIST-3. ADM Barro Preto Timbiras - 2° PA');
  await expect(ambiguousPaRow.locator('td').nth(2)).toBeEmpty();
  await expect(ambiguousPaRow.locator('td').nth(3)).toBeEmpty();
  await expect(page.locator('.portfolio-works-table')).toHaveCount(1);
