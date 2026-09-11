@@ -1,6 +1,7 @@
 // Private operator tool. Reads DADOS EVS and writes audit artifacts outside this public repository.
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import * as XLSX from 'xlsx';
 
 const [inputPath, outputDir] = process.argv.slice(2);
@@ -31,7 +32,9 @@ function isoDate(value) {
   return String(value ?? '').trim();
 }
 
-const workbook = XLSX.read(await fs.readFile(inputPath), { type: 'buffer', cellDates: true });
+const inputBuffer = await fs.readFile(inputPath);
+const sourceHash = createHash('sha256').update(inputBuffer).digest('hex');
+const workbook = XLSX.read(inputBuffer, { type: 'buffer', cellDates: true });
 const sheetName = workbook.SheetNames[0];
 const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: null, raw: true });
 const headerIndex = rows.findIndex((row) => row.some((value) => normalize(value) === 'projeto'));
@@ -79,17 +82,19 @@ for (const [offset, row] of rows.slice(headerIndex + 1).entries()) {
 const projects = [...grouped.values()];
 if (projects.length !== 856) throw new Error(`Esperadas 856 obras, encontradas ${projects.length}.`);
 const itemCount = projects.reduce((sum, project) => sum + project.items.length, 0);
-if (itemCount !== 9795) throw new Error(`Esperadas 9.795 linhas, encontradas ${itemCount}.`);
 const consolidatedObraRows = projects.flatMap((project) => project.items).filter((item) => normalize(item.description) === 'obra');
 if (consolidatedObraRows.length) throw new Error(`Ainda existem ${consolidatedObraRows.length} linhas consolidadas com a descrição Obra.`);
+const descriptions = new Set(projects.flatMap((project) => project.items).map((item) => item.description));
+if (descriptions.size !== 37) throw new Error(`Esperadas 37 descrições padronizadas, encontradas ${descriptions.size}.`);
 
 const source = path.basename(inputPath);
+const sourceTotal = Math.round(projects.reduce((sum, project) => sum + project.total, 0) * 100) / 100;
 const payload = {
-  source,
+  source, sourceHash,
   sheet: sheetName,
   projectCount: projects.length,
   itemCount,
-  total: Math.round(projects.reduce((sum, project) => sum + project.total, 0) * 100) / 100,
+  total: sourceTotal,
   zeroAreaProjects: projects.filter((project) => !project.area).length,
   projects,
 };
@@ -185,6 +190,28 @@ returns text language sql immutable set search_path='' as $$
     when 'site planning' then 'site-planning'
     when 'paisagismo' then 'paisagismo-e-ou-compensacao-ambiental'
     when 'diversos' then 'diversos'
+    when 'artefatos em inox' then 'artefatos-inox'
+    when 'blindagem' then 'blindagem'
+    when 'compressor bomba de vacuo driox' then 'compressor-bomba-de-vacuo-driox'
+    when 'comunicacao visual externa e interna' then 'comunicacao-visual-externa-e-interna'
+    when 'contas de consumo' then 'contas-consumo'
+    when 'controle de acessos' then 'controle-acessos'
+    when 'correio pneumatico' then 'correio-pneumatico'
+    when 'dados e voz seguranca patrimonial chamada hospitalar' then 'dados-e-voz-seguranca-patrimonial-chamada-hospitalar'
+    when 'elevadores plataforma elevatoria' then 'elevadores-plataforma-elevatoria'
+    when 'equipamentos de climatizacao' then 'equipamentos-de-climatizacao'
+    when 'ete eta' then 'ete-eta'
+    when 'gerador subestacao transformador cubiculos' then 'gerador-subestacao-transformador-cubiculos'
+    when 'it medico nobreak' then 'it-medico-nobreak'
+    when 'marcenaria' then 'marcenaria'
+    when 'planejamento de obras' then 'planejamento-obras'
+    when 'projetos legalizacao' then 'projetos-legalizacao'
+    when 'projetos tecnicos' then 'projetos-tecnicos'
+    when 'quadros eletricos' then 'quadros-eletricos'
+    when 'reguas medicinais' then 'reguas-medicinais'
+    when 'sic s' then 'sics'
+    when 'sistemas de automacao' then 'sistemas-de-automacao'
+    when 'taxa de risco 5' then 'taxa-risco'
   end
 $$;
 create or replace function pg_temp.infer_ev_discipline(value text)
@@ -262,8 +289,21 @@ select jsonb_build_object(
 ) audit;
 `;
 
-const payloadBase64 = Buffer.from(JSON.stringify(projects), 'utf8').toString('base64');
-const migrationSql = `begin;
+const descriptionList = [...descriptions];
+const descriptionIndexes = new Map(descriptionList.map((description, index) => [description, index]));
+const compactProjects = projects.map((project) => [
+  project.project,
+  project.revision,
+  project.date,
+  project.area,
+  project.technician,
+  project.total,
+  project.items.map((item) => [item.item, descriptionIndexes.get(item.description), item.value]),
+]);
+const payloadBase64 = Buffer.from(JSON.stringify({ d: descriptionList, p: compactProjects }), 'utf8').toString('base64');
+const migrationSql = `-- Fonte: ${source} | SHA-256: ${sourceHash}
+-- Atualiza somente as 856 obras/EVs oficiais já existentes e aborta diante de divergências.
+begin;
 
 select pg_advisory_xact_lock(hashtextextended('slt360/dados-evs-import',0));
 
@@ -293,6 +333,28 @@ returns text language sql immutable set search_path='' as $$
     when 'site planning' then 'site-planning'
     when 'paisagismo' then 'paisagismo-e-ou-compensacao-ambiental'
     when 'diversos' then 'diversos'
+    when 'artefatos em inox' then 'artefatos-inox'
+    when 'blindagem' then 'blindagem'
+    when 'compressor bomba de vacuo driox' then 'compressor-bomba-de-vacuo-driox'
+    when 'comunicacao visual externa e interna' then 'comunicacao-visual-externa-e-interna'
+    when 'contas de consumo' then 'contas-consumo'
+    when 'controle de acessos' then 'controle-acessos'
+    when 'correio pneumatico' then 'correio-pneumatico'
+    when 'dados e voz seguranca patrimonial chamada hospitalar' then 'dados-e-voz-seguranca-patrimonial-chamada-hospitalar'
+    when 'elevadores plataforma elevatoria' then 'elevadores-plataforma-elevatoria'
+    when 'equipamentos de climatizacao' then 'equipamentos-de-climatizacao'
+    when 'ete eta' then 'ete-eta'
+    when 'gerador subestacao transformador cubiculos' then 'gerador-subestacao-transformador-cubiculos'
+    when 'it medico nobreak' then 'it-medico-nobreak'
+    when 'marcenaria' then 'marcenaria'
+    when 'planejamento de obras' then 'planejamento-obras'
+    when 'projetos legalizacao' then 'projetos-legalizacao'
+    when 'projetos tecnicos' then 'projetos-tecnicos'
+    when 'quadros eletricos' then 'quadros-eletricos'
+    when 'reguas medicinais' then 'reguas-medicinais'
+    when 'sic s' then 'sics'
+    when 'sistemas de automacao' then 'sistemas-de-automacao'
+    when 'taxa de risco 5' then 'taxa-risco'
   end
 $$;
 
@@ -339,10 +401,31 @@ begin
   return null;
 end $$;
 
+create temporary table dados_evs_payload on commit drop as
+select convert_from(decode('${payloadBase64}','base64'),'UTF8')::jsonb data;
+
 create temporary table dados_evs_input on commit drop as
-select (ordinality-1)::integer ordinal,value data
-from jsonb_array_elements(convert_from(decode('${payloadBase64}','base64'),'UTF8')::jsonb) with ordinality
-where exists(select 1 from public.slt_budget_import_estimates where deleted_at is null);
+select (project_ordinality-1)::integer ordinal,
+       jsonb_build_object(
+         'project',project->>0,
+         'revision',project->>1,
+         'date',project->>2,
+         'area',project->3,
+         'technician',project->>4,
+         'total',project->5,
+         'items',(
+           select jsonb_agg(jsonb_build_object(
+             'item',item->>0,
+             'description',payload.data->'d'->>((item->>1)::integer),
+             'value',item->2
+           ) order by item_ordinality)
+           from jsonb_array_elements(project->6) with ordinality item_rows(item,item_ordinality)
+         )
+       ) data
+from dados_evs_payload payload
+cross join lateral jsonb_array_elements(payload.data->'p') with ordinality projects(project,project_ordinality)
+where project->>0 is not null
+  and exists(select 1 from public.slt_budget_import_estimates where deleted_at is null);
 
 create temporary table dados_evs_before_counts on commit drop as
 select
@@ -358,14 +441,36 @@ begin
   select count(*) into exact_count from dados_evs_input i join public.slt_budget_import_estimates e on e.deleted_at is null and e.extra->>'project'=i.data->>'project';
   select count(*) into removed_count from public.slt_budget_import_estimates e left join dados_evs_input i on i.data->>'project'=e.extra->>'project' where e.deleted_at is null and i.ordinal is null;
   if existing_count=0 then return; end if;
-  if input_count<>856 or existing_count<>855 or exact_count<>855 or removed_count<>0 then
+  if input_count<>856 or existing_count<>856 or exact_count<>856 or removed_count<>0 then
     raise exception 'Importação cancelada: entrada %, base %, correspondências exatas %, removidas %',input_count,existing_count,exact_count,removed_count;
   end if;
   if (select count(*) from dados_evs_input group by data->>'project' having count(*)>1 limit 1) is not null then
     raise exception 'Importação cancelada: obra duplicada na entrada';
   end if;
-  if exists(select 1 from public.slt_budget_import_estimates where record_key='evh-0856') or exists(select 1 from public.slt_projects_works where record_key='EVW-evh-0856') then
-    raise exception 'Importação cancelada: identificadores reservados da 856ª obra já existem';
+  if exists(
+    select 1 from public.slt_budget_estimates e
+    join public.slt_projects_works w on w.record_key=e.parent_key
+    where e.deleted_at is null and w.deleted_at is null and w.extra->>'_dadosEvsOfficial'='true'
+      and (e.updated_by is not null
+        or jsonb_array_length(coalesce(e.extra->'demandaIds','[]'::jsonb))>0
+        or jsonb_array_length(coalesce(e.extra->'sicIds','[]'::jsonb))>0)
+  ) then
+    raise exception 'Importação cancelada: existe EV oficial editado manualmente ou vinculado a demanda/SIC';
+  end if;
+  if exists(
+    select 1 from public.slt_budget_estimate_lines l
+    join public.slt_budget_estimates e on e.record_key=l.parent_key
+    join public.slt_projects_works w on w.record_key=e.parent_key
+    where l.deleted_at is null and e.deleted_at is null and w.deleted_at is null
+      and w.extra->>'_dadosEvsOfficial'='true' and l.updated_by is not null
+  ) or exists(
+    select 1 from public.slt_budget_estimate_versions v
+    join public.slt_budget_estimates e on e.record_key=v.parent_key
+    join public.slt_projects_works w on w.record_key=e.parent_key
+    where v.deleted_at is null and e.deleted_at is null and w.deleted_at is null
+      and w.extra->>'_dadosEvsOfficial'='true' and v.updated_by is not null
+  ) then
+    raise exception 'Importação cancelada: existem linhas ou revisões oficiais editadas manualmente';
   end if;
 end $$;
 
@@ -378,14 +483,14 @@ select normalized,discipline_id from (
 ) ranked where rank=1;
 
 create temporary table dados_evs_projects on commit drop as
-select i.ordinal,i.data,coalesce(e.record_key,'evh-0856') record_key,coalesce(e.work_id,'EVW-evh-0856') work_id,
+select i.ordinal,i.data,e.record_key,e.work_id,
        e.extra old_extra,w.extra old_work_extra,w.state_code old_state,w.region old_region,
        coalesce(e.extra->>'code',(regexp_match(i.data->>'project','^\\s*([0-9]+)'))[1],'') code,
        coalesce(nullif(e.extra->>'typology',''),case when pg_temp.ev_text(i.data->>'project') ~ 'hospital|\\mho\\M' then 'Hospital' when pg_temp.ev_text(i.data->>'project') ~ 'clinica' then 'Clínica e Medicina Preventiva' when pg_temp.ev_text(i.data->>'project') ~ '\\mpa\\M' then 'Pronto Atendimento' else '' end) typology,
        coalesce(nullif(w.state_code,''),upper((regexp_match(i.data->>'project','[-/_]\\s*(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\\s*$','i'))[1]),'') state_code
 from dados_evs_input i
-left join public.slt_budget_import_estimates e on e.deleted_at is null and e.extra->>'project'=i.data->>'project'
-left join public.slt_projects_works w on w.deleted_at is null and w.record_key=e.work_id;
+join public.slt_budget_import_estimates e on e.deleted_at is null and e.extra->>'project'=i.data->>'project'
+join public.slt_projects_works w on w.deleted_at is null and w.record_key=e.work_id;
 
 create temporary table dados_evs_items on commit drop as
 select p.ordinal project_ordinal,p.record_key,p.work_id,(item_ordinality-1)::integer item_ordinal,
@@ -418,64 +523,33 @@ from dados_evs_projects p;
 do $$
 begin
   if not exists(select 1 from dados_evs_input) then return; end if;
-  if (select count(*) from dados_evs_items)<>9795 then raise exception 'Importação cancelada: quantidade de linhas diferente de 9.795'; end if;
+  if (select count(*) from dados_evs_items)<>${itemCount} then raise exception 'Importação cancelada: quantidade de linhas diferente de ${itemCount}'; end if;
   if exists(select 1 from dados_evs_items where pg_temp.ev_text(description)='obra') then raise exception 'Importação cancelada: ainda existem linhas consolidadas Obra'; end if;
   if exists(select 1 from dados_evs_stage s where abs(s.total_amount-(s.data->>'total')::numeric)>0.02) then raise exception 'Importação cancelada: divergência financeira por obra'; end if;
-  if abs((select sum(total_amount) from dados_evs_stage)-1971820022.80)>0.02 then raise exception 'Importação cancelada: total geral divergente'; end if;
+  if abs((select sum(total_amount) from dados_evs_stage)-${sourceTotal.toFixed(2)})>0.02 then raise exception 'Importação cancelada: total geral divergente'; end if;
 end $$;
 
-insert into public.slt_projects_works(
-  record_key,revision,ordinal,parent_key,child_fields,field_keys,empty_fields,string_fields,extra,
-  created_at,updated_at,updated_by,deleted_at,id,name,code,status,state_code,region,area_m2
-)
-select s.work_id,1,s.ordinal,null,array['ev'],array['id','nome','codigoOriginal','status','uf','regiao','area'],array[]::text[],array[]::text[],
-       jsonb_build_object('chaveUnica',s.code,'tipoUnidade','','tipologiaObra',s.typology,'classificacaoObra','',
-         'areaConstruida',s.area,'areaEquivalente',s.area,'_dadosEvsOfficial',true,'historicalRecordId',s.record_key,'source','DADOS EVS'),
-       now(),now(),null,null,s.work_id,s.data->>'project',s.code,'Histórico',s.state_code,s.region,s.area
-from dados_evs_stage s where s.record_key='evh-0856';
-
 update public.slt_projects_works w set
-  revision=w.revision+1,ordinal=s.ordinal,extra=w.extra||jsonb_build_object('areaConstruida',s.area,'areaEquivalente',s.area,'_dadosEvsOfficial',true,'historicalRecordId',s.record_key,'source','DADOS EVS'),
-  updated_at=now(),updated_by=null,area_m2=s.area,state_code=coalesce(nullif(w.state_code,''),s.state_code),region=coalesce(nullif(w.region,''),s.region)
-from dados_evs_stage s where w.record_key=s.work_id and s.record_key<>'evh-0856' and w.deleted_at is null;
-
-insert into public.slt_budget_import_estimates(
-  record_key,revision,ordinal,parent_key,child_fields,field_keys,empty_fields,string_fields,extra,
-  created_at,updated_at,updated_by,deleted_at,id,total_amount,status,work_id,version_number
-)
-select s.record_key,1,s.ordinal,null,array[]::text[],array['id','revision','status','total','workId'],array[]::text[],array[]::text[],
-       jsonb_build_object('area',s.area,'code',s.code,'date',s.data->>'date','year',extract(year from s.recorded_on)::integer,
-         'items',s.items,'source','DADOS EVS.xlsx','project',s.data->>'project','sicItems',s.sic_items,'typology',s.typology,
-         'baseTotal',s.base_total,'itemCount',jsonb_array_length(s.items),'historical',true,'technician',s.data->>'technician',
-         'disciplines',s.disciplines,'sourceRevision',s.source_revision),
-       now(),now(),null,null,s.record_key,s.total_amount,'Histórico',s.work_id,s.version_number
-from dados_evs_stage s where s.record_key='evh-0856';
+  revision=w.revision+1,ordinal=s.ordinal,extra=w.extra||jsonb_build_object('areaEquivalente',s.area,'_dadosEvsOfficial',true,'historicalRecordId',s.record_key,'source','${source}','sourceFileHash','${sourceHash}'),
+  updated_at=now(),area_m2=s.area,state_code=coalesce(nullif(w.state_code,''),s.state_code),region=coalesce(nullif(w.region,''),s.region)
+from dados_evs_stage s where w.record_key=s.work_id and w.deleted_at is null;
 
 update public.slt_budget_import_estimates e set
   revision=e.revision+1,ordinal=s.ordinal,
   extra=e.extra||jsonb_build_object('area',s.area,'code',s.code,'date',s.data->>'date','year',extract(year from s.recorded_on)::integer,
-    'items',s.items,'source','DADOS EVS.xlsx','project',s.data->>'project','sicItems',s.sic_items,'typology',s.typology,
+    'items',s.items,'source','${source}','sourceFileHash','${sourceHash}','project',s.data->>'project','sicItems',s.sic_items,'typology',s.typology,
     'baseTotal',s.base_total,'itemCount',jsonb_array_length(s.items),'historical',true,'technician',s.data->>'technician',
     'disciplines',s.disciplines,'sourceRevision',s.source_revision),
   updated_at=now(),updated_by=null,total_amount=s.total_amount,status='Histórico',work_id=s.work_id,version_number=s.version_number
-from dados_evs_stage s where e.record_key=s.record_key and s.record_key<>'evh-0856' and e.deleted_at is null;
+from dados_evs_stage s where e.record_key=s.record_key and e.deleted_at is null;
 
 insert into public.slt_budget_historical_ev_details(record_key,items,updated_at)
 select record_key,items,now() from dados_evs_stage
 on conflict(record_key) do update set items=excluded.items,updated_at=excluded.updated_at;
 
-insert into public.slt_budget_estimates(
-  record_key,revision,ordinal,parent_key,child_fields,field_keys,empty_fields,string_fields,extra,
-  created_at,updated_at,updated_by,deleted_at,id,status,version_number
-)
-select s.work_id||'/one',1,0,s.work_id,array['lines','versions'],array['id','status','versaoAtual'],array[]::text[],array[]::text[],
-       jsonb_build_object('_dadosEvsOfficial',true,'historicalRecordId',s.record_key,'anexos',jsonb_build_array(),'demandaIds',jsonb_build_array(),'sicIds',jsonb_build_array()),
-       now(),now(),null,null,'EV-'||s.record_key,'Completo',s.version_number
-from dados_evs_stage s where s.record_key='evh-0856';
-
 update public.slt_budget_estimates e set revision=e.revision+1,updated_at=now(),updated_by=null,deleted_at=null,status='Completo',version_number=s.version_number,
-  extra=e.extra||jsonb_build_object('_dadosEvsOfficial',true,'historicalRecordId',s.record_key)
-from dados_evs_stage s where e.record_key=s.work_id||'/one' and s.record_key<>'evh-0856';
+  extra=e.extra||jsonb_build_object('_dadosEvsOfficial',true,'historicalRecordId',s.record_key,'sourceFileHash','${sourceHash}')
+from dados_evs_stage s where e.record_key=s.work_id||'/one';
 
 update public.slt_budget_estimate_lines l set deleted_at=now(),updated_at=now(),revision=l.revision+1
 where l.deleted_at is null and exists(select 1 from dados_evs_stage s where l.parent_key=s.work_id||'/one');
@@ -510,13 +584,13 @@ begin
   select count(*) into works_count from public.slt_projects_works where deleted_at is null and extra->>'_dadosEvsOfficial'='true';
   select count(*) into estimates_count from public.slt_budget_estimates e join public.slt_projects_works w on w.record_key=e.parent_key and w.deleted_at is null and w.extra->>'_dadosEvsOfficial'='true' where e.deleted_at is null;
   select count(*),coalesce(sum(jsonb_array_length(d.items)),0) into details_count,detail_lines from public.slt_budget_historical_ev_details d join public.slt_budget_import_estimates e using(record_key) where e.deleted_at is null;
-  if historical_count<>856 or works_count<>856 or estimates_count<>856 or details_count<>856 or detail_lines<>9795 then
+  if historical_count<>856 or works_count<>856 or estimates_count<>856 or details_count<>856 or detail_lines<>${itemCount} then
     raise exception 'Atualização inconsistente: históricos %, obras %, EVs %, detalhes %, linhas %',historical_count,works_count,estimates_count,details_count,detail_lines;
   end if;
   if exists(select 1 from public.slt_budget_import_estimates e left join public.slt_projects_works w on w.record_key=e.work_id and w.deleted_at is null where e.deleted_at is null and w.record_key is null) then raise exception 'Atualização inconsistente: EV histórico sem obra'; end if;
   if exists(select 1 from public.slt_budget_historical_ev_details d join public.slt_budget_import_estimates e using(record_key) cross join lateral jsonb_array_elements(d.items) item where e.deleted_at is null and pg_temp.ev_text(item->>'description')='obra') then raise exception 'Atualização inconsistente: linha Obra permaneceu'; end if;
   if exists(select 1 from dados_evs_before_counts b where b.budget_demands<>(select count(*) from public.slt_budget_demands where deleted_at is null) or b.project_demands<>(select count(*) from public.slt_projects_demands where deleted_at is null) or b.budget_sics<>(select count(*) from public.slt_budget_sics where deleted_at is null)) then raise exception 'Atualização inconsistente: demandas ou SICs foram alteradas'; end if;
-  if abs((select sum(total_amount) from public.slt_budget_import_estimates where deleted_at is null)-1971820022.80)>0.02 then raise exception 'Atualização inconsistente: total financeiro final divergente'; end if;
+  if abs((select sum(total_amount) from public.slt_budget_import_estimates where deleted_at is null)-${sourceTotal.toFixed(2)})>0.02 then raise exception 'Atualização inconsistente: total financeiro final divergente'; end if;
 end $$;
 
 commit;
@@ -528,7 +602,7 @@ await fs.writeFile(path.join(outputDir, 'audit.sql'), auditSql);
 await fs.writeFile(path.join(outputDir, 'mapping-audit.sql'), mappingAuditSql);
 await fs.writeFile(path.join(outputDir, 'migration.sql'), migrationSql);
 await fs.writeFile(path.join(outputDir, 'manifest.json'), JSON.stringify({
-  source, sheetName, projects: projects.length, items: itemCount, total: payload.total,
-  zeroAreaProjects: payload.zeroAreaProjects, consolidatedObraRows: consolidatedObraRows.length,
+  source, sourceHash, sheetName, projects: projects.length, items: itemCount, total: payload.total,
+  descriptions: descriptions.size, zeroAreaProjects: payload.zeroAreaProjects, consolidatedObraRows: consolidatedObraRows.length,
 }, null, 2));
 console.log(JSON.stringify({ outputDir, ...JSON.parse(await fs.readFile(path.join(outputDir, 'manifest.json'), 'utf8')) }, null, 2));
