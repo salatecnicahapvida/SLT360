@@ -102,28 +102,32 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('#globalSearch')).toHaveCount(0);
  await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
- await expect(page.locator('[data-operational-filter="type"] option')).toHaveText([
-  'Todas','Emissão Inicial','Revisão de Orçamento','SIC',
+ const typeFilter=page.locator('[data-operational-filter-group="type"]');
+ await expect(typeFilter.locator('.operational-multiselect-menu span')).toHaveText([
+  'Emissão Inicial','Revisão de Orçamento','SIC',
  ]);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  const registeredDemandTypes=await page.locator('.demand-type-option strong').allTextContents();
- const operationalDemandTypes=await page.locator('[data-operational-filter="type"] option').allTextContents();
- expect(operationalDemandTypes.slice(1)).toEqual(registeredDemandTypes);
+ const operationalDemandTypes=await typeFilter.locator('.operational-multiselect-menu span').allTextContents();
+ expect(operationalDemandTypes).toEqual(registeredDemandTypes);
  await page.getByRole('button',{name:'Fechar'}).click();
- await page.locator('[data-operational-filter="type"]').selectOption('SIC');
+ await typeFilter.locator('summary').click();
+ await typeFilter.locator('[data-operational-filter="type"][value="SIC"]').check();
  const pendingSicCard=page.locator('.operational-board-panel article[data-id="test-demand"]');
  await expect(pendingSicCard).toBeVisible();
  await expect(pendingSicCard.locator('.demand-card-labels')).toHaveText('Urgente');
  await expect(pendingSicCard.locator('.sic-approval-badge')).toHaveCount(0);
  await expect(pendingSicCard.getByRole('button',{name:'Aprovação'})).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toHaveCount(0);
+ await page.locator('[data-operational-filter-group="type"] [data-operational-filter="type"][value="EmissaoInicial"]').check();
+ await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
  const clearDemandFilters=page.locator('.filter-panel').getByRole('button',{name:'Limpar filtros',exact:true});
  await expect(clearDemandFilters).toBeVisible();
  await clearDemandFilters.click();
- await expect(page.locator('[data-operational-filter="type"]')).toHaveValue('');
+ await expect(page.locator('[data-operational-filter]:checked')).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
- await expect(page.locator('[data-operational-filter="status"] option')).toHaveText([
-  'Todas','Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
+ await expect(page.locator('[data-operational-filter-group="status"] .operational-multiselect-menu span')).toHaveText([
+  'Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
   'Aguardando Aprovação Diretoria','Concluído','Cancelado',
  ]);
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
@@ -185,6 +189,8 @@ test('budget demand forms use one work selector and keep description optional',a
   await expect(step1.locator('[name="tipo"]')).toHaveAttribute('type','hidden');
   await expect(step1.locator('[name="sprintId"]')).toHaveCount(1);
   await expect(step1.locator('[name="obraBusca"]')).toHaveCount(1);
+  await expect(step1.locator('#demandWorkOptions option[value="Obra de teste"]')).toHaveText('2026');
+  await expect(step1.locator('#demandWorkOptions option[value="Obra histórica Norte - AM"]')).toHaveText('2025');
   if(type==='ReemissaoCompleta'){
    await step1.locator('[name="obraBusca"]').fill('Obra de teste');
    await step1.getByRole('button',{name:/Avançar/}).click();
@@ -353,7 +359,7 @@ test('analyst directory is separate from users and feeds every analyst filter',a
  await userDialog.locator('[data-team-close]').first().click();
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
- await expect(page.locator('[data-operational-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
+ await expect(page.locator('[data-operational-filter-group="analyst"] .operational-multiselect-menu span')).toContainText(['Analista Editado']);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
  await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Editado']);
@@ -415,13 +421,28 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ const newWorkForm=page.locator('#workForm');
+ await expect(newWorkForm.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
+ await expect(newWorkForm.getByText('Assistente de busca de unidades',{exact:true})).toHaveCount(0);
+ await expect(newWorkForm.locator('[name="unidadeModo"]')).toHaveValue('nova');
+ await expect(newWorkForm.locator('[name="tipoVerba"]')).toHaveValue('');
+ await expect(newWorkForm.locator('[name="tipoVerba"]')).not.toHaveAttribute('required','');
+ await expect(newWorkForm.locator('[name="ordemInternaSAP"]')).not.toHaveAttribute('required','');
+ await expect(newWorkForm.locator('[name="valorVerbaAportada"]')).not.toHaveAttribute('required','');
  await expect(page.locator('#classificacaoOptions option[value="Categoria Editada"]')).toHaveCount(1);
  await expect(page.locator('#classificacaoOptions option[value="Venda de Serviço"]')).toHaveCount(1);
  await expect(page.locator('#classificacaoOptions option[value="Venda de Serviços"]')).toHaveCount(0);
  await expect(page.locator('#classificacaoOptions option[value="Ambiental"]')).toHaveCount(0);
  await expect(page.locator('#classificacaoOptions option[value="Não informada"]')).toHaveCount(0);
  expect(await page.locator('#tipologiaOptions option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['Nova Unidade','Retrofit','Ampliação UE']);
- await page.locator('#workForm [data-action="close-modal"]').first().click();
+ await newWorkForm.locator('[name="nome"]').fill('Obra sem origem de verba');
+ await newWorkForm.locator('[name="tipoUnidade"]').fill('Hospital');
+ await newWorkForm.locator('[name="cidade"]').fill('Recife');
+ await newWorkForm.locator('[name="uf"]').fill('PE');
+ await newWorkForm.locator('[name="regiao"]').fill('Nordeste');
+ await newWorkForm.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+ await expect(page.locator('#workForm')).toHaveCount(0);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.document?.nome==='Obra sem origem de verba'&&change.document?.tipoVerba===''&&change.document?.ordemInternaSAP===''&&change.document?.valorVerbaAportada===0)).toBe(true);
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
@@ -485,6 +506,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  const sicForm=page.locator('#demandForm');
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
+ await expect(sicForm.locator('[data-sic-work-results]')).toContainText('Ano: 2025');
  await expect(sicForm.locator('[name="analistasSelecionados"]')).toHaveValue('["Técnico A"]');
  const today=await page.evaluate(()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}));
  const due=await sicForm.locator('[name="dataPrevistaEntrega"]').inputValue();

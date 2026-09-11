@@ -559,12 +559,12 @@ let searchTerm = "";
 let operationalViewMode = "kanban";
 let operationalFilters = {
   query: "",
-  sprintId: "",
-  analyst: "",
-  type: "",
-  status: "",
+  sprintId: [],
+  analyst: [],
+  type: [],
+  status: [],
   validationGroup: false,
-  punctuality: "",
+  punctuality: [],
 };
 let managementStatusFilter = "all";
 let strategicHistoricalQuery = "";
@@ -5467,16 +5467,56 @@ function filteredDemands() {
     );
     const query = normalizeSearchText([searchTerm, operationalFilters.query].filter(Boolean).join(" ")).trim();
     if (query && !query.split(/\s+/).every((part) => text.includes(part))) return false;
-    if (operationalFilters.sprintId && demand.sprintId !== operationalFilters.sprintId) return false;
-    if (operationalFilters.analyst && !demandAnalystNames(demand).includes(operationalFilters.analyst)) return false;
-    if (operationalFilters.type && demandTypeKey(demand.tipo) !== operationalFilters.type) return false;
+    const selectedSprints = operationalFilterValues("sprintId");
+    const selectedAnalysts = operationalFilterValues("analyst");
+    const selectedTypes = operationalFilterValues("type");
+    const selectedStatuses = operationalFilterValues("status");
+    const selectedPunctualities = operationalFilterValues("punctuality");
+    if (selectedSprints.length && !selectedSprints.includes(demand.sprintId)) return false;
+    if (selectedAnalysts.length && !demandAnalystNames(demand).some((analyst) => selectedAnalysts.includes(analyst))) return false;
+    if (selectedTypes.length && !selectedTypes.includes(demandTypeKey(demand.tipo))) return false;
     if (operationalFilters.validationGroup && !["validacaoST", "validacaoObras"].includes(demand.coluna)) return false;
-    if (operationalFilters.status && demand.coluna !== operationalFilters.status) return false;
-    if (operationalFilters.punctuality === "late" && !isDemandLate(demand)) return false;
-    if (operationalFilters.punctuality === "onTime" && isDemandLate(demand)) return false;
-    if (operationalFilters.sprintId && !sprint) return false;
+    if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
+    if (selectedPunctualities.length) {
+      const punctuality = isDemandLate(demand) ? "late" : "onTime";
+      if (!selectedPunctualities.includes(punctuality)) return false;
+    }
+    if (selectedSprints.length && !sprint) return false;
     return true;
   });
+}
+
+function operationalFilterValues(key) {
+  const value = operationalFilters[key];
+  if (Array.isArray(value)) return value.map((item) => String(item || "")).filter(Boolean);
+  return value ? [String(value)] : [];
+}
+
+function renderOperationalMultiFilter(key, label, options, emptyLabel) {
+  const selected = operationalFilterValues(key);
+  const selectedSet = new Set(selected);
+  const selectedLabels = options.filter((option) => selectedSet.has(option.value)).map((option) => option.label);
+  const summary = !selectedLabels.length
+    ? emptyLabel
+    : selectedLabels.length === 1
+      ? selectedLabels[0]
+      : `${selectedLabels[0]} +${selectedLabels.length - 1}`;
+  return `
+    <details class="operational-multiselect" data-operational-filter-group="${key}">
+      <summary title="${escapeAttribute(selectedLabels.join(", ") || emptyLabel)}">
+        <span>${label}</span>
+        <strong>${escapeAttribute(summary)}</strong>
+      </summary>
+      <div class="operational-multiselect-menu" role="group" aria-label="${label}">
+        ${options.map((option) => `
+          <label>
+            <input type="checkbox" data-operational-filter="${key}" value="${escapeAttribute(option.value)}" ${selectedSet.has(option.value) ? "checked" : ""} />
+            <span>${escapeAttribute(option.label)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </details>
+  `;
 }
 
 function renderOperationalFilters() {
@@ -5487,42 +5527,11 @@ function renderOperationalFilters() {
         <input data-operational-search value="${escapeAttribute(operationalFilters.query)}" placeholder="Buscar por código, obra ou descrição..." />
       </label>
       <div class="filter-grid">
-        <label class="field">
-          <span>Sprint</span>
-          <select data-operational-filter="sprintId">
-            <option value="">Todas</option>
-            ${(state.sprints || []).map((sprint) => `<option value="${sprint.id}" ${operationalFilters.sprintId === sprint.id ? "selected" : ""}>${sprint.nome}</option>`).join("")}
-          </select>
-        </label>
-        <label class="field">
-          <span>Analista</span>
-          <select data-operational-filter="analyst">
-            <option value="">Todos</option>
-            ${uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}" ${operationalFilters.analyst === analyst ? "selected" : ""}>${escapeAttribute(analyst)}</option>`).join("")}
-          </select>
-        </label>
-        <label class="field">
-          <span>Tipo de atividade</span>
-          <select data-operational-filter="type">
-            <option value="">Todas</option>
-            ${workDemandTypeDefinitions.map((type) => `<option value="${type.id}" ${operationalFilters.type === type.id ? "selected" : ""}>${type.label}</option>`).join("")}
-          </select>
-        </label>
-        <label class="field">
-          <span>Situação</span>
-          <select data-operational-filter="status">
-            <option value="">Todas</option>
-            ${columns.map((column) => `<option value="${column.id}" ${operationalFilters.status === column.id ? "selected" : ""}>${column.label}</option>`).join("")}
-          </select>
-        </label>
-        <label class="field">
-          <span>Prazo</span>
-          <select data-operational-filter="punctuality">
-            <option value="">Todos</option>
-            <option value="late" ${operationalFilters.punctuality === "late" ? "selected" : ""}>Atrasadas</option>
-            <option value="onTime" ${operationalFilters.punctuality === "onTime" ? "selected" : ""}>No prazo</option>
-          </select>
-        </label>
+        ${renderOperationalMultiFilter("sprintId", "Sprint", (state.sprints || []).map((sprint) => ({ value: sprint.id, label: sprint.nome })), "Todas")}
+        ${renderOperationalMultiFilter("analyst", "Analista", uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })), "Todos")}
+        ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
+        ${renderOperationalMultiFilter("status", "Situação", columns.map((column) => ({ value: column.id, label: column.label })), "Todas")}
+        ${renderOperationalMultiFilter("punctuality", "Prazo", [{ value: "late", label: "Atrasadas" }, { value: "onTime", label: "No prazo" }], "Todos")}
       </div>
       <div class="operational-filter-actions">
         <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
@@ -5821,12 +5830,12 @@ function isDemandLate(demand) {
 function resetOperationalFilters() {
   operationalFilters = {
     query: "",
-    sprintId: "",
-    analyst: "",
-    type: "",
-    status: "",
+    sprintId: [],
+    analyst: [],
+    type: [],
+    status: [],
     validationGroup: false,
-    punctuality: "",
+    punctuality: [],
   };
 }
 
@@ -5854,13 +5863,17 @@ function resetProjectOperationalFilters() {
 function operationalActiveFilterText() {
   const active = [];
   if (operationalFilters.query) active.push(`busca "${operationalFilters.query}"`);
-  if (operationalFilters.sprintId) active.push(sprintById(operationalFilters.sprintId)?.nome || "sprint selecionada");
-  if (operationalFilters.analyst) active.push(`analista ${operationalFilters.analyst}`);
-  if (operationalFilters.type) active.push(demandTypeLabel(operationalFilters.type));
+  const sprints = operationalFilterValues("sprintId");
+  const analysts = operationalFilterValues("analyst");
+  const types = operationalFilterValues("type");
+  const statuses = operationalFilterValues("status");
+  const punctualities = operationalFilterValues("punctuality");
+  if (sprints.length) active.push(sprints.map((id) => sprintById(id)?.nome || "sprint selecionada").join(", "));
+  if (analysts.length) active.push(`analistas ${analysts.join(", ")}`);
+  if (types.length) active.push(types.map(demandTypeLabel).join(", "));
   if (operationalFilters.validationGroup) active.push("validação Sala Técnica e Obras");
-  if (operationalFilters.status) active.push(columnById(operationalFilters.status)?.label || operationalFilters.status);
-  if (operationalFilters.punctuality === "late") active.push("atrasadas");
-  if (operationalFilters.punctuality === "onTime") active.push("no prazo");
+  if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
+  if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : "no prazo").join(", "));
   return active.length ? `Filtrando por: ${active.join(" | ")}` : "";
 }
 
@@ -5880,9 +5893,9 @@ function applyOperationalKpiFilter(key) {
   };
   const filter = map[key];
   if (!filter) return;
-  operationalFilters.status = filter.status || "";
+  operationalFilters.status = filter.status ? [filter.status] : [];
   operationalFilters.validationGroup = Boolean(filter.validationGroup);
-  operationalFilters.punctuality = filter.punctuality || "";
+  operationalFilters.punctuality = filter.punctuality ? [filter.punctuality] : [];
   operationalViewMode = "list";
   closeModal();
   setView("worksOperational");
@@ -10493,7 +10506,8 @@ function capexOiSourceRows() {
     const ordemInterna = String(work.ordemInternaSAP || "").trim();
     const verbaAportada = Number(work.valorVerbaAportada || work.plannedValue || work.valorAprovado || work.capexAprovado || work.opexAprovado || 0) || 0;
     if (!ordemInterna || verbaAportada <= 0) return;
-    const origem = String(work.tipoVerba || work.origemVerba || "CAPEX").toUpperCase() === "OPEX" ? "OPEX" : "CAPEX";
+    const origem = String(work.tipoVerba || work.origemVerba || "").trim().toUpperCase();
+    if (!["CAPEX", "OPEX"].includes(origem)) return;
     const key = capexOiSourceKey({ ordemInterna }, `work:${work.id}`);
     if (capexRowFromSltCadastro(map.get(key))) return;
     map.set(key, {
@@ -10523,10 +10537,10 @@ function capexOiSourceRows() {
 
 function syncWorkBudgetIntegration(work) {
   if (!work) return;
-  const origem = String(work.tipoVerba || work.origemVerba || "CAPEX").toUpperCase() === "OPEX" ? "OPEX" : "CAPEX";
+  const origem = String(work.tipoVerba || work.origemVerba || "").trim().toUpperCase();
   const ordemInterna = String(work.ordemInternaSAP || "").trim();
   const verbaAportada = Number(work.valorVerbaAportada || work.plannedValue || work.valorAprovado || work.capexAprovado || work.opexAprovado || 0) || 0;
-  if (!ordemInterna || verbaAportada <= 0) return;
+  if (!["CAPEX", "OPEX"].includes(origem) || !ordemInterna || verbaAportada <= 0) return;
 
   syncWorkFundRecord(work, origem, ordemInterna, verbaAportada);
   syncWorkCapexOiRecord(work, origem, ordemInterna, verbaAportada);
@@ -15360,7 +15374,8 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
   const draft = work ? null : historicalDraft || workModalPlanDraft;
   const fieldValue = (field, fallback = "") => escapeAttribute(work?.[field] ?? draft?.[field] ?? fallback ?? "");
   const currencyFieldValue = (value) => escapeAttribute(currencyInputValue(value));
-  const tipoVerbaValue = String(work?.tipoVerba ?? work?.origemVerba ?? draft?.tipoVerba ?? draft?.origemVerba ?? "CAPEX").toUpperCase() === "OPEX" ? "OPEX" : "CAPEX";
+  const rawTipoVerbaValue = String(work?.tipoVerba ?? work?.origemVerba ?? draft?.tipoVerba ?? draft?.origemVerba ?? "").trim().toUpperCase();
+  const tipoVerbaValue = ["CAPEX", "OPEX"].includes(rawTipoVerbaValue) ? rawTipoVerbaValue : "";
   const verbaAportadaValue = work?.valorVerbaAportada ?? work?.plannedValue ?? work?.valorAprovado ?? work?.capexAprovado ?? draft?.valorVerbaAportada ?? draft?.plannedValue ?? draft?.valorAprovado ?? draft?.capexAprovado ?? 0;
   const valorEstimadoValue = work?.valorEstimado ?? draft?.valorEstimado ?? 0;
   const unidadeModoValue = String(work?.unidadeModo ?? draft?.unidadeModo ?? "nova") === "existente" ? "existente" : "nova";
@@ -15382,28 +15397,34 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
         </header>
         <div class="modal-body">
           <div class="error-box" id="formError"></div>
-          <section class="modal-section sic-work-link-panel">
-            <div class="section-title">
-              <span>Contexto da unidade</span>
-            </div>
-            <div class="form-grid">
-              <label class="field">
-                <span>Tipo de cadastro</span>
-                <select name="unidadeModo">
-                  ${renderDemandUnitModeOptions(unidadeModoValue)}
-                </select>
-              </label>
-              <label class="field full-span">
-                <span>Assistente de busca de unidades</span>
-                <input name="unidadeBusca" data-work-unit-search value="${escapeAttribute(unidadeBuscaValue)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
-              </label>
-            </div>
-            <input type="hidden" name="unidadeId" value="${escapeAttribute(unidadeIdValue)}" />
-            <div data-work-unit-results>
-              ${maintenanceUnitSearchResults(unidadeBuscaValue, unidadeIdValue)}
-            </div>
-            <p class="muted">Escolha unidade nova para expansão/greenfield ou selecione uma unidade existente para puxar os dados cadastrais da base geral.</p>
-          </section>
+          ${isEditing ? `
+            <section class="modal-section sic-work-link-panel">
+              <div class="section-title">
+                <span>Contexto da unidade</span>
+              </div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>Tipo de cadastro</span>
+                  <select name="unidadeModo">
+                    ${renderDemandUnitModeOptions(unidadeModoValue)}
+                  </select>
+                </label>
+                <label class="field full-span">
+                  <span>Assistente de busca de unidades</span>
+                  <input name="unidadeBusca" data-work-unit-search value="${escapeAttribute(unidadeBuscaValue)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
+                </label>
+              </div>
+              <input type="hidden" name="unidadeId" value="${escapeAttribute(unidadeIdValue)}" />
+              <div data-work-unit-results>
+                ${maintenanceUnitSearchResults(unidadeBuscaValue, unidadeIdValue)}
+              </div>
+              <p class="muted">Selecione uma unidade existente apenas quando quiser atualizar os dados cadastrais a partir da base geral.</p>
+            </section>
+          ` : `
+            <input type="hidden" name="unidadeModo" value="nova" />
+            <input type="hidden" name="unidadeId" value="" />
+            <input type="hidden" name="unidadeBusca" value="" />
+          `}
           <div class="form-grid">
             <label class="field">
               <span>Nome da obra *</span>
@@ -15465,19 +15486,20 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
               <input name="areaConstruida" inputmode="decimal" placeholder="0,00" value="${fieldValue("areaConstruida")}" />
             </label>
             <label class="field">
-              <span>Origem da verba *</span>
-              <select name="tipoVerba" required>
+              <span>Origem da verba</span>
+              <select name="tipoVerba">
+                <option value="" ${tipoVerbaValue ? "" : "selected"}>Não informada</option>
                 <option value="CAPEX" ${tipoVerbaValue === "CAPEX" ? "selected" : ""}>CAPEX</option>
                 <option value="OPEX" ${tipoVerbaValue === "OPEX" ? "selected" : ""}>OPEX</option>
               </select>
             </label>
             <label class="field">
-              <span>SAP / OI${isEditing ? "" : " *"}</span>
-              <input name="ordemInternaSAP" ${isEditing ? "" : "required"} placeholder="Número da Ordem Interna" value="${fieldValue("ordemInternaSAP")}" />
+              <span>SAP / OI</span>
+              <input name="ordemInternaSAP" placeholder="Número da Ordem Interna" value="${fieldValue("ordemInternaSAP")}" />
             </label>
             <label class="field">
-              <span>Valor da verba aportada${isEditing ? "" : " *"}</span>
-              <input name="valorVerbaAportada" ${isEditing ? "" : "required"} inputmode="decimal" placeholder="0,00" value="${currencyFieldValue(verbaAportadaValue)}" />
+              <span>Valor da verba aportada</span>
+              <input name="valorVerbaAportada" inputmode="decimal" placeholder="0,00" value="${currencyFieldValue(verbaAportadaValue)}" />
             </label>
             <label class="field">
               <span>Valor estimado</span>
@@ -16013,6 +16035,7 @@ function renderSicWorkSearchResults(query = "", selectedId = "") {
     return `
       <div class="sic-work-selected">
         <strong>${selectedWork.nome}</strong>
+        <small>Ano: ${escapeAttribute(demandWorkYear(selectedWork) || "Não informado")}</small>
         <span>${selectedWork.chaveUnica} | ${selectedWork.tipoUnidade} | ${selectedWork.cidade}/${selectedWork.uf} | ${selectedWork.regiao}</span>
       </div>
     `;
@@ -16033,6 +16056,7 @@ function renderSicWorkSearchResults(query = "", selectedId = "") {
           (work) => `
             <button type="button" data-action="select-sic-work" data-id="${work.id}">
               <strong>${work.nome}</strong>
+              <small>Ano: ${escapeAttribute(demandWorkYear(work) || "Não informado")}</small>
               <span>${work.chaveUnica} | ${work.tipoUnidade} | ${work.cidade}/${work.uf} | ${work.regiao}</span>
             </button>
           `
@@ -16764,7 +16788,6 @@ function handleWorkSubmit(form) {
 
   const existingWork = workById(formData.get("workId"));
   const sourceHistoricalRecordId = String(formData.get("sourceHistoricalRecordId") || "").trim();
-  const isPortfolioEdit = Boolean(existingWork || sourceHistoricalRecordId);
   const areaEquivalente = parseCurrency(formData.get("areaEquivalente"));
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
@@ -16783,8 +16806,8 @@ function handleWorkSubmit(form) {
     unidadeSource: selectedUnit?.source || "Obras",
   });
 
-  if (!["CAPEX", "OPEX"].includes(tipoVerba) || (!isPortfolioEdit && (!ordemInternaSAP || valorVerbaAportada <= 0))) {
-    showFormError("Informe a origem da verba (CAPEX/OPEX), o número da OI e o valor da verba aportada.", form);
+  if (tipoVerba && !["CAPEX", "OPEX"].includes(tipoVerba)) {
+    showFormError("Selecione uma origem da verba válida (CAPEX ou OPEX).", form);
     return;
   }
 
@@ -18594,9 +18617,14 @@ document.addEventListener("change", (event) => {
     render();
   }
   if (event.target.matches("[data-operational-filter]")) {
-    operationalFilters[event.target.dataset.operationalFilter] = event.target.value;
-    if (event.target.dataset.operationalFilter === "status") operationalFilters.validationGroup = false;
+    const key = event.target.dataset.operationalFilter;
+    const selected = new Set(operationalFilterValues(key));
+    if (event.target.checked) selected.add(event.target.value);
+    else selected.delete(event.target.value);
+    operationalFilters[key] = [...selected];
+    if (key === "status") operationalFilters.validationGroup = false;
     render();
+    document.querySelector(`[data-operational-filter-group="${key}"]`)?.setAttribute("open", "");
   }
   if (event.target.matches("[data-project-plan-filter]")) {
     projectPlanFilters[event.target.dataset.projectPlanFilter] = event.target.value;
