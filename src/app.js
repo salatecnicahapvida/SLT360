@@ -7682,6 +7682,109 @@ function canDeleteEVRecords() {
   return activeRole() === "Admin";
 }
 
+function canDeleteWorks() {
+  return activeRole() === "Admin";
+}
+
+function workDeleteDependencies(workId) {
+  const referencesWork = (item) => item?.obraId === workId || item?.workId === workId;
+  return {
+    evs: evUnifiedRecords().filter((record) => record.workId === workId).length,
+    demands: [
+      ...arrayOrFallback(state.demands),
+      ...arrayOrFallback(state.projectDemands),
+    ].filter(referencesWork).length,
+    sics: arrayOrFallback(state.sics).filter(referencesWork).length,
+    contracts: arrayOrFallback(state.contracts).filter(referencesWork).length,
+    financial: [
+      ...arrayOrFallback(state.funds),
+      ...arrayOrFallback(state.fundMovements),
+      ...arrayOrFallback(state.budgetRevisions),
+      ...arrayOrFallback(state.capexManualOiRows),
+    ].filter(referencesWork).length,
+    importRevisions: arrayOrFallback(state.workRevisions).filter(referencesWork).length,
+  };
+}
+
+function workHasDeleteDependencies(dependencies) {
+  return Object.values(dependencies).some((count) => Number(count) > 0);
+}
+
+function openDeleteWorkModal(workId) {
+  if (!canDeleteWorks()) {
+    showToast("Somente o perfil Admin pode excluir obras.");
+    return;
+  }
+  const work = state.works.find((item) => item.id === workId);
+  if (!work) return;
+  const dependencies = workDeleteDependencies(work.id);
+  const isBlocked = workHasDeleteDependencies(dependencies);
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <article class="modal-card compact-modal work-delete-modal" aria-labelledby="deleteWorkTitle">
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow">Ação exclusiva do Admin</span>
+            <h2 id="deleteWorkTitle">${isBlocked ? "Esta obra não pode ser excluída" : "Excluir esta obra?"}</h2>
+            <p class="muted">${escapeAttribute(work.codigoOriginal || work.chaveUnica || work.id)} · ${escapeAttribute(work.nome)}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="danger-callout">
+            <strong>${isBlocked ? "Existem registros vinculados a esta obra." : "A exclusão removerá a obra do banco e do portfólio."}</strong>
+            <span>${isBlocked ? "Abra os vínculos abaixo e trate-os antes de tentar novamente. Nenhum dado foi alterado." : "Esta ação não pode ser desfeita pelo portfólio. Confira a obra antes de confirmar."}</span>
+          </div>
+          <div class="kpi-detail-grid">
+            ${splitItem("EVs vinculados", String(dependencies.evs))}
+            ${splitItem("Demandas vinculadas", String(dependencies.demands))}
+            ${splitItem("SICs vinculadas", String(dependencies.sics))}
+            ${splitItem("Contratos vinculados", String(dependencies.contracts))}
+            ${splitItem("Registros financeiros", String(dependencies.financial))}
+            ${splitItem("Revisões de importação", String(dependencies.importRevisions))}
+          </div>
+          ${isBlocked ? "" : `
+            <label class="ev-delete-confirm">
+              <input type="checkbox" data-work-delete-check />
+              <span>Confirmo que desejo excluir definitivamente esta obra sem vínculos.</span>
+            </label>
+          `}
+        </div>
+        <footer class="modal-actions">
+          <button class="secondary-action" type="button" data-action="close-modal">${isBlocked ? "Voltar" : "Cancelar"}</button>
+          ${isBlocked ? "" : `<button class="primary-action danger-action" type="button" data-action="delete-work-record" data-id="${escapeAttribute(work.id)}" disabled>Excluir definitivamente</button>`}
+        </footer>
+      </article>
+    </div>
+  `);
+}
+
+async function deleteWorkRecord(workId) {
+  if (!canDeleteWorks()) {
+    showToast("Somente o perfil Admin pode excluir obras.");
+    return;
+  }
+  const workIndex = state.works.findIndex((item) => item.id === workId);
+  if (workIndex < 0) return;
+  const dependencies = workDeleteDependencies(workId);
+  if (workHasDeleteDependencies(dependencies)) {
+    openDeleteWorkModal(workId);
+    return;
+  }
+  const [removedWork] = state.works.splice(workIndex, 1);
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    state.works.splice(workIndex, 0, removedWork);
+    showToast(error?.message || "Não foi possível confirmar a exclusão da obra no banco.");
+    return;
+  }
+  if (selectedWorkId === workId) selectedWorkId = state.works[0]?.id || "all";
+  closeModal();
+  render();
+  showToast(`Obra ${removedWork.nome} excluída do portfólio.`);
+}
+
 function evDeleteDependencies(record) {
   const work = record.sourceKind === "historical" ? evUnifiedWorkForHistorical(record) : workById(record.workId);
   const workId = work?.id || "";
@@ -15517,6 +15620,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
           ${workFormDatalists()}
         </div>
         <footer class="modal-actions">
+          ${work && canDeleteWorks() ? `<button class="ghost-button danger-action work-delete-trigger" type="button" data-action="open-delete-work" data-id="${escapeAttribute(work.id)}">Excluir obra</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
           <button class="primary-action" type="submit">${isEditing ? "Salvar alterações" : "Cadastrar obra"}</button>
         </footer>
@@ -17972,6 +18076,14 @@ document.addEventListener("click", async (event) => {
     openPortfolioWorkEditor(actionButton.dataset.id);
     return;
   }
+  if (action === "open-delete-work") {
+    openDeleteWorkModal(actionButton.dataset.id);
+    return;
+  }
+  if (action === "delete-work-record") {
+    await deleteWorkRecord(actionButton.dataset.id);
+    return;
+  }
   if (action === "open-work-from-plan") openWorkFromInvestmentPlan(actionButton.dataset.row);
   if (action === "open-project-demand") {
     openProjectDemandModal();
@@ -18841,6 +18953,12 @@ document.addEventListener("input", (event) => {
   if (event.target.matches("[data-ev-delete-check]")) {
     const modal = event.target.closest(".ev-delete-modal");
     const button = modal?.querySelector('[data-action="confirm-delete-ev-record"]');
+    if (button) button.disabled = !event.target.checked;
+    return;
+  }
+  if (event.target.matches("[data-work-delete-check]")) {
+    const modal = event.target.closest(".work-delete-modal");
+    const button = modal?.querySelector('[data-action="delete-work-record"]');
     if (button) button.disabled = !event.target.checked;
     return;
   }

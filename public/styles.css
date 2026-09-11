@@ -12138,13 +12138,17 @@ button.analyst-chip {
 .compact-modal .info-callout { display: grid; gap: 4px; margin-top: 14px; padding: 13px 14px; border: 1px solid #cfe0ef; border-radius: 10px; background: #f3f8fc; }
 .compact-modal .info-callout strong { color: #003f78; }
 .compact-modal .info-callout span { color: #58728a; font-size: .78rem; line-height: 1.4; }
-.ev-delete-modal .danger-callout { display: grid; gap: 5px; margin-bottom: 16px; padding: 14px; border: 1px solid #efb2ac; border-radius: 11px; background: #fff4f3; }
-.ev-delete-modal .danger-callout strong { color: #a5251e; }
-.ev-delete-modal .danger-callout span { color: #754843; font-size: .78rem; line-height: 1.45; }
+.ev-delete-modal .danger-callout,
+.work-delete-modal .danger-callout { display: grid; gap: 5px; margin-bottom: 16px; padding: 14px; border: 1px solid #efb2ac; border-radius: 11px; background: #fff4f3; }
+.ev-delete-modal .danger-callout strong,
+.work-delete-modal .danger-callout strong { color: #a5251e; }
+.ev-delete-modal .danger-callout span,
+.work-delete-modal .danger-callout span { color: #754843; font-size: .78rem; line-height: 1.45; }
 .ev-delete-confirm { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px; border: 1px solid #d5e0eb; border-radius: 10px; color: #354f68; font-size: .78rem; font-weight: 700; }
 .ev-delete-confirm input { margin-top: 2px; accent-color: #c7352d; }
 .danger-action { color: #b42d25 !important; border-color: #e6aaa5 !important; }
 .danger-action:not(:disabled):hover { color: #fff !important; background: #c7352d !important; border-color: #c7352d !important; }
+.work-delete-trigger { margin-right: auto; }
 .ev-unified-source { display: inline-flex; margin-top: 5px; padding: 3px 7px; border-radius: 999px; background: #edf3f9; color: #496982; font-size: .58rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
 .ev-unified-source[data-source="historical"] { background: #e7f6ef; color: #087454; }
 .ev-history-table-card .table-actions { flex-wrap: wrap; min-width: 108px; }

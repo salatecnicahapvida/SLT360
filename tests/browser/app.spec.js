@@ -683,6 +683,43 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  expect(b.errors).toEqual([]);
 });
 
+test('admin deletes an unlinked work and linked works remain protected',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+
+ const unlinkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra nova sem EV'});
+ await unlinkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
+ const workForm=page.locator('#workForm');
+ await expect(workForm.getByRole('button',{name:'Excluir obra',exact:true})).toBeVisible();
+ await workForm.getByRole('button',{name:'Excluir obra',exact:true}).click();
+
+ const deleteModal=page.locator('.work-delete-modal');
+ await expect(deleteModal.getByRole('heading',{name:'Excluir esta obra?',exact:true})).toBeVisible();
+ await expect(deleteModal.locator('.split-item').filter({hasText:'EVs vinculados'}).locator('span')).toHaveText('0');
+ await expect(deleteModal.locator('.split-item').filter({hasText:'Demandas vinculadas'}).locator('span')).toHaveText('0');
+ const confirmDelete=deleteModal.getByRole('button',{name:'Excluir definitivamente',exact:true});
+ await expect(confirmDelete).toBeDisabled();
+ await deleteModal.locator('[data-work-delete-check]').check();
+ await expect(confirmDelete).toBeEnabled();
+ await confirmDelete.click();
+
+ await expect(deleteModal).toHaveCount(0);
+ await expect(unlinkedRow).toHaveCount(0);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.key==='work-without-ev'&&change.operation==='delete')).toBe(true);
+
+ const linkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra de teste'});
+ await linkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
+ await page.locator('#workForm').getByRole('button',{name:'Excluir obra',exact:true}).click();
+ const blockedModal=page.locator('.work-delete-modal');
+ await expect(blockedModal.getByRole('heading',{name:'Esta obra não pode ser excluída',exact:true})).toBeVisible();
+ await expect(blockedModal.locator('.split-item').filter({hasText:'EVs vinculados'}).locator('span')).toHaveText('1');
+ await expect(blockedModal.locator('.split-item').filter({hasText:'Demandas vinculadas'}).locator('span')).toHaveText('2');
+ await expect(blockedModal.locator('[data-work-delete-check]')).toHaveCount(0);
+ await expect(blockedModal.getByRole('button',{name:'Excluir definitivamente',exact:true})).toHaveCount(0);
+ expect(b.errors).toEqual([]);
+});
+
 test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
