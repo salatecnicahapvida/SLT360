@@ -170,6 +170,33 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('budget demand forms use one work selector and keep description optional',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ for(const type of ['EmissaoInicial','ReemissaoCompleta']){
+  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+  await page.locator(`.demand-type-option[data-type="${type}"]`).click();
+  const step1=page.locator('#demandWizardStep1');
+  await expect(step1.getByText('Descrição da demanda',{exact:true})).toBeVisible();
+  await expect(step1.locator('[name="descricao"]')).not.toHaveAttribute('required','');
+  await expect(step1.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
+  await expect(step1.getByText('Classificação',{exact:true})).toHaveCount(0);
+  await expect(step1.locator('[data-demand-unit-search]')).toHaveCount(0);
+  await expect(step1.locator('[name="tipo"]')).toHaveAttribute('type','hidden');
+  await expect(step1.locator('[name="sprintId"]')).toHaveCount(1);
+  await expect(step1.locator('[name="obraBusca"]')).toHaveCount(1);
+  if(type==='ReemissaoCompleta'){
+   await step1.locator('[name="obraBusca"]').fill('Obra de teste');
+   await step1.getByRole('button',{name:/Avançar/}).click();
+   await expect(page.locator('#demandForm')).toBeVisible();
+   await page.locator('#demandForm [data-action="close-modal"]').first().click();
+  }else{
+   await step1.locator('[data-action="close-modal"]').first().click();
+  }
+ }
+ expect(b.errors).toEqual([]);
+});
+
 test('module switching keeps one service order per id when source and database versions overlap',async({page})=>{
  const b=await backend(page,'Admin',false,{maintenanceSourceOverlap:true});await login(page);
  await page.locator('[data-module="maintenance"]').click();
@@ -402,7 +429,7 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(page.locator('.demand-type-card')).toBeVisible();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
- await expect(page.locator('#demandForm [data-demand-project]')).toHaveCount(9);
+ await expect(page.locator('#demandForm [data-demand-project]')).toHaveCount(12);
  await expect(page.locator('#demandForm [data-demand-project="DC"]')).toHaveCount(0);
  await page.locator('#demandForm [data-action="close-modal"]').first().click();
  await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
@@ -418,6 +445,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(step1).toBeVisible();
  await expect(step1.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
  await expect(step1.getByText('Classificação',{exact:true})).toHaveCount(0);
+ await expect(step1.getByText('Descrição da demanda',{exact:true})).toBeVisible();
  await expect(step1.locator('[name="descricao"]')).not.toHaveAttribute('required','');
  await expect(step1.locator('[name="analistasSelecionados"]')).toHaveValue('[]');
 
@@ -481,11 +509,12 @@ test('first selected analyst leads and every involved discipline persists its po
  const step2=page.locator('#demandForm');
  await expect(step2.getByText('Projetos envolvidos',{exact:true})).toBeVisible();
  const projectItems=step2.locator('[data-demand-project]');
- await expect(projectItems).toHaveCount(9);
- await expect(projectItems.locator('summary')).toHaveText(['ARQ','ELE','HID','ELO','SUB','GMD','SCI','CLI','SPDA']);
+ await expect(projectItems).toHaveCount(12);
+ await expect(projectItems.locator('summary')).toHaveText(['ARQ','ELE','HID','ELO','SUB','GMD','SCI','CLI','SPDA','STR','FUN','DRE']);
  expect(await projectItems.locator('summary').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('title')))).toEqual([
   'Arquitetura','Instalações Elétricas','Instalações Hidrosanitárias','Instalações de Dados e Voz','Subestação',
   'Instalações de Gases Medicinais','Sistema de Combate a Incêndio','Instalações de Climatização e Exaustão','Instalações de SPDA',
+  'Estrutura','Fundações','Drenagem',
  ]);
  const architecture=step2.locator('[data-demand-project="ARQ"]');
  await architecture.locator('summary').click();
@@ -524,6 +553,8 @@ test('first selected analyst leads and every involved discipline persists its po
  const contextGrid=detail.locator('.demand-context-grid');
  await expect(contextGrid).toBeVisible();
  expect(await contextGrid.locator('.split-item').first().evaluate(node=>({display:getComputedStyle(node).display,textAlign:getComputedStyle(node.querySelector('span')).textAlign}))).toEqual({display:'grid',textAlign:'left'});
+ await expect(detail.getByText('Descrição da demanda',{exact:true})).toBeVisible();
+ await expect(detail.locator('[name="observacao"]')).not.toHaveAttribute('required','');
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ARQ"]')).toBeChecked();
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ELE"]')).toBeChecked();

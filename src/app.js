@@ -154,6 +154,9 @@ function demandProjectOptions() {
     { id: "SCI", label: "Sistema de Combate a Incêndio" },
     { id: "CLI", label: "Instalações de Climatização e Exaustão" },
     { id: "SPDA", label: "Instalações de SPDA" },
+    { id: "STR", label: "Estrutura" },
+    { id: "FUN", label: "Fundações" },
+    { id: "DRE", label: "Drenagem" },
   ];
 }
 
@@ -14907,8 +14910,8 @@ function openDemandDetailModal(id) {
             demandTypeKey(demand.tipo) === "SIC"
               ? ""
               : `<label class="field modal-section">
-                  <span>Descrição da demanda *</span>
-                  <textarea name="observacao" required>${demand.observacao || ""}</textarea>
+                  <span>Descrição da demanda</span>
+                  <textarea name="observacao">${demand.observacao || ""}</textarea>
                 </label>`
           }
 
@@ -15679,7 +15682,6 @@ function renderDemandUnitModeOptions(selected = "nova") {
 function renderDemandWizardStep1(draft) {
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const title = demandTypeLabel(draft.tipo);
-  const isInitialIssue = draft.tipo === "EmissaoInicial";
   return `
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card demand-detail-form demand-create-card demand-wizard-card" id="demandWizardStep1" aria-labelledby="demandTitle" data-type="${draft.tipo}">
@@ -15702,64 +15704,18 @@ function renderDemandWizardStep1(draft) {
           </section>
 
           <label class="field modal-section">
-            <span>Descrição da demanda${isInitialIssue ? "" : " *"}</span>
-            <textarea name="descricao" ${isInitialIssue ? "" : "required"} placeholder="Descreva o escopo desta demanda...">${escapeAttribute(draft.descricao)}</textarea>
+            <span>Descrição da demanda</span>
+            <textarea name="descricao" placeholder="Descreva o escopo desta demanda...">${escapeAttribute(draft.descricao)}</textarea>
           </label>
 
-          ${isInitialIssue ? `
-            <input type="hidden" name="tipo" value="EmissaoInicial" />
-            <label class="field modal-section">
-              <span>Sprint</span>
-              <select name="sprintId">
-                ${sprintOptions(sprint?.id || "")}
-              </select>
-              <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
-            </label>
-          ` : `
-            <section class="modal-section sic-work-link-panel">
-              <div class="section-title">
-                <span>Contexto da unidade</span>
-              </div>
-              <div class="form-grid">
-                <label class="field">
-                  <span>Tipo de intervenção</span>
-                  <select name="unidadeModo">
-                    ${renderDemandUnitModeOptions(draft.unidadeModo)}
-                  </select>
-                </label>
-                <label class="field full-span">
-                  <span>Assistente de busca de unidades</span>
-                  <input name="unidadeBusca" data-demand-unit-search value="${escapeAttribute(draft.unidadeBusca)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
-                </label>
-              </div>
-              <input type="hidden" name="unidadeId" value="${escapeAttribute(draft.unidadeId)}" />
-              <div data-demand-unit-results>
-                ${maintenanceUnitSearchResults(draft.unidadeBusca, draft.unidadeId)}
-              </div>
-              <p class="muted">Use o assistente quando a obra for intervenção em uma unidade existente. Para unidade nova, siga apenas com a obra vinculada.</p>
-            </section>
-
-            <section class="modal-section">
-              <div class="section-title">
-                <span>Classificação</span>
-              </div>
-              <div class="form-grid">
-                <label class="field">
-                  <span>Tipo de atividade</span>
-                  <select name="tipo">
-                    ${demandTypeOptions(draft.tipo, false)}
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Sprint</span>
-                  <select name="sprintId">
-                    ${sprintOptions(sprint?.id || "")}
-                  </select>
-                  <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
-                </label>
-              </div>
-            </section>
-          `}
+          <input type="hidden" name="tipo" value="${escapeAttribute(draft.tipo)}" />
+          <label class="field modal-section">
+            <span>Sprint</span>
+            <select name="sprintId">
+              ${sprintOptions(sprint?.id || "")}
+            </select>
+            <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+          </label>
 
           <section class="modal-section">
             <div class="section-title">
