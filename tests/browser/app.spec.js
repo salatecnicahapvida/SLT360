@@ -738,11 +738,17 @@ test('configuration catalogs can be created and edited and feed work and EV form
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.locator('[data-action="edit-portfolio-work"][data-id="test-work"]').click();
+ const editWorkForm=page.locator('#workForm');
+ await expect(editWorkForm.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
+ await expect(editWorkForm.getByText('Assistente de busca de unidades',{exact:true})).toHaveCount(0);
+ await expect(editWorkForm.locator('[name="unidadeModo"]')).toHaveCount(0);
+ await editWorkForm.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
  const newWorkForm=page.locator('#workForm');
  await expect(newWorkForm.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
  await expect(newWorkForm.getByText('Assistente de busca de unidades',{exact:true})).toHaveCount(0);
- await expect(newWorkForm.locator('[name="unidadeModo"]')).toHaveValue('nova');
+ await expect(newWorkForm.locator('[name="unidadeModo"]')).toHaveCount(0);
  await expect(newWorkForm.locator('[name="tipoVerba"]')).toHaveValue('');
  await expect(newWorkForm.locator('[name="tipoVerba"]')).not.toHaveAttribute('required','');
  await expect(newWorkForm.locator('[name="ordemInternaSAP"]')).not.toHaveAttribute('required','');

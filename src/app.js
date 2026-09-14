@@ -10184,19 +10184,6 @@ function unitLocationLabel(unit = {}) {
   return [location.cidade, location.uf].filter(Boolean).join("/") || unit.cep || "sem cidade";
 }
 
-function exactMaintenanceUnitBySearchLabel(value = "") {
-  const text = normalizeSearchText(value).trim();
-  if (!text) return null;
-  return maintenanceUnits().find((unit) => {
-    const labels = [
-      sharedUnitSearchLabel(unit),
-      unit.nome,
-      [unit.nome, unit.tipo, unitLocationLabel(unit)].filter(Boolean).join(" | "),
-    ];
-    return labels.some((label) => normalizeSearchText(label).trim() === text);
-  });
-}
-
 function updateSharedUnitSearch(input, resultsSelector) {
   const form = input.closest("form");
   const hidden = form?.querySelector('[name="unidadeId"]');
@@ -10211,43 +10198,6 @@ function updateMaintenanceUnitSearch(input) {
 
 function updateDemandUnitSearch(input) {
   updateSharedUnitSearch(input, "[data-demand-unit-results]");
-}
-
-function updateWorkUnitSearch(input) {
-  const form = input.closest("form");
-  const exactUnit = exactMaintenanceUnitBySearchLabel(input.value);
-  if (exactUnit) {
-    const hidden = form?.querySelector('[name="unidadeId"]');
-    const results = form?.querySelector("[data-work-unit-results]");
-    if (hidden) hidden.value = exactUnit.id;
-    applyUnitToWorkForm(form, exactUnit);
-    if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, exactUnit.id));
-    return;
-  }
-  updateSharedUnitSearch(input, "[data-work-unit-results]");
-}
-
-function applyUnitToWorkForm(form, unit) {
-  if (!form || !unit) return;
-  const location = unitLocationFields(unit);
-  const setValue = (name, value, overwrite = true) => {
-    const field = form.querySelector(`[name="${name}"]`);
-    if (field && value !== undefined && value !== null && String(value).trim() && (overwrite || !field.value)) {
-      field.value = value;
-    }
-  };
-  const mode = form.querySelector('[name="unidadeModo"]');
-  if (mode) mode.value = "existente";
-  const hidden = form.querySelector('[name="unidadeId"]');
-  if (hidden) hidden.value = unit.id || "";
-  const input = form.querySelector("[data-work-unit-search]");
-  if (input) input.value = sharedUnitSearchLabel(unit);
-  setValue("tipoUnidade", unit.tipo);
-  setValue("cidade", location.cidade);
-  setValue("uf", location.uf);
-  setValue("regiao", location.regiao);
-  setValue("cnpj", unit.cnpj);
-  setValue("endereco", unit.endereco || unit.cep);
 }
 
 function openMaintenanceDemandModal(assetId = "") {
@@ -15818,10 +15768,6 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
   const tipoVerbaValue = ["CAPEX", "OPEX"].includes(rawTipoVerbaValue) ? rawTipoVerbaValue : "";
   const verbaAportadaValue = work?.valorVerbaAportada ?? work?.plannedValue ?? work?.valorAprovado ?? work?.capexAprovado ?? draft?.valorVerbaAportada ?? draft?.plannedValue ?? draft?.valorAprovado ?? draft?.capexAprovado ?? 0;
   const valorEstimadoValue = work?.valorEstimado ?? draft?.valorEstimado ?? 0;
-  const unidadeModoValue = String(work?.unidadeModo ?? draft?.unidadeModo ?? "nova") === "existente" ? "existente" : "nova";
-  const unidadeIdValue = work?.unidadeId ?? draft?.unidadeId ?? "";
-  const selectedUnit = unidadeIdValue ? maintenanceUnitById(unidadeIdValue) : null;
-  const unidadeBuscaValue = work?.unidadeBusca ?? draft?.unidadeBusca ?? (selectedUnit ? sharedUnitSearchLabel(selectedUnit) : "");
   const metaCustoM2TargetIdValue = work?.metaCustoM2TargetId ?? draft?.metaCustoM2TargetId ?? "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
@@ -15837,34 +15783,6 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
         </header>
         <div class="modal-body">
           <div class="error-box" id="formError"></div>
-          ${isEditing ? `
-            <section class="modal-section sic-work-link-panel">
-              <div class="section-title">
-                <span>Contexto da unidade</span>
-              </div>
-              <div class="form-grid">
-                <label class="field">
-                  <span>Tipo de cadastro</span>
-                  <select name="unidadeModo">
-                    ${renderDemandUnitModeOptions(unidadeModoValue)}
-                  </select>
-                </label>
-                <label class="field full-span">
-                  <span>Assistente de busca de unidades</span>
-                  <input name="unidadeBusca" data-work-unit-search value="${escapeAttribute(unidadeBuscaValue)}" placeholder="Digite nome, CNPJ, centro, cidade, UF ou tipo..." autocomplete="off" />
-                </label>
-              </div>
-              <input type="hidden" name="unidadeId" value="${escapeAttribute(unidadeIdValue)}" />
-              <div data-work-unit-results>
-                ${maintenanceUnitSearchResults(unidadeBuscaValue, unidadeIdValue)}
-              </div>
-              <p class="muted">Selecione uma unidade existente apenas quando quiser atualizar os dados cadastrais a partir da base geral.</p>
-            </section>
-          ` : `
-            <input type="hidden" name="unidadeModo" value="nova" />
-            <input type="hidden" name="unidadeId" value="" />
-            <input type="hidden" name="unidadeBusca" value="" />
-          `}
           <div class="form-grid">
             <label class="field">
               <span>Nome da obra *</span>
@@ -16135,13 +16053,6 @@ function demandUnitContextFields(unit, mode = "existente", fallback = {}) {
     unidadeCentro: isExisting ? unit?.centro || fallback.unidadeCentro || "" : fallback.unidadeCentro || "",
     unidadeSource: isExisting ? unit?.source || fallback.unidadeSource || "" : fallback.unidadeSource || "",
   };
-}
-
-function renderDemandUnitModeOptions(selected = "nova") {
-  return `
-    <option value="nova" ${selected !== "existente" ? "selected" : ""}>Unidade nova</option>
-    <option value="existente" ${selected === "existente" ? "selected" : ""}>Obra em unidade existente</option>
-  `;
 }
 
 function renderDemandWizardStep1(draft) {
@@ -17257,19 +17168,10 @@ function activateSprint(id) {
 function handleWorkSubmit(form) {
   const formData = new FormData(form);
   let nome = String(formData.get("nome") || "").trim();
-  const unidadeModo = formData.get("unidadeModo") === "existente" ? "existente" : "nova";
-  const selectedUnit = unidadeModo === "existente" ? maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca")) : null;
-
-  if (unidadeModo === "existente" && !selectedUnit) {
-    showFormError("Selecione uma unidade existente pelo assistente de busca antes de cadastrar a obra.", form);
-    return;
-  }
-
-  const unitLocation = selectedUnit ? unitLocationFields(selectedUnit) : { cidade: "", uf: "", regiao: "" };
-  const tipoUnidade = String(formData.get("tipoUnidade") || selectedUnit?.tipo || "").trim();
-  const cidade = String(formData.get("cidade") || unitLocation.cidade || "").trim();
-  const uf = String(formData.get("uf") || unitLocation.uf || "").trim().toUpperCase();
-  const regiao = String(formData.get("regiao") || unitLocation.regiao || regionFromUf(uf) || "").trim();
+  const tipoUnidade = String(formData.get("tipoUnidade") || "").trim();
+  const cidade = String(formData.get("cidade") || "").trim();
+  const uf = String(formData.get("uf") || "").trim().toUpperCase();
+  const regiao = String(formData.get("regiao") || regionFromUf(uf) || "").trim();
   nome = portfolioWorkDisplayName({ nome, uf });
 
   if (!nome || !tipoUnidade || !cidade || !uf || !regiao) {
@@ -17299,16 +17201,6 @@ function handleWorkSubmit(form) {
   const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
   const valorVerbaAportada = parseCurrency(formData.get("valorVerbaAportada"));
   const valorEstimado = parseCurrency(formData.get("valorEstimado"));
-  const unitContext = demandUnitContextFields(selectedUnit, unidadeModo, {
-    unidadeBusca: String(formData.get("unidadeBusca") || "").trim(),
-    unidadeNome: selectedUnit?.nome || nome,
-    unidadeTipo: selectedUnit?.tipo || tipoUnidade,
-    unidadeCnpj: selectedUnit?.cnpj || String(formData.get("cnpj") || "").trim(),
-    unidadeMunicipio: selectedUnit?.municipio || [cidade, uf].filter(Boolean).join("/"),
-    unidadeCentro: selectedUnit?.centro || "",
-    unidadeSource: selectedUnit?.source || "Obras",
-  });
-
   if (tipoVerba && !["CAPEX", "OPEX"].includes(tipoVerba)) {
     showFormError("Selecione uma origem da verba válida (CAPEX ou OPEX).", form);
     return;
@@ -17337,11 +17229,10 @@ function handleWorkSubmit(form) {
     valorAprovado: valorVerbaAportada,
     capexAprovado: tipoVerba === "CAPEX" ? valorVerbaAportada : 0,
     opexAprovado: tipoVerba === "OPEX" ? valorVerbaAportada : 0,
-    cnpj: String(formData.get("cnpj") || selectedUnit?.cnpj || "").trim(),
-    endereco: String(formData.get("endereco") || selectedUnit?.endereco || selectedUnit?.cep || "").trim(),
+    cnpj: String(formData.get("cnpj") || "").trim(),
+    endereco: String(formData.get("endereco") || "").trim(),
     prazoDias: Number.isFinite(prazoDias) && prazoDias > 0 ? prazoDias : "",
     anoObra: anoObra.length === 4 ? anoObra : "",
-    ...unitContext,
   };
 
   if (existingWork) {
@@ -18995,13 +18886,12 @@ document.addEventListener("click", async (event) => {
   if (action === "select-maintenance-unit") {
     const unit = maintenanceUnitById(actionButton.dataset.id);
     const form = actionButton.closest("form");
-    const input = form?.querySelector("[data-maintenance-unit-search], [data-demand-unit-search], [data-work-unit-search]");
+    const input = form?.querySelector("[data-maintenance-unit-search], [data-demand-unit-search]");
     const hidden = form?.querySelector('[name="unidadeId"]');
-    const results = form?.querySelector("[data-maintenance-unit-results], [data-demand-unit-results], [data-work-unit-results]");
+    const results = form?.querySelector("[data-maintenance-unit-results], [data-demand-unit-results]");
     if (unit && input && hidden) {
       input.value = sharedUnitSearchLabel(unit);
       hidden.value = unit.id;
-      if (form?.id === "workForm") applyUnitToWorkForm(form, unit);
       if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(maintenanceUnitSearchResults(input.value, unit.id));
       const errorBox = form.querySelector("#formError");
       if (errorBox) errorBox.classList.remove("is-visible");
@@ -19581,10 +19471,6 @@ document.addEventListener("input", (event) => {
   }
   if (event.target.matches("[data-demand-unit-search]")) {
     updateDemandUnitSearch(event.target);
-    return;
-  }
-  if (event.target.matches("[data-work-unit-search]")) {
-    updateWorkUnitSearch(event.target);
     return;
   }
   if (event.target.matches("[data-sic-search]")) {
