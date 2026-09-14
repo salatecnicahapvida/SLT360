@@ -788,7 +788,9 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await page.locator('#demandForm').getByRole('button',{name:'Salvar demanda',exact:true}).click();
  const createdCard=page.locator('.demand-card').filter({hasText:'Obra histórica Norte - AM'});
  await expect(createdCard).toBeVisible();
- await expect(createdCard).toContainText('DEM-022');
+ await expect(createdCard).toHaveAttribute('data-id','DEM-022');
+ await expect(createdCard.locator('.demand-code')).toHaveCount(0);
+ await expect(createdCard.locator('.demand-type-badge')).toHaveText('Emissão');
  await expect(createdCard.locator('.demand-card-labels')).toHaveText(/Urgente.*Diretoria/);
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  const createdChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-022');
