@@ -54,6 +54,19 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(skarthAssignment.assignee,'Skarth');
   assert.ok(skarthAssignment.assignee_id);
   assert.equal((await db.query("select count(*)::int total from slt_core_analysts where lower(btrim(nome))='skart'")).rows[0].total,0);
+  await assert.rejects(
+   db.query("insert into slt_budget_demands(record_key,work_id,type,assignee) values('invalid-analyst','w','ReemissaoCompleta','Intruso')"),
+   {code:'23503'}
+  );
+  await assert.rejects(
+   db.query("insert into slt_budget_demands(record_key,work_id,type,extra) values('invalid-complementary','w','ReemissaoCompleta','{\"analistasComplementares\":[\"Intruso\"]}')"),
+   {code:'23503'}
+  );
+  await db.query("insert into slt_budget_demands(record_key,work_id,type,assignee,extra) values('valid-analyst','w','ReemissaoCompleta','sKaRtH','{\"analistasComplementares\":[\"SKARTH\"]}')");
+  const validAssignment=(await db.query("select assignee,extra->'analistasComplementares' complementary from slt_budget_demands where record_key='valid-analyst'")).rows[0];
+  assert.equal(validAssignment.assignee,'Skarth');
+  assert.deepEqual(validAssignment.complementary,['Skarth']);
+  await db.query("delete from slt_budget_demands where record_key='valid-analyst'");
   const phaseTracking=(await db.query("select extra->>'phaseStartedAt' started_at, extra->>'phaseStartedAtEstimated' estimated from slt_budget_demands where record_key='d'")).rows[0];
   assert.match(phaseTracking.started_at,/^\d{4}-\d{2}-\d{2}T/);
   assert.equal(phaseTracking.estimated,'true');

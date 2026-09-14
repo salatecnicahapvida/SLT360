@@ -824,14 +824,20 @@ test('first selected analyst leads and every involved discipline persists its po
 });
 
 test('analyst chips use the configured spelling without case duplicates',async({page})=>{
- const demand={...structuredClone(payload.state.demands[1]),analistaResponsavel:'SKART'};
+ const demand={...structuredClone(payload.state.demands[1]),analistaResponsavel:'SKART',analistasComplementares:['Intruso']};
  const b=await backend(page,'Admin',false,{analystNames:['Skarth'],demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('.operational-board-panel [data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
  const detail=page.locator('#demandDetailForm');
  await expect(detail.locator('[data-demand-analyst-option][value="Skarth"]')).toHaveCount(1);
  await expect(detail.locator('[data-demand-analyst-option][value="SKART"]')).toHaveCount(0);
+ await expect(detail.locator('[data-demand-analyst-option][value="Intruso"]')).toHaveCount(0);
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Skarth · Complementares: Nenhum');
+ const requestCount=b.requests.length;
+ await detail.locator('[name="analistasSelecionados"]').evaluate(input=>{input.value='["Intruso"]';});
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(detail.locator('#formError')).toContainText('não está cadastrado em Configurações');
+ expect(b.requests).toHaveLength(requestCount);
  expect(b.errors).toEqual([]);
 });
 

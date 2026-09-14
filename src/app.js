@@ -800,6 +800,24 @@ function canonicalAnalystName(name) {
   return directoryName || cleanName;
 }
 
+function configuredAnalystNames() {
+  const namesByKey = new Map();
+  (globalThis.SLT_CLOUD?.analysts || [])
+    .map((analyst) => canonicalAnalystName(analyst.nome))
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = normalizeSearchText(name);
+      if (!namesByKey.has(key)) namesByKey.set(key, name);
+    });
+  return [...namesByKey.values()];
+}
+
+function registeredAnalystName(name) {
+  const key = normalizeSearchText(canonicalAnalystName(name));
+  if (!key) return "";
+  return configuredAnalystNames().find((analyst) => normalizeSearchText(analyst) === key) || "";
+}
+
 function demandAnalystNames(demand = {}) {
   const names = [demand.analistaResponsavel, ...arrayOrFallback(demand.analistasComplementares)]
     .map(canonicalAnalystName)
@@ -4136,6 +4154,7 @@ function handleProjectDemandSubmit(form) {
   if (!ensureDemandLifecycleAllowed(form)) return;
   const formData = new FormData(form);
   const analystAssignment = analystAssignmentFromForm(form);
+  if (!validateDemandAnalysts(analystAssignment, form)) return;
   const typeId = String(formData.get("tipoDemanda") || "planoInvestimento");
   const type = projectDemandTypeById(typeId);
 
@@ -6092,24 +6111,7 @@ function applyOperationalKpiFilter(key) {
 }
 
 function uniqueAnalysts() {
-  const directory = (globalThis.SLT_CLOUD?.analysts || []).map((analyst) => analyst.nome);
-  const assigned = [
-    ...(state.demands || []),
-    ...(state.projectDemands || []),
-    ...(state.maintenanceDemands || []),
-  ].flatMap((demand) => [
-    demand.analistaResponsavel,
-    ...(demand.analistasComplementares || []),
-  ]);
-  const namesByKey = new Map();
-  [...directory, ...assigned]
-    .map(canonicalAnalystName)
-    .filter(Boolean)
-    .forEach((name) => {
-      const key = normalizeSearchText(name);
-      if (!namesByKey.has(key)) namesByKey.set(key, name);
-    });
-  return [...namesByKey.values()];
+  return configuredAnalystNames();
 }
 
 function daysBetween(start, end) {
@@ -10630,6 +10632,7 @@ function handleMaintenanceDemandSubmit(form) {
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
   const analystAssignment = analystAssignmentFromForm(form);
+  if (!validateDemandAnalysts(analystAssignment, form)) return;
   const selectedAsset = labels.isClinical ? clinicalEquipmentById(formData.get("clinicalAssetId")) : null;
   if (labels.isClinical && !selectedAsset) {
     showFormError("Selecione um equipamento válido do parque tecnológico pela TAG ou ID.");
@@ -10725,6 +10728,7 @@ function handleMaintenanceDetailSubmit(form) {
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
   const analystAssignment = analystAssignmentFromForm(form, item);
+  if (!validateDemandAnalysts(analystAssignment, form)) return;
   const previousPhase = item.coluna;
   const tipoDespesa = String(formData.get("tipoDespesa") || "").trim();
   const isOpex = normalizeSearchText(tipoDespesa).includes("opex");
@@ -15463,13 +15467,20 @@ function analystAssignmentFromForm(form, fallback = {}) {
   return normalizeDemandAnalysts({ analistaResponsavel: selected[0], analistasComplementares: selected.slice(1) });
 }
 
+function validateDemandAnalysts(assignment, form) {
+  const unknown = demandAnalystNames(assignment).find((name) => !registeredAnalystName(name));
+  if (!unknown) return true;
+  showFormError(`O analista "${unknown}" não está cadastrado em Configurações. Selecione um analista cadastrado.`, form);
+  return false;
+}
+
 function analystSelectionSummary(analysts = []) {
   if (!analysts.length) return "Nenhum analista selecionado.";
   return `Líder: ${analysts[0]} · Complementares: ${analysts.slice(1).join(", ") || "Nenhum"}`;
 }
 
 function analystChipOptions(demand = {}) {
-  const selected = demandAnalystNames(demand);
+  const selected = demandAnalystNames(demand).map(registeredAnalystName).filter(Boolean);
   const selectedKeys = new Set(selected.map(normalizeSearchText));
   const options = [
     ...selected,
@@ -16014,7 +16025,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   const analystAssignment = normalizeDemandAnalysts(draft);
-  const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : historicalAnalystForWork(work);
+  const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : registeredAnalystName(historicalAnalystForWork(work));
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
     obraId: work?.id || "",
@@ -16281,7 +16292,7 @@ function historicalAnalystForWork(work) {
 function suggestHistoricalAnalystInForm(form, work) {
   const selector = form?.querySelector("[data-demand-analyst-selector]");
   if (!selector || analystAssignmentFromForm(form).analistaResponsavel) return;
-  const analyst = historicalAnalystForWork(work);
+  const analyst = registeredAnalystName(historicalAnalystForWork(work));
   if (!analyst) return;
   selector.outerHTML = globalThis.SLT_CLOUD.cleanHTML(analystChipOptions({ analistaResponsavel: analyst }));
 }
@@ -16308,6 +16319,7 @@ function resolveDemandWorkFromQuery(query, preferredId = "") {
 function handleDemandWizardStep1(form) {
   const formData = new FormData(form);
   const selectedAnalysts = analystAssignmentFromForm(form);
+  if (!validateDemandAnalysts(selectedAnalysts, form)) return;
   const work = resolveDemandWorkFromQuery(formData.get("obraBusca"), formData.get("obraId"));
   if (!work) {
     showFormError("Selecione uma obra válida do portfólio antes de avançar.", form);
@@ -16323,7 +16335,7 @@ function handleDemandWizardStep1(form) {
   const unitContext = demandUnitContextFields(unit, unidadeModo);
   const analystAssignment = selectedAnalysts.analistaResponsavel
     ? selectedAnalysts
-    : normalizeDemandAnalysts({ analistaResponsavel: historicalAnalystForWork(work) });
+    : normalizeDemandAnalysts({ analistaResponsavel: registeredAnalystName(historicalAnalystForWork(work)) });
   demandWizardDraft = demandWizardDefaultDraft(formData.get("tipo"), {
     obraId: work.id,
     obraBusca: work.nome,
@@ -16468,7 +16480,7 @@ function updateSicWorkSearch(input) {
 
 function openSicDemandModal(workId = "") {
   const selectedWork = workId ? workById(workId) : null;
-  const suggestedAnalyst = historicalAnalystForWork(selectedWork);
+  const suggestedAnalyst = registeredAnalystName(historicalAnalystForWork(selectedWork));
   const selectedSprint = currentSprint();
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
   const selectedWorkNumber = selectedWork ? selectedWork.chaveUnica || selectedWork.codigoOriginal || "" : "";
@@ -17358,6 +17370,7 @@ async function handleDemandSubmit(form) {
   const analystAssignment = analystAssignmentFromForm(form, {
     analistaResponsavel: formData.get("analistaSalaTecnica") || formData.get("analistaResponsavel") || formData.get("analista"),
   });
+  if (!validateDemandAnalysts(analystAssignment, form)) return;
   const projectSelection = readDemandProjectsFromForm(form);
   const tipo = formData.get("tipo");
   let obraId = resolveWorkIdFromDemandForm(formData);
@@ -17669,6 +17682,7 @@ async function handleDemandDetailSubmit(form) {
   const previousProjects = arrayOrFallback(demand.projetosEnvolvidos).map((value) => String(value));
   const previousProjectDetails = normalizeDemandProjectDetails(demand.projetosEnvolvidosDetalhes);
   const analystAssignment = analystAssignmentFromForm(form, demand);
+  if (!validateDemandAnalysts(analystAssignment, form)) return;
   const previousSprint = demand.sprintId || "";
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
