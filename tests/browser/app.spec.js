@@ -180,6 +180,29 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('operational proximity alert uses only the next 24-hour date window for validation and delivery',async({page})=>{
+ const saoDate=(offsetDays)=>{
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(Date.now()+offsetDays*86400000));
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+ };
+ const base={...structuredClone(payload.state.demands[1]),tipo:'EmissaoInicial',sicApprovalStatus:'',dataPrevistaEntrega:saoDate(10)};
+ const demands=[
+  {...base,id:'validation-next-day',coluna:'fazer',dataPrevEnvioValidacaoObras:saoDate(1)},
+  {...base,id:'validation-two-days',coluna:'fazer',dataPrevEnvioValidacaoObras:saoDate(2)},
+  {...base,id:'delivery-next-day',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:saoDate(1),dataPrevistaEntrega:saoDate(1)},
+  {...base,id:'delivery-two-days',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:saoDate(1),dataPrevistaEntrega:saoDate(2)},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const board=page.locator('.operational-board-panel');
+ await expect(board.locator('article[data-id="validation-next-day"] .demand-card-alert')).toHaveText('Próximo do envio p/ validação');
+ await expect(board.locator('article[data-id="validation-two-days"] .demand-card-alert')).toHaveText('Em dia');
+ await expect(board.locator('article[data-id="delivery-next-day"] .demand-card-alert')).toHaveText('Próximo da entrega');
+ await expect(board.locator('article[data-id="delivery-two-days"] .demand-card-alert')).toHaveText('Em dia');
+ expect(b.errors).toEqual([]);
+});
+
 test('validation KPI includes and separates all three validation statuses',async({page})=>{
  const base={...structuredClone(payload.state.demands[1]),tipo:'SIC - Solicitação de Informação'};
  const demands=[

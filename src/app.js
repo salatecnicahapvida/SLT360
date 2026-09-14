@@ -5800,15 +5800,13 @@ function demandTimingInfo(demand) {
       dateLabel: activeDate.dateLabel,
     };
   }
-  if (activeDate.isValidation) {
-    const daysToValidation = daysBetween(todayISO(), activeDate.date);
-    if (daysToValidation >= 0 && daysToValidation <= 5) {
-      return {
-        tone: "orange",
-        label: "Próximo do envio p/ validação",
-        dateLabel: activeDate.dateLabel,
-      };
-    }
+  const daysToActiveDate = activeDate.date ? daysBetween(todayISO(), activeDate.date) : Number.POSITIVE_INFINITY;
+  if (daysToActiveDate >= 0 && daysToActiveDate <= 1) {
+    return {
+      tone: "orange",
+      label: activeDate.isValidation ? "Próximo do envio p/ validação" : "Próximo da entrega",
+      dateLabel: activeDate.dateLabel,
+    };
   }
   return {
     tone: "green",
