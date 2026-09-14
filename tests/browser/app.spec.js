@@ -135,10 +135,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await clearDemandFilters.click();
  await expect(page.locator('[data-operational-filter]:checked')).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
- await expect(page.locator('[data-operational-filter-group="status"] .operational-multiselect-menu span')).toHaveText([
-  'Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
-  'Aguardando Aprovação Diretoria','Concluído','Cancelado',
- ]);
+ await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(0);
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
  await expect(worksTabs).toHaveCount(5);
  await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);
@@ -183,6 +180,26 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('validation KPI includes and separates all three validation statuses',async({page})=>{
+ const base={...structuredClone(payload.state.demands[1]),tipo:'SIC - Solicitação de Informação'};
+ const demands=[
+  {...base,id:'validation-st',coluna:'validacaoST'},
+  {...base,id:'validation-works',coluna:'validacaoObras'},
+  {...base,id:'validation-director',coluna:'aprovacaoDiretoria'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const validationKpi=page.locator('[data-action="open-kpi-detail"][data-kpi="opValidacao"]');
+ await expect(validationKpi).toContainText('3');
+ await expect(validationKpi).toContainText('Sala Técnica, Obras e Diretoria');
+ await validationKpi.click();
+ const metrics=page.locator('.kpi-modal-card .kpi-detail-grid .split-item');
+ await expect(metrics.locator('strong')).toHaveText(['Total em validação','Sala Técnica','Equipe de Obras','Aprovação Diretoria']);
+ await expect(metrics.locator('span')).toHaveText(['3','1','1','1']);
+ await expect(page.locator('.kpi-detail-table tbody tr')).toHaveCount(3);
+ expect(b.errors).toEqual([]);
+});
+
 test('operational demands are always ordered by nearest delivery date',async({page})=>{
  const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',coluna:'fazer'};
  const demands=[
@@ -210,6 +227,39 @@ test('operational demand cards and list standardize work names',async({page})=>{
  await expect(card.locator('.demand-card-description')).toHaveText('Descrição inicial da demanda para conferência.');
  await page.getByRole('button',{name:'Lista',exact:true}).click();
  await expect(page.locator('tr[data-id="uppercase-work-demand"] td').nth(1)).toHaveText('9902. PA Barra IT da Tijuca');
+ expect(b.errors).toEqual([]);
+});
+
+test('existing operational card saves sprint together with the other edits',async({page})=>{
+ const sprints=[
+  {id:'sprint-16',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},
+  {id:'sprint-17',nome:'Sprint 17',dataInicio:'2026-09-14',dataFim:'2026-09-27',status:'Ativa'},
+ ];
+ const demand={
+  ...structuredClone(payload.state.demands[1]),
+  sprintId:'sprint-16',
+  observacao:'Descrição anterior',
+  prioridade:'Baixa',
+  dataPrevistaEntrega:'2026-09-20',
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],sprintRecords:sprints});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
+ const form=page.locator('#demandDetailForm');
+ await form.locator('[name="sprintId"]').selectOption('sprint-17');
+ await expect(form).toBeVisible();
+ await form.locator('[name="observacao"]').fill('Descrição atualizada no mesmo salvamento');
+ await form.locator('[name="prioridade"]').selectOption('Alta');
+ await form.locator('[name="dataPrevistaEntrega"]').fill('2026-09-27');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(form).toHaveCount(0);
+ await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
+ const reopened=page.locator('#demandDetailForm');
+ await expect(reopened.locator('[name="sprintId"]')).toHaveValue('sprint-17');
+ await expect(reopened.locator('[name="observacao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
+ await expect(reopened.locator('[name="prioridade"]')).toHaveValue('Alta');
+ await expect(reopened.locator('[name="dataPrevistaEntrega"]')).toHaveValue('2026-09-27');
+ await expect.poll(()=>b.requests.length).toBeGreaterThan(0);
  expect(b.errors).toEqual([]);
 });
 
@@ -943,8 +993,16 @@ test('portfolio includes works without EV, selectable filters and the single req
  expect(b.errors).toEqual([]);
 });
 
-test('operational cards drag between columns and SICs enter director approval directly with LECOM visible',async({page})=>{
- const legacySic={...structuredClone(payload.state.demands[0]),tipo:'Solicitação de Informações'};
+test('operational cards drag between columns and SICs enter director approval directly with Lecon visible',async({page})=>{
+ const legacySic={
+  ...structuredClone(payload.state.demands[0]),
+  tipo:'Solicitação de Informações',
+  observacao:'Descrição exclusiva da SIC que não deve aparecer no card.',
+  sicMetadata:{
+   ...structuredClone(payload.state.demands[0].sicMetadata),
+   descricaoSic:'Descrição exclusiva da SIC que não deve aparecer no card.',
+  },
+ };
  const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
@@ -956,7 +1014,7 @@ test('operational cards drag between columns and SICs enter director approval di
  ]);
 
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
- const nonSicStatus=page.locator('[data-action="update-demand-status"][data-id="test-budget-demand"]');
+ const nonSicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveAttribute('disabled','');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
@@ -964,7 +1022,15 @@ test('operational cards drag between columns and SICs enter director approval di
  const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
  const fazendoColumn=page.locator('.kanban-column[data-column="fazendo"]');
  const sicCard=fazerColumn.locator('article[data-id="test-demand"]');
+ await expect(sicCard.locator('.sic-card-lecom span')).toHaveText('Lecon');
  await expect(sicCard.locator('.sic-card-lecom strong')).toHaveText('TEST-1');
+ await expect(sicCard.locator('.demand-card-description')).toHaveCount(0);
+ const leconAlignment=await sicCard.locator('.sic-card-lecom').evaluate(element=>{
+  const label=element.querySelector('span').getBoundingClientRect();
+  const value=element.querySelector('strong').getBoundingClientRect();
+  return Math.abs(label.bottom-value.bottom);
+ });
+ expect(leconAlignment).toBeLessThanOrEqual(1);
  await sicCard.scrollIntoViewIfNeeded();
  const [sourceBox,targetBox]=await Promise.all([sicCard.boundingBox(),fazendoColumn.locator('.demand-list').boundingBox()]);
  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
@@ -975,12 +1041,12 @@ test('operational cards drag between columns and SICs enter director approval di
  await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.waitForTimeout(400);
  await fazendoColumn.locator('article[data-id="test-demand"]').click();
- const sicStatus=page.locator('[data-action="update-demand-status"][data-id="test-demand"]');
+ const sicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(sicStatus).toHaveValue('fazendo');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
  await sicStatus.selectOption('aprovacaoDiretoria');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
- await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
+ await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);

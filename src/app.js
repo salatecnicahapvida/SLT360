@@ -90,6 +90,7 @@ const columns = [
   { id: "concluido", label: "Concluído" },
   { id: "cancelado", label: "Cancelado" },
 ];
+const demandValidationColumnIds = ["validacaoST", "validacaoObras", "aprovacaoDiretoria"];
 
 const worksViewIds = [
   "worksOperational",
@@ -2000,7 +2001,7 @@ function dashboardDemandRows() {
       active: !["concluido", "cancelado"].includes(demand.coluna),
       overdue: isDemandLate(demand),
       waitingFunds: normalizeSearchText(status).includes("verba"),
-      validation: ["validacaoST", "validacaoObras"].includes(demand.coluna) || normalizeSearchText(status).includes("validacao"),
+      validation: demandValidationColumnIds.includes(demand.coluna) || normalizeSearchText(status).includes("validacao"),
       waitingInfo: normalizeSearchText(status).includes("aguardando") && !normalizeSearchText(status).includes("verba"),
       unassigned: !demand.analistaResponsavel,
     };
@@ -2894,7 +2895,7 @@ function haptecWorksKanbanAnswer(text) {
   const late = items.filter(isDemandLate);
   const active = items.filter((item) => !["concluido", "cancelado"].includes(item.coluna));
   const doing = items.filter((item) => item.coluna === "fazendo");
-  const validation = items.filter((item) => ["validacaoST", "validacaoObras"].includes(item.coluna));
+  const validation = items.filter((item) => demandValidationColumnIds.includes(item.coluna));
   const sicCards = items.filter((item) => demandTypeKey(item.tipo) === "SIC");
 
   if (haptecHasAny(text, ["analista", "responsavel"])) {
@@ -2929,7 +2930,7 @@ function haptecWorksKanbanAnswer(text) {
   }
 
   if (haptecHasAny(text, ["validacao", "validar"])) {
-    return `${validation.length} card(s) aguardam validação ${scope}: ${items.filter((item) => item.coluna === "validacaoST").length} na Sala Técnica e ${items.filter((item) => item.coluna === "validacaoObras").length} em Obras.`;
+    return `${validation.length} card(s) aguardam validação ${scope}: ${items.filter((item) => item.coluna === "validacaoST").length} na Sala Técnica, ${items.filter((item) => item.coluna === "validacaoObras").length} em Obras e ${items.filter((item) => item.coluna === "aprovacaoDiretoria").length} em aprovação da Diretoria.`;
   }
 
   if (haptecHasAny(text, ["sic"])) {
@@ -5293,7 +5294,7 @@ function operationalKpiDetailData(key) {
     opPausado: { title: "Demandas pausadas", demands: filtered.filter((demand) => demand.coluna === "pausado"), metric: "Pausadas", filter: "opPausado" },
     opValidacao: {
       title: "Demandas em validação",
-      demands: filtered.filter((demand) => ["validacaoST", "validacaoObras"].includes(demand.coluna)),
+      demands: filtered.filter((demand) => demandValidationColumnIds.includes(demand.coluna)),
       metric: "Validação",
       filter: "opValidacao",
     },
@@ -5303,11 +5304,19 @@ function operationalKpiDetailData(key) {
   };
   const item = map[key];
   if (!item) return null;
+  const validationMetrics = key === "opValidacao"
+    ? [
+        { label: "Total em validação", value: String(item.demands.length) },
+        { label: "Sala Técnica", value: String(item.demands.filter((demand) => demand.coluna === "validacaoST").length) },
+        { label: "Equipe de Obras", value: String(item.demands.filter((demand) => demand.coluna === "validacaoObras").length) },
+        { label: "Aprovação Diretoria", value: String(item.demands.filter((demand) => demand.coluna === "aprovacaoDiretoria").length) },
+      ]
+    : null;
   return {
     title: item.title,
     subtitle: operationalActiveFilterText() || "Leitura do painel operacional no filtro atual.",
     eyebrow: "Painel Operacional",
-    metrics: [
+    metrics: validationMetrics || [
       { label: item.metric, value: String(item.demands.length) },
       { label: "Analistas", value: String(new Set(item.demands.map((demand) => demand.analistaResponsavel).filter(Boolean)).size) },
       { label: "Atrasadas", value: String(item.demands.filter(isDemandLate).length) },
@@ -5447,7 +5456,7 @@ function renderWorksHome() {
 function renderWorksOperational() {
   const filtered = filteredDemands();
   const activeSprint = currentSprint();
-  const awaitingValidation = filtered.filter((demand) => ["validacaoST", "validacaoObras"].includes(demand.coluna)).length;
+  const awaitingValidation = filtered.filter((demand) => demandValidationColumnIds.includes(demand.coluna)).length;
   const inProgress = filtered.filter((demand) => demand.coluna === "fazendo").length;
   const paused = filtered.filter((demand) => demand.coluna === "pausado").length;
   const concluded = filtered.filter((demand) => demand.coluna === "concluido").length;
@@ -5470,7 +5479,7 @@ function renderWorksOperational() {
       ${kpi("A iniciar", String(filtered.filter((demand) => demand.coluna === "fazer").length), "Fila Fazer", "orange", "", "opFazer")}
       ${kpi("Em execução", String(inProgress), "Fila Fazendo", "green", "", "opFazendo")}
       ${kpi("Pausado", String(paused), "Aguardando destrava", "orange", "", "opPausado")}
-      ${kpi("Validação", String(awaitingValidation), "Sala Técnica e Obras", "blue", "", "opValidacao")}
+      ${kpi("Validação", String(awaitingValidation), "Sala Técnica, Obras e Diretoria", "blue", "", "opValidacao")}
       ${kpi("Concluído", String(concluded), "Entregas registradas", "green", "", "opConcluido")}
       ${kpi("Cancelado", String(canceled), "Itens encerrados sem entrega", "red", "", "opCancelado")}
       ${kpi("Atrasadas", String(late), "Prazo previsto vencido", late ? "red" : "green", "", "opAtrasadas")}
@@ -5513,7 +5522,7 @@ function filteredDemands() {
     if (selectedSprints.length && !selectedSprints.includes(demand.sprintId)) return false;
     if (selectedAnalysts.length && !demandAnalystNames(demand).some((analyst) => selectedAnalysts.includes(analyst))) return false;
     if (selectedTypes.length && !selectedTypes.includes(demandTypeKey(demand.tipo))) return false;
-    if (operationalFilters.validationGroup && !["validacaoST", "validacaoObras"].includes(demand.coluna)) return false;
+    if (operationalFilters.validationGroup && !demandValidationColumnIds.includes(demand.coluna)) return false;
     if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
     if (selectedPunctualities.length) {
       const punctuality = isDemandLate(demand) ? "late" : "onTime";
@@ -5576,7 +5585,6 @@ function renderOperationalFilters() {
         ${renderOperationalMultiFilter("sprintId", "Sprint", (state.sprints || []).map((sprint) => ({ value: sprint.id, label: sprint.nome })), "Todas")}
         ${renderOperationalMultiFilter("analyst", "Analista", uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })), "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
-        ${renderOperationalMultiFilter("status", "Situação", columns.map((column) => ({ value: column.id, label: column.label })), "Todas")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [{ value: "late", label: "Atrasadas" }, { value: "onTime", label: "No prazo" }], "Todos")}
       </div>
       <div class="operational-filter-actions">
@@ -5705,8 +5713,8 @@ function renderDemandCard(demand) {
         </div>
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
-      ${description ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
-      ${isSic ? `<div class="sic-card-lecom"><span>LECOM</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
+      ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
+      ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         approval && approval.status !== "Pendente"
@@ -5923,7 +5931,7 @@ function operationalActiveFilterText() {
   if (sprints.length) active.push(sprints.map((id) => sprintById(id)?.nome || "sprint selecionada").join(", "));
   if (analysts.length) active.push(`analistas ${analysts.join(", ")}`);
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
-  if (operationalFilters.validationGroup) active.push("validação Sala Técnica e Obras");
+  if (operationalFilters.validationGroup) active.push("validação Sala Técnica, Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
   if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : "no prazo").join(", "));
   return active.length ? `Filtrando por: ${active.join(" | ")}` : "";
@@ -5987,7 +5995,7 @@ function criticalDemandItems() {
         !["concluido", "cancelado"].includes(demand.coluna) &&
         demand.dataPrevistaEntrega &&
         demand.dataPrevistaEntrega < todayISO();
-      return isLate || ["validacaoST", "validacaoObras"].includes(demand.coluna);
+      return isLate || demandValidationColumnIds.includes(demand.coluna);
     })
     .slice(0, 5);
 
@@ -15161,7 +15169,7 @@ function openDemandDetailModal(id) {
               </label>
               <label class="field">
                 <span>Sprint</span>
-                <select name="sprintId" data-action="update-demand-sprint" data-id="${demand.id}">
+                <select name="sprintId">
                   ${sprintOptions(demand.sprintId)}
                 </select>
                 <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
@@ -15172,7 +15180,7 @@ function openDemandDetailModal(id) {
           <section class="demand-status-box demand-status-control" data-status="${demand.coluna}">
             <label class="field">
               <span>Status atual · altere para mover o card</span>
-              <select name="coluna" data-action="update-demand-status" data-id="${demand.id}">
+              <select name="coluna">
                 ${columnOptions(demand)}
               </select>
             </label>
@@ -17497,8 +17505,14 @@ async function postDemandSicToEV(demandId) {
 }
 
 async function handleDemandDetailSubmit(form) {
-  const demand = state.demands.find((item) => item.id === form.dataset.id);
+  const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
+  const demand = state.demands[demandIndex];
   if (!demand) return;
+  const demandSnapshot = clone(demand);
+  const workIndex = state.works.findIndex((item) => item.id === demand.obraId);
+  const workSnapshot = workIndex >= 0 ? clone(state.works[workIndex]) : null;
+  const sicsSnapshot = clone(state.sics || []);
+  const historySnapshot = clone(state.history || []);
   const formData = new FormData(form);
   const previousAnalysts = demandAnalystNames(demand);
   const previousProjects = arrayOrFallback(demand.projetosEnvolvidos).map((value) => String(value));
@@ -17594,8 +17608,14 @@ async function handleDemandDetailSubmit(form) {
   ].forEach((field) => {
     demand[field] = formData.get(field) || "";
   });
-  const statusUpdate = updateDemandColumn(demand.id, formData.get("coluna") || demand.coluna);
-  if (statusUpdate === false) return;
+  const statusUpdate = updateDemandColumn(demand.id, formData.get("coluna") || demand.coluna, { persist: false });
+  if (statusUpdate === false) {
+    state.demands[demandIndex] = demandSnapshot;
+    if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
+    state.sics = sicsSnapshot;
+    state.history = historySnapshot;
+    return;
+  }
 
   const currentAnalysts = demandAnalystNames(demand);
   if (JSON.stringify(previousAnalysts) !== JSON.stringify(currentAnalysts)) {
@@ -17657,7 +17677,16 @@ async function handleDemandDetailSubmit(form) {
     });
   }
 
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    state.demands[demandIndex] = demandSnapshot;
+    if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
+    state.sics = sicsSnapshot;
+    state.history = historySnapshot;
+    showFormError("As alterações do card não foram confirmadas no banco. Revise sua permissão ou recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
   closeModal();
   showToast("Demanda atualizada e Kanban sincronizado.");
   render();
@@ -17834,7 +17863,7 @@ function approveSic(id) {
   render();
 }
 
-function updateDemandColumn(id, nextColumnId) {
+function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
@@ -17883,7 +17912,7 @@ function updateDemandColumn(id, nextColumnId) {
     valorAnterior: previous,
     valorNovo: nextColumn.label,
   });
-  saveState();
+  if (persist) saveState();
   return demand;
 }
 
@@ -18866,38 +18895,6 @@ document.addEventListener("change", (event) => {
   if (event.target.matches('[data-action="select-work"]')) {
     selectedWorkId = event.target.value;
     render();
-  }
-  if (event.target.matches('[data-action="update-demand-status"]')) {
-    const demand = updateDemandColumn(event.target.dataset.id, event.target.value);
-    if (demand === false) {
-      const currentDemand = state.demands.find((item) => item.id === event.target.dataset.id);
-      if (currentDemand) event.target.value = currentDemand.coluna;
-      return;
-    }
-    const box = event.target.closest(".demand-status-box");
-    if (demand) event.target.value = demand.coluna;
-    if (box && demand) box.dataset.status = demand.coluna;
-    render();
-    if (demand) showToast(`Card movido para ${demandStatusLabel(demand)}.`);
-  }
-  if (event.target.matches('[data-action="update-demand-sprint"]')) {
-    const demand = state.demands.find((item) => item.id === event.target.dataset.id);
-    if (!demand) return;
-    const previousSprint = demand.sprintId || "";
-    const nextSprint = event.target.value || currentSprint()?.id || "";
-    if (previousSprint === nextSprint) return;
-    demand.sprintId = nextSprint;
-    addHistory({
-      entidade: "demanda",
-      entidadeId: demand.id,
-      campo: "sprint",
-      valorAnterior: sprintById(previousSprint)?.nome || "Sem sprint",
-      valorNovo: sprintById(nextSprint)?.nome || "Sem sprint",
-    });
-    saveState();
-    render();
-    openDemandDetailModal(demand.id);
-    showToast(`Sprint do card atualizada para ${sprintById(nextSprint)?.nome || "Sem sprint"}.`);
   }
   if (event.target.matches('[data-action="update-maintenance-status"]')) {
     const item = updateMaintenanceDemandPhase(event.target.dataset.id, event.target.value);

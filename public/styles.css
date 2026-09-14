@@ -7080,20 +7080,24 @@ button.alert-item {
 }
 
 .sic-card-lecom {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
   gap: 6px;
   color: #7a4b00;
   font-size: 0.7rem;
+  line-height: 1.25;
 }
 
 .sic-card-lecom span {
-  font-size: 0.62rem;
-  font-weight: 900;
-  letter-spacing: 0.05em;
+  font-size: inherit;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .sic-card-lecom strong {
+  min-width: 0;
+  line-height: inherit;
   overflow-wrap: anywhere;
 }
 
