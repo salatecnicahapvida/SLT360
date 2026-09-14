@@ -1043,17 +1043,19 @@ test('portfolio standardizes work names, preserves acronyms and supplies missing
   {id:'upper-work',nome:'9902. PA BARRA DE HTL / HS / IT - RJ',codigoOriginal:'',uf:'RJ',cidade:'Rio de Janeiro',tipoUnidade:'Pronto Atendimento'},
   {id:'lower-work',nome:'novo centro de tea - sp',codigoOriginal:'1234',uf:'SP',cidade:'São Paulo',tipoUnidade:'TEA'},
   {id:'missing-code-work',nome:'clínica de apoio - ce',codigoOriginal:'',uf:'CE',cidade:'Fortaleza',tipoUnidade:'Clínica'},
+  {id:'brand-work',nome:'0000. AMPLIAÇÃO HAPNATAL E HAPFOR - CE',codigoOriginal:'',uf:'CE',cidade:'Fortaleza',tipoUnidade:'Hospital'},
  ];
  const b=await backend(page,'Admin',false,{workRecords:works,demandRecords:[],evRecords:[]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  const rows=page.locator('.portfolio-works-table tbody tr');
- await expect(rows).toHaveCount(3);
+ await expect(rows).toHaveCount(4);
  await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(0)).toHaveText('9902');
  await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(1)).toHaveText('9902. PA Barra de HTL / HS / IT');
  await expect(rows.filter({hasText:'Novo Centro'}).locator('td').nth(1)).toHaveText('1234. Novo Centro de TEA');
  await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(0)).toHaveText('0000');
  await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(1)).toHaveText('0000. Clínica de Apoio');
+ await expect(rows.filter({hasText:'HapNatal'}).locator('td').nth(1)).toHaveText('0000. Ampliação HapNatal e HapFor');
  expect(b.errors).toEqual([]);
 });
 

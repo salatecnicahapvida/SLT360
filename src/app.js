@@ -7067,11 +7067,15 @@ const workNameAcronyms = new Set([
   "CCIH", "AVCB", "PPCI", "PPC", "AVC", "HVAC", "CEO", "CER", "CAPS", "PS", "PSF",
   "RH", "TI", "IT", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
   "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU", "CC", "VISA", "NL", "MP", "VS",
-  "NTH", "HAPFOR", "ABA", "ETE", "SND", "ABC", "BH", "CB", "CCG", "CMD", "CQV", "FUSAM",
+  "NTH", "ABA", "ETE", "SND", "ABC", "BH", "CB", "CCG", "CMD", "CQV", "FUSAM",
   "GLP", "HB", "HCOR", "HIABC", "IMESA", "IPSA", "PPP", "PROMED", "RPA", "SAD", "SEALM",
   "SEMED", "SF", "UA", "UASA", "VI", "ELO", "GMD", "SCI", "CLI", "STR", "SUB",
 ]);
 const workNameLowercaseWords = new Set(["a", "as", "com", "de", "da", "das", "do", "dos", "e", "em", "o", "os", "para", "por", "sem"]);
+const workNameBrandCasing = new Map([
+  ["HAPNATAL", "HapNatal"],
+  ["HAPFOR", "HapFor"],
+]);
 
 function portfolioWorkDisplayCode(row) {
   const explicitCode = String(row?.codigo || row?.codigoOriginal || "").trim().replace(/[.\s]+$/g, "");
@@ -7088,6 +7092,7 @@ function titleCaseWorkNamePart(part, sourceWasAllUpper) {
   const suffix = part.slice(coreMatch.index + core.length);
   const lower = core.toLocaleLowerCase("pt-BR");
   const upper = core.toLocaleUpperCase("pt-BR");
+  if (workNameBrandCasing.has(upper)) return `${prefix}${workNameBrandCasing.get(upper)}${suffix}`;
   if (workNameLowercaseWords.has(lower)) return `${prefix}${lower}${suffix}`;
   const intentionallyUpper = !sourceWasAllUpper && core === upper && core !== lower && core.length <= 6;
   if (workNameAcronyms.has(upper) || intentionallyUpper || /\d/.test(core) && core === upper) {
