@@ -349,6 +349,29 @@ test('moving a demand resets the current stage timer and preserves every previou
  expect(b.errors).toEqual([]);
 });
 
+test('stage time stops when a demand is completed or canceled',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
+ const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseEndedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
+ const demands=[
+  {...base,id:'stage-completed',tipo:'EmissaoInicial',coluna:'concluido',dataEntregaReal:phaseEndedAt.slice(0,10)},
+  {...base,id:'stage-canceled',tipo:'DemandaExtra',coluna:'cancelado'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ for(const demand of demands){
+  const card=page.locator(`article[data-id="${demand.id}"]`);
+  await expect(card.locator('.demand-card-stage-time strong')).toHaveText('2 dias');
+  await expect(card.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
+  await card.click();
+  const detail=page.locator('#demandDetailForm');
+  await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
+  await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
+  await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
+ }
+ expect(b.errors).toEqual([]);
+});
+
 test('existing operational card saves sprint together with the other edits',async({page})=>{
  const sprints=[
   {id:'sprint-16',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},

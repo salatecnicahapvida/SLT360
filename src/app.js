@@ -5723,7 +5723,7 @@ function renderDemandCard(demand) {
         <span>${demand.analistaResponsavel || "Analista a definir"}</span>
         ${complementCount ? `<b>+${complementCount}</b>` : ""}
       </div>
-      <div class="demand-card-stage-time" title="Desde ${escapeAttribute(stageTime.startedLabel)}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
+      <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
         <span>Tempo na etapa</span>
         <strong>${stageTime.durationLabel}</strong>
       </div>
@@ -5775,6 +5775,7 @@ function formatDemandStageDuration(startedAt, endedAt = new Date()) {
 
 function demandStageTimeInfo(demand) {
   const currentStage = columnById(demand?.coluna);
+  const closed = ["concluido", "cancelado"].includes(currentStage?.id || demand?.coluna);
   const stageKey = normalizeSearchText(currentStage?.label || demand?.coluna || "");
   const histories = arrayOrFallback(state.history)
     .filter((item) => {
@@ -5799,17 +5800,32 @@ function demandStageTimeInfo(demand) {
     || creationInstant
     || explicit
     || demandStageInstant(todayISO());
+  const storedEndedAt = demandStageInstant(demand?.phaseEndedAt);
+  const legacyEndedAt = historyInstant
+    || demandStageInstant(demand?.updatedAt)
+    || demandStageInstant(demand?.dataEntregaReal)
+    || startedAt;
+  const endedAt = closed
+    ? new Date(Math.max(startedAt.getTime(), (storedEndedAt || legacyEndedAt).getTime()))
+    : new Date();
   const estimated = explicit && !explicitIsEstimated ? false : !historyInstant;
   return {
     stageId: currentStage?.id || demand?.coluna || "",
     stageLabel: currentStage?.label || demand?.coluna || "Sem etapa",
     startedAt,
-    durationLabel: formatDemandStageDuration(startedAt),
+    endedAt,
+    closed,
+    durationLabel: formatDemandStageDuration(startedAt, endedAt),
     startedLabel: new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
       timeStyle: "short",
       timeZone: "America/Sao_Paulo",
     }).format(startedAt),
+    endedLabel: new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    }).format(endedAt),
     estimated,
   };
 }
@@ -5882,9 +5898,10 @@ function demandStagePeriods(demand) {
       stageId: current.stageId,
       stageLabel: current.stageLabel,
       startedAt: current.startedAt,
-      endedAt: new Date(),
+      endedAt: current.endedAt,
       estimated: current.estimated,
       current: true,
+      closed: current.closed,
     },
   ].filter((period) => period.startedAt && period.endedAt && period.stageId);
 }
@@ -5905,7 +5922,7 @@ function renderDemandStagePeriods(demand) {
         <article class="demand-stage-period ${period.current ? "is-current" : ""}">
           <div>
             <strong>${escapeAttribute(period.stageLabel)}</strong>
-            <small>${demandStageMomentLabel(period.startedAt)} → ${period.current ? "agora" : demandStageMomentLabel(period.endedAt)}${period.estimated ? " · horário estimado" : ""}</small>
+            <small>${demandStageMomentLabel(period.startedAt)} → ${period.current && !period.closed ? "agora" : demandStageMomentLabel(period.endedAt)}${period.estimated ? " · horário estimado" : ""}</small>
           </div>
           <span>${formatDemandStageDuration(period.startedAt, period.endedAt)}</span>
         </article>
@@ -15363,7 +15380,7 @@ function openDemandDetailModal(id) {
               <div class="detail-card demand-stage-summary">
                 <span>Tempo na etapa atual</span>
                 <strong>${stageTime.durationLabel}</strong>
-                <small>${demandStatusLabel(demand)} · desde ${stageTime.startedLabel}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
+                <small>${demandStatusLabel(demand)} · ${stageTime.closed ? `contagem encerrada em ${stageTime.endedLabel}` : `desde ${stageTime.startedLabel}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
               </div>
               <div class="demand-stage-history-block full-span">
                 <strong>Histórico de permanência por etapa</strong>
@@ -17502,6 +17519,7 @@ async function handleDemandSubmit(form) {
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
     coluna: tipo === "SIC" ? "fazer" : formData.get("coluna") || "fazer",
     phaseStartedAt: demandCreatedAt,
+    phaseEndedAt: "",
     phaseStartedAtEstimated: false,
     createdAt: demandCreatedAt,
     dataPrevistaInicio: formData.get("dataPrevistaInicio") || todayISO(),
@@ -18144,12 +18162,13 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
       stageId: demand.coluna,
       stageLabel: previous,
       startedAt: previousStageTime.startedAt.toISOString(),
-      endedAt: transitionedAt,
+      endedAt: previousStageTime.closed ? previousStageTime.endedAt.toISOString() : transitionedAt,
       estimated: previousStageTime.estimated,
     },
   ];
   demand.coluna = nextColumnId;
   demand.phaseStartedAt = transitionedAt;
+  demand.phaseEndedAt = ["concluido", "cancelado"].includes(nextColumnId) ? transitionedAt : "";
   demand.phaseStartedAtEstimated = false;
   if (demand.coluna === "concluido") {
     if (!demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
@@ -18245,6 +18264,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     projectPlanRow: projectStatusOverrideKey(record),
     origemProjetoRow: projectStatusOverrideKey(record),
     phaseStartedAt: demandCreatedAt,
+    phaseEndedAt: "",
     phaseStartedAtEstimated: false,
     createdAt: demandCreatedAt,
     updatedAt: demandCreatedAt,
