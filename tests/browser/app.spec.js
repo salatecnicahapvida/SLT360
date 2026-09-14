@@ -288,7 +288,7 @@ test('kanban shows column totals and time in the current stage for every demand 
  await expect(counts).toHaveText(['1','1','1','0','1','0','0','0']);
  expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
  const expectedTypeBadges=new Map([
-  ['stage-initial','Emissão'],['stage-revision','Revisão EV'],['stage-extra','Extra'],['stage-sic','SIC'],
+  ['stage-initial','Emissão Inicial'],['stage-revision','Rev. Orç.'],['stage-extra','Dem. Extra'],['stage-sic','SIC'],
  ]);
  const expectedTypeTitles=new Map([
   ['stage-initial','Emissão Inicial'],['stage-revision','Revisão completa do EV'],['stage-extra','Demanda Extra'],['stage-sic','SIC - Solicitação de Informação'],

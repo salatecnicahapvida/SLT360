@@ -2201,9 +2201,9 @@ function demandTypeLabel(value) {
 
 function demandTypeCardLabel(value) {
   const map = {
-    EmissaoInicial: "Emissão",
-    ReemissaoCompleta: "Revisão EV",
-    DemandaExtra: "Extra",
+    EmissaoInicial: "Emissão Inicial",
+    ReemissaoCompleta: "Rev. Orç.",
+    DemandaExtra: "Dem. Extra",
     SIC: "SIC",
   };
   return map[demandTypeKey(value)] || "Demanda";
