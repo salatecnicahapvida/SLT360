@@ -16285,6 +16285,7 @@ function updateSicWorkSearch(input) {
 function openSicDemandModal(workId = "") {
   const selectedWork = workId ? workById(workId) : null;
   const suggestedAnalyst = historicalAnalystForWork(selectedWork);
+  const selectedSprint = currentSprint();
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
   const selectedWorkNumber = selectedWork ? selectedWork.chaveUnica || selectedWork.codigoOriginal || "" : "";
   const selectedWorkName = selectedWork ? selectedWork.nome || "" : "";
@@ -16307,6 +16308,13 @@ function openSicDemandModal(workId = "") {
             </div>
             ${analystChipOptions({ analistaResponsavel: suggestedAnalyst })}
           </section>
+          <label class="field modal-section">
+            <span>Sprint</span>
+            <select name="sprintId">
+              ${sprintOptions(selectedSprint?.id || "")}
+            </select>
+            <small class="muted">${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}</small>
+          </label>
           <section class="modal-section sic-work-link-panel">
             <div class="section-title with-action">
               <span>Projeto / obra vinculada</span>
@@ -17268,7 +17276,7 @@ async function handleDemandSubmit(form) {
     obraId,
     ...unitContext,
     tipo,
-    sprintId: formData.get("sprintId") || currentSprint()?.id || "sprint-4",
+    sprintId: formData.get("sprintId") || currentSprint()?.id || "",
     ...analystAssignment,
     prioridade: formData.get("prioridade"),
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),

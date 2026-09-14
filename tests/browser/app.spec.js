@@ -626,7 +626,11 @@ test('configuration catalogs can be created and edited and feed work and EV form
 });
 
 test('new demands suggest the historical analyst, persist labels and give SICs a 15-day due date',async({page})=>{
- const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021'],analystNames:['Técnico A']});await login(page);
+ const sprints=[
+  {id:'sprint-016',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},
+  {id:'sprint-017',nome:'Sprint 17',dataInicio:'2026-09-14',dataFim:'2026-09-27',status:'Ativa'},
+ ];
+ const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021'],analystNames:['Técnico A'],sprintRecords:sprints});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
@@ -672,6 +676,8 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  const sicForm=page.locator('#demandForm');
+ await expect(sicForm.locator('[name="sprintId"]')).toHaveValue('sprint-017');
+ await expect(sicForm.locator('[name="sprintId"] option')).toHaveText(['Sem sprint','Sprint 16','Sprint 17']);
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
  await expect(sicForm.locator('[data-sic-work-results]')).toContainText('Ano: 2025');
