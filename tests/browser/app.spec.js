@@ -175,6 +175,18 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('operational demand cards and list standardize work names',async({page})=>{
+ const work={...structuredClone(payload.state.works[0]),nome:'9902. PA BARRA DA TIJUCA - RJ',codigoOriginal:'9902',uf:'RJ'};
+ const demand={...structuredClone(payload.state.demands[1]),id:'uppercase-work-demand',obraId:work.id,coluna:'fazer'};
+ const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const card=page.locator('article[data-id="uppercase-work-demand"]');
+ await expect(card.locator('h3')).toHaveText('9902. PA Barra da Tijuca');
+ await page.getByRole('button',{name:'Lista',exact:true}).click();
+ await expect(page.locator('tr[data-id="uppercase-work-demand"] td').nth(1)).toHaveText('9902. PA Barra da Tijuca');
+ expect(b.errors).toEqual([]);
+});
+
 test('budget demand forms use one work selector and keep description optional',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();

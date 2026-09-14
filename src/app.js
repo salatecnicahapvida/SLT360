@@ -5625,6 +5625,7 @@ function renderOperationalList(filtered) {
 
 function renderOperationalListRow(demand) {
   const work = workById(demand.obraId);
+  const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
   const sprint = sprintById(demand.sprintId);
   const isSic = demandTypeKey(demand.tipo) === "SIC";
   const approval = isSic ? sicApprovalReading(demand) : null;
@@ -5632,7 +5633,7 @@ function renderOperationalListRow(demand) {
   return `
     <tr data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <td><strong>${demand.id}</strong></td>
-      <td><strong>${work?.nome || "Obra não localizada"}</strong></td>
+      <td><strong>${escapeAttribute(workLabel)}</strong></td>
       <td>
         ${demandTypeLabel(demand.tipo)}
         ${
@@ -5655,6 +5656,7 @@ function renderOperationalListRow(demand) {
 
 function renderDemandCard(demand) {
   const work = workById(demand.obraId);
+  const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
   const sprint = sprintById(demand.sprintId);
   const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
   const sprintFlag = sprintFlagLabel(sprintName);
@@ -5676,7 +5678,7 @@ function renderDemandCard(demand) {
           <button class="card-delete-button" type="button" aria-label="Excluir ${demand.id}" title="Excluir demanda" data-action="open-delete-demand" data-id="${demand.id}">×</button>
         </div>
       </div>
-      <h3>${work?.nome || "Obra não localizada"}</h3>
+      <h3>${escapeAttribute(workLabel)}</h3>
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         approval && approval.status !== "Pendente"
@@ -6869,9 +6871,10 @@ const workNameAcronyms = new Set([
   "RH", "TI", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
   "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU",
 ]);
+const workNameLowercaseWords = new Set(["a", "as", "de", "da", "das", "do", "dos", "e", "o", "os"]);
 
 function portfolioWorkDisplayCode(row) {
-  const explicitCode = String(row?.codigo || "").trim().replace(/[.\s]+$/g, "");
+  const explicitCode = String(row?.codigo || row?.codigoOriginal || "").trim().replace(/[.\s]+$/g, "");
   if (explicitCode && !/^(undefined|null)$/i.test(explicitCode)) return explicitCode;
   const embeddedCode = String(row?.nome || "").match(/^\s*(\d{1,10})\s*\.\s*/)?.[1];
   return embeddedCode || "0000";
@@ -6885,7 +6888,7 @@ function titleCaseWorkNamePart(part, sourceWasAllUpper) {
   const suffix = part.slice(coreMatch.index + core.length);
   const lower = core.toLocaleLowerCase("pt-BR");
   const upper = core.toLocaleUpperCase("pt-BR");
-  if (lower === "de") return `${prefix}de${suffix}`;
+  if (workNameLowercaseWords.has(lower)) return `${prefix}${lower}${suffix}`;
   const intentionallyUpper = !sourceWasAllUpper && core === upper && core !== lower && core.length <= 6;
   if (workNameAcronyms.has(upper) || intentionallyUpper || /\d/.test(core) && core === upper) {
     return `${prefix}${upper}${suffix}`;
@@ -6907,6 +6910,12 @@ function portfolioWorkDisplayName(row) {
     .join("")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function workDisplayLabel(row) {
+  const name = portfolioWorkDisplayName(row);
+  if (!name) return `${portfolioWorkDisplayCode(row)}. Obra sem nome`;
+  return `${portfolioWorkDisplayCode(row)}. ${name}`;
 }
 
 function renderPortfolioTable(rows) {
