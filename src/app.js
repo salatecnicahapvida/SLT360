@@ -574,6 +574,7 @@ let searchTerm = "";
 let operationalViewMode = "kanban";
 let demandPointerDragState = null;
 let demandDragSuppressClickUntil = 0;
+const unassignedAnalystFilterValue = "__sem_analista__";
 let operationalFilters = {
   query: "",
   sprintId: [],
@@ -5515,7 +5516,12 @@ function filteredDemands() {
     const selectedStatuses = operationalFilterValues("status");
     const selectedPunctualities = operationalFilterValues("punctuality");
     if (selectedSprints.length && !selectedSprints.includes(demand.sprintId)) return false;
-    if (selectedAnalysts.length && !demandAnalystNames(demand).some((analyst) => selectedAnalysts.includes(analyst))) return false;
+    if (selectedAnalysts.length) {
+      const demandAnalysts = demandAnalystNames(demand);
+      const matchesUnassigned = selectedAnalysts.includes(unassignedAnalystFilterValue) && !demandAnalysts.length;
+      const matchesAnalyst = demandAnalysts.some((analyst) => selectedAnalysts.includes(analyst));
+      if (!matchesUnassigned && !matchesAnalyst) return false;
+    }
     if (selectedTypes.length && !selectedTypes.includes(demandTypeKey(demand.tipo))) return false;
     if (operationalFilters.validationGroup && !demandValidationColumnIds.includes(demand.coluna)) return false;
     if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
@@ -5578,7 +5584,10 @@ function renderOperationalFilters() {
       </label>
       <div class="filter-grid">
         ${renderOperationalMultiFilter("sprintId", "Sprint", (state.sprints || []).map((sprint) => ({ value: sprint.id, label: sprint.nome })), "Todas")}
-        ${renderOperationalMultiFilter("analyst", "Analista", uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })), "Todos")}
+        ${renderOperationalMultiFilter("analyst", "Analista", [
+          { value: unassignedAnalystFilterValue, label: "Sem analista" },
+          ...uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })),
+        ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [{ value: "late", label: "Atrasadas" }, { value: "onTime", label: "No prazo" }], "Todos")}
       </div>
@@ -6098,7 +6107,7 @@ function operationalActiveFilterText() {
   const statuses = operationalFilterValues("status");
   const punctualities = operationalFilterValues("punctuality");
   if (sprints.length) active.push(sprints.map((id) => sprintById(id)?.nome || "sprint selecionada").join(", "));
-  if (analysts.length) active.push(`analistas ${analysts.join(", ")}`);
+  if (analysts.length) active.push(`analistas ${analysts.map((analyst) => analyst === unassignedAnalystFilterValue ? "Sem analista" : analyst).join(", ")}`);
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
   if (operationalFilters.validationGroup) active.push("validação Sala Técnica, Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
@@ -8929,6 +8938,15 @@ function maintenanceFieldOptions(values, selected, emptyLabel = "Todos") {
     .join("");
 }
 
+function analystFilterOptions(selected = "") {
+  return [
+    `<option value="">Todos</option>`,
+    `<option value="${unassignedAnalystFilterValue}" ${selected === unassignedAnalystFilterValue ? "selected" : ""}>Sem analista</option>`,
+  ]
+    .concat(uniqueAnalysts().map((analyst) => `<option value="${escapeAttribute(analyst)}" ${String(selected) === String(analyst) ? "selected" : ""}>${escapeAttribute(analyst)}</option>`))
+    .join("");
+}
+
 function maintenanceSprintFilterOptions(selected = "") {
   const selectedSprintId = sprintByReference(selected)?.id || "";
   return [`<option value="">Todas</option>`]
@@ -8942,7 +8960,10 @@ function filteredMaintenanceDemands() {
     const query = normalizeSearchText([searchTerm, filters.query].filter(Boolean).join(" ")).trim();
     if (query && !query.split(/\s+/).every((term) => maintenanceSearchText(item).includes(term))) return false;
     if (filters.sprint && maintenanceSprintId(item) !== (sprintByReference(filters.sprint)?.id || filters.sprint)) return false;
-    if (filters.analyst && !demandAnalystNames(item).includes(filters.analyst)) return false;
+    if (filters.analyst) {
+      const analysts = demandAnalystNames(item);
+      if (filters.analyst === unassignedAnalystFilterValue ? analysts.length : !analysts.includes(filters.analyst)) return false;
+    }
     if (filters.phase && item.coluna !== filters.phase) return false;
     if (filters.expense && item.tipoDespesa !== filters.expense) return false;
     if (filters.costCenter && item.centroCusto !== filters.costCenter) return false;
@@ -9152,7 +9173,7 @@ function renderMaintenanceFilters() {
         <label class="field">
           <span>Analista</span>
           <select data-maintenance-filter="analyst">
-            ${maintenanceFieldOptions(uniqueAnalysts(), filters.analyst)}
+            ${analystFilterOptions(filters.analyst)}
           </select>
         </label>
         <label class="field">

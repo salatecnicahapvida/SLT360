@@ -149,6 +149,12 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await clearDemandFilters.click();
  await expect(page.locator('[data-operational-filter]:checked')).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
+ const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
+ await expect(analystFilter.locator('.operational-multiselect-menu span')).toHaveText(['Sem analista']);
+ await analystFilter.locator('summary').click();
+ await analystFilter.locator('[data-operational-filter="analyst"][value="__sem_analista__"]').check();
+ await expect(page.locator('.operational-board-panel article')).toHaveCount(2);
+ await clearDemandFilters.click();
  await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(0);
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
  await expect(worksTabs).toHaveCount(5);
@@ -671,17 +677,17 @@ test('analyst directory is separate from users and feeds every analyst filter',a
  await userDialog.locator('[data-team-close]').first().click();
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
- await expect(page.locator('[data-operational-filter-group="analyst"] .operational-multiselect-menu span')).toContainText(['Analista Editado']);
+ await expect(page.locator('[data-operational-filter-group="analyst"] .operational-multiselect-menu span')).toContainText(['Sem analista','Analista Editado']);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.getByRole('button',{name:/Emissão Inicial/}).click();
  await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Editado']);
  await page.locator('#demandWizardStep1 [data-action="close-modal"]').first().click();
  await page.locator('[data-module="maintenance"]').click();
  await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Sem analista','Analista Editado']);
  await page.locator('[data-module="clinical"]').click();
  await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Analista Editado']);
+ await expect(page.locator('[data-maintenance-filter="analyst"] option')).toContainText(['Todos','Sem analista','Analista Editado']);
  expect(b.errors).toEqual([]);
 });
 
