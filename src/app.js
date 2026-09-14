@@ -7057,9 +7057,12 @@ const workNameAcronyms = new Set([
   "EV", "SIC", "SPDA", "UTI", "UPA", "UBS", "CDI", "CME", "CTI", "UCI", "SADT",
   "CCIH", "AVCB", "PPCI", "PPC", "AVC", "HVAC", "CEO", "CER", "CAPS", "PS", "PSF",
   "RH", "TI", "IT", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
-  "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU",
+  "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU", "CC", "VISA", "NL", "MP", "VS",
+  "NTH", "HAPFOR", "ABA", "ETE", "SND", "ABC", "BH", "CB", "CCG", "CMD", "CQV", "FUSAM",
+  "GLP", "HB", "HCOR", "HIABC", "IMESA", "IPSA", "PPP", "PROMED", "RPA", "SAD", "SEALM",
+  "SEMED", "SF", "UA", "UASA", "VI", "ELO", "GMD", "SCI", "CLI", "STR", "SUB",
 ]);
-const workNameLowercaseWords = new Set(["a", "as", "de", "da", "das", "do", "dos", "e", "o", "os"]);
+const workNameLowercaseWords = new Set(["a", "as", "com", "de", "da", "das", "do", "dos", "e", "em", "o", "os", "para", "por", "sem"]);
 
 function portfolioWorkDisplayCode(row) {
   const explicitCode = String(row?.codigo || row?.codigoOriginal || "").trim().replace(/[.\s]+$/g, "");
@@ -17232,7 +17235,7 @@ function activateSprint(id) {
 
 function handleWorkSubmit(form) {
   const formData = new FormData(form);
-  const nome = String(formData.get("nome") || "").trim();
+  let nome = String(formData.get("nome") || "").trim();
   const unidadeModo = formData.get("unidadeModo") === "existente" ? "existente" : "nova";
   const selectedUnit = unidadeModo === "existente" ? maintenanceUnitById(formData.get("unidadeId")) || findMaintenanceUnitByTypedSearch(formData.get("unidadeBusca")) : null;
 
@@ -17246,6 +17249,7 @@ function handleWorkSubmit(form) {
   const cidade = String(formData.get("cidade") || unitLocation.cidade || "").trim();
   const uf = String(formData.get("uf") || unitLocation.uf || "").trim().toUpperCase();
   const regiao = String(formData.get("regiao") || unitLocation.regiao || regionFromUf(uf) || "").trim();
+  nome = portfolioWorkDisplayName({ nome, uf });
 
   if (!nome || !tipoUnidade || !cidade || !uf || !regiao) {
     showFormError("Preencha nome, tipo de unidade, cidade, UF e região para cadastrar a obra.", form);
@@ -17258,6 +17262,18 @@ function handleWorkSubmit(form) {
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
   const anoObra = String(formData.get("anoObra") || "").replace(/[^\d]/g, "").slice(0, 4);
+  const codigoOriginal = String(formData.get("codigoOriginal") || "").trim().replace(/[.\s]+$/g, "") || "0000";
+  const normalizedName = normalizeSearchText(nome);
+  const duplicateWork = (state.works || []).find((work) => {
+    if (work === existingWork || work?._deleted) return false;
+    if (normalizeSearchText(portfolioWorkDisplayName(work)) !== normalizedName) return false;
+    return String(work.anoObra || "") === anoObra;
+  });
+  if (duplicateWork) {
+    showFormError(`Esta obra já está cadastrada como ${workDisplayLabel(duplicateWork)}. Edite o cadastro existente para evitar duplicidade.`, form);
+    form.querySelector('[name="nome"]')?.focus();
+    return;
+  }
   const tipoVerba = String(formData.get("tipoVerba") || "").trim().toUpperCase();
   const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
   const valorVerbaAportada = parseCurrency(formData.get("valorVerbaAportada"));
@@ -17280,7 +17296,7 @@ function handleWorkSubmit(form) {
   const workFields = {
     sourceHistoricalRecordId,
     chaveUnica: String(formData.get("chaveUnica") || "").trim(),
-    codigoOriginal: String(formData.get("codigoOriginal") || "").trim() || "0000",
+    codigoOriginal,
     nome,
     tipoUnidade,
     cidade,

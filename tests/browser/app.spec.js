@@ -749,15 +749,30 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(newWorkForm.locator('[name="tipologiaObra"] option')).toHaveText([
   'Selecione','Nova Unidade','Retrofit Unidade Existente','Ampliação Unidade Existente','Retrofit + Ampliação',
  ]);
- await newWorkForm.locator('[name="nome"]').fill('Obra sem origem de verba');
+ await newWorkForm.locator('[name="nome"]').fill('OBRA SEM ORIGEM DE VERBA - PE');
  await newWorkForm.locator('[name="tipoUnidade"]').fill('Hospital');
  await newWorkForm.locator('[name="cidade"]').fill('Recife');
  await newWorkForm.locator('[name="uf"]').fill('PE');
  await newWorkForm.locator('[name="regiao"]').fill('Nordeste');
+ await newWorkForm.locator('[name="anoObra"]').fill('2026');
  await newWorkForm.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
  await expect(page.locator('#workForm')).toHaveCount(0);
- await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.document?.nome==='Obra sem origem de verba'&&change.document?.tipoVerba===''&&change.document?.ordemInternaSAP===''&&change.document?.valorVerbaAportada===0)).toBe(true);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='projects_works')?.document?.nome).toBe('Obra sem Origem de Verba');
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.document?.tipoVerba===''&&change.document?.ordemInternaSAP===''&&change.document?.valorVerbaAportada===0)).toBe(true);
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ const duplicateWorkForm=page.locator('#workForm');
+ await duplicateWorkForm.locator('[name="nome"]').fill('Obra sem origem de verba');
+ await duplicateWorkForm.locator('[name="tipoUnidade"]').fill('Hospital');
+ await duplicateWorkForm.locator('[name="cidade"]').fill('Recife');
+ await duplicateWorkForm.locator('[name="uf"]').fill('PE');
+ await duplicateWorkForm.locator('[name="regiao"]').fill('Nordeste');
+ await duplicateWorkForm.locator('[name="anoObra"]').fill('2026');
+ await duplicateWorkForm.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+ await expect(duplicateWorkForm.locator('#formError')).toContainText('já está cadastrada');
+ await duplicateWorkForm.locator('[name="anoObra"]').fill('2027');
+ await duplicateWorkForm.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+ await expect(page.locator('#workForm')).toHaveCount(0);
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
@@ -1163,7 +1178,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'&&change.document.endereco==='Rua editada, 100'))).toBe(true);
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(noEvRow.locator('td').nth(0)).toHaveText('0000');
- await expect(noEvRow.locator('td').nth(1)).toHaveText('0000. Obra Nova Sem EV');
+ await expect(noEvRow.locator('td').nth(1)).toHaveText('0000. Obra Nova sem EV');
  await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit Unidade Existente');
  await expect(noEvRow.locator('td').nth(6)).toBeEmpty();
  await expect(noEvRow.locator('td').nth(10)).toBeEmpty();
