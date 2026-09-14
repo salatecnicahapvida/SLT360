@@ -5661,6 +5661,7 @@ function renderOperationalListRow(demand) {
 function renderDemandCard(demand) {
   const work = workById(demand.obraId);
   const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
+  const description = String(demand.observacao || demand.sicMetadata?.descricaoSic || "").trim();
   const sprint = sprintById(demand.sprintId);
   const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
   const sprintFlag = sprintFlagLabel(sprintName);
@@ -5683,6 +5684,7 @@ function renderDemandCard(demand) {
         </div>
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
+      ${description ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         approval && approval.status !== "Pendente"

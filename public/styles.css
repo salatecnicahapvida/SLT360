@@ -7049,6 +7049,18 @@ button.alert-item {
   overflow-wrap: anywhere;
 }
 
+.demand-card-description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .demand-card-unit-badge {
   width: fit-content;
   max-width: 100%;
