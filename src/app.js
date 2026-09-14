@@ -2127,6 +2127,7 @@ function demandTypeKey(value) {
     || /solicitacao\s+(?:de\s+)?informac(?:ao|oes)/.test(normalized)
     || normalized.replace(/\s+/g, "") === "informacaocontratada"
   ) return "SIC";
+  if (normalized.includes("demanda extra") || normalized.replace(/[^a-z0-9]/g, "") === "demandaextra" || normalized === "extra") return "DemandaExtra";
   if (normalized.includes("reemissao") || normalized.includes("revisao")) return "ReemissaoCompleta";
   if (normalized.includes("emissao") || normalized.includes("demanda inicial") || normalized.includes("novo orcamento")) return "EmissaoInicial";
   return value;
@@ -2148,6 +2149,13 @@ const workDemandTypeDefinitions = [
     iconClass: "demand-type-icon--blue",
   },
   {
+    id: "DemandaExtra",
+    label: "Demanda Extra",
+    description: "Demanda adicional vinculada a uma obra e à revisão do EV",
+    icon: "+",
+    iconClass: "demand-type-icon--blue",
+  },
+  {
     id: "SIC",
     label: "SIC",
     description: "Solicitação de Informação da Contratada vinculada a uma obra e ao EV",
@@ -2161,6 +2169,7 @@ function demandTypeLabel(value) {
     EmissaoInicial: "Emissão Inicial",
     SIC: "SIC - Solicitação de Informação",
     ReemissaoCompleta: "Revisão completa do EV",
+    DemandaExtra: "Demanda Extra",
   };
   return map[demandTypeKey(value)] || value;
 }
@@ -15434,7 +15443,7 @@ function readDemandProjectsFromForm(form) {
 }
 
 function demandTypeOptions(selected, includeSic = true) {
-  const types = includeSic ? ["EmissaoInicial", "ReemissaoCompleta", "SIC"] : ["EmissaoInicial", "ReemissaoCompleta"];
+  const types = includeSic ? ["EmissaoInicial", "ReemissaoCompleta", "DemandaExtra", "SIC"] : ["EmissaoInicial", "ReemissaoCompleta", "DemandaExtra"];
   return types
     .map((type) => `<option value="${type}" ${demandTypeKey(selected) === type ? "selected" : ""}>${demandTypeLabel(type)}</option>`)
     .join("");

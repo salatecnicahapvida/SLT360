@@ -106,7 +106,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
  const typeFilter=page.locator('[data-operational-filter-group="type"]');
  await expect(typeFilter.locator('.operational-multiselect-menu span')).toHaveText([
-  'Emissão Inicial','Revisão de Orçamento','SIC',
+  'Emissão Inicial','Revisão de Orçamento','Demanda Extra','SIC',
  ]);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  const registeredDemandTypes=await page.locator('.demand-type-option strong').allTextContents();
@@ -206,10 +206,10 @@ test('operational demand cards and list standardize work names',async({page})=>{
  expect(b.errors).toEqual([]);
 });
 
-test('budget demand forms use one work selector and keep description optional',async({page})=>{
+test('budget demand forms, including extra demand, use one work selector and keep description optional',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- for(const type of ['EmissaoInicial','ReemissaoCompleta']){
+ for(const type of ['EmissaoInicial','ReemissaoCompleta','DemandaExtra']){
   await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
   await page.locator(`.demand-type-option[data-type="${type}"]`).click();
   const step1=page.locator('#demandWizardStep1');
@@ -223,7 +223,7 @@ test('budget demand forms use one work selector and keep description optional',a
   await expect(step1.locator('[name="obraBusca"]')).toHaveCount(1);
   await expect(step1.locator('#demandWorkOptions option[value="Obra de teste"]')).toHaveText('2026');
   await expect(step1.locator('#demandWorkOptions option[value="Obra histórica Norte - AM"]')).toHaveText('2025');
-  if(type==='ReemissaoCompleta'){
+  if(type!=='EmissaoInicial'){
    await step1.locator('[name="obraBusca"]').fill('Obra de teste');
    await step1.getByRole('button',{name:/Avançar/}).click();
    await expect(page.locator('#demandForm')).toBeVisible();
