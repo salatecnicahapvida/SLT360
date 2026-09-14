@@ -299,7 +299,16 @@ test('kanban shows column totals and time in the current stage for every demand 
   await expect(card.locator('.demand-type-badge')).toHaveText(expectedTypeBadges.get(demand.id));
   await expect(card.locator('.demand-type-badge')).toHaveAttribute('title',expectedTypeTitles.get(demand.id));
   await expect(card.locator('.demand-card-stage-time')).toContainText('Tempo na etapa');
-  await expect(card.locator('.demand-card-stage-time strong')).toHaveText('1 dia');
+  await expect(card.locator('.demand-card-stage-duration')).toHaveText('1 dia');
+  const stageTimeStyles=await card.locator('.demand-card-stage-time').evaluate(element=>{
+   const label=getComputedStyle(element.querySelector('span:first-child'));
+   const duration=getComputedStyle(element.querySelector('.demand-card-stage-duration'));
+   return {
+    label:{color:label.color,fontFamily:label.fontFamily,fontSize:label.fontSize,fontWeight:label.fontWeight},
+    duration:{color:duration.color,fontFamily:duration.fontFamily,fontSize:duration.fontSize,fontWeight:duration.fontWeight},
+   };
+  });
+  expect(stageTimeStyles.duration).toEqual(stageTimeStyles.label);
   await card.click();
   const stageSummary=page.locator('#demandDetailForm .demand-stage-summary');
   await expect(stageSummary).toContainText('Tempo na etapa atual');
@@ -326,7 +335,7 @@ test('legacy stage counters start at demand creation instead of the demand start
  const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const card=page.locator('article[data-id="creation-based-stage-demand"]');
- await expect(card.locator('.demand-card-stage-time strong')).toHaveText('2 dias');
+ await expect(card.locator('.demand-card-stage-duration')).toHaveText('2 dias');
  await card.click();
  await expect(page.locator('#demandDetailForm .demand-stage-summary strong')).toHaveText('2 dias');
  expect(b.errors).toEqual([]);
@@ -338,12 +347,12 @@ test('moving a demand resets the current stage timer and preserves every previou
  const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const card=page.locator('article[data-id="stage-history-demand"]');
- await expect(card.locator('.demand-card-stage-time strong')).toHaveText('3 dias');
+ await expect(card.locator('.demand-card-stage-duration')).toHaveText('3 dias');
  await card.click();
  const form=page.locator('#demandDetailForm');
  await form.locator('[name="coluna"]').selectOption('fazendo');
  await form.getByRole('button',{name:'Salvar',exact:true}).click();
- await expect(card.locator('.demand-card-stage-time strong')).toHaveText('menos de 1 dia');
+ await expect(card.locator('.demand-card-stage-duration')).toHaveText('menos de 1 dia');
  await card.click();
  const periods=page.locator('#demandDetailForm .demand-stage-period');
  await expect(periods).toHaveCount(2);
@@ -367,7 +376,7 @@ test('stage time stops when a demand is completed or canceled',async({page})=>{
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  for(const demand of demands){
   const card=page.locator(`article[data-id="${demand.id}"]`);
-  await expect(card.locator('.demand-card-stage-time strong')).toHaveText('2 dias');
+  await expect(card.locator('.demand-card-stage-duration')).toHaveText('2 dias');
   await expect(card.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
   await card.click();
   const detail=page.locator('#demandDetailForm');
@@ -1263,7 +1272,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
  await page.mouse.up();
  await expect(fazendoColumn.locator('article[data-id="test-demand"]')).toBeVisible();
- await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-time strong')).toHaveText('menos de 1 dia');
+ await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-duration')).toHaveText('menos de 1 dia');
  await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.waitForTimeout(400);
  await fazendoColumn.locator('article[data-id="test-demand"]').click();

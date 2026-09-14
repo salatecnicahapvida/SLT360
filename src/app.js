@@ -5734,7 +5734,7 @@ function renderDemandCard(demand) {
       </div>
       <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
         <span>Tempo na etapa</span>
-        <strong>${stageTime.durationLabel}</strong>
+        <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
       </div>
       <span class="demand-card-date">${timing.dateLabel}</span>
       <div class="demand-card-alert" data-tone="${timing.tone}">

@@ -8061,9 +8061,9 @@ button.alert-item {
   font-size: 0.7rem;
 }
 
-.demand-card-stage-time strong {
-  color: var(--navy);
-  font-size: 0.73rem;
+.demand-card-stage-duration {
+  color: inherit;
+  font: inherit;
   white-space: nowrap;
 }
 
