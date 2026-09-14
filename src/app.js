@@ -5434,7 +5434,7 @@ function renderWorksOperational() {
     ${renderOperationalFilters()}
 
     <section class="kpi-grid">
-      ${kpi("Total na sprint", String(filtered.length), "Demandas no filtro atual", "blue", "", "opTotal")}
+      ${kpi("Total no Filtro", String(filtered.length), "Demandas no filtro atual", "blue", "", "opTotal")}
       ${kpi("A iniciar", String(filtered.filter((demand) => demand.coluna === "fazer").length), "Fila Fazer", "orange", "", "opFazer")}
       ${kpi("Em execução", String(inProgress), "Fila Fazendo", "green", "", "opFazendo")}
       ${kpi("Pausado", String(paused), "Aguardando destrava", "orange", "", "opPausado")}

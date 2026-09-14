@@ -122,6 +122,8 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.getByRole('button',{name:'Sprints globais',exact:true})).toHaveCount(0);
  await expect(page.locator('#globalSearch')).toHaveCount(0);
  await expect(page.locator('[data-operational-search]')).toBeVisible();
+ await expect(page.locator('[data-kpi="opTotal"]')).toContainText('Total no Filtro');
+ await expect(page.getByText('Total na sprint',{exact:true})).toHaveCount(0);
  await expect(page.locator('.operational-board-panel').getByRole('button',{name:'Visão gerencial',exact:true})).toHaveCount(0);
  const typeFilter=page.locator('[data-operational-filter-group="type"]');
  await expect(typeFilter.locator('.operational-multiselect-menu span')).toHaveText([
