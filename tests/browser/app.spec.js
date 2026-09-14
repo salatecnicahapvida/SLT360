@@ -679,7 +679,7 @@ test('analyst directory is separate from users and feeds every analyst filter',a
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await expect(page.locator('[data-operational-filter-group="analyst"] .operational-multiselect-menu span')).toContainText(['Sem analista','Analista Editado']);
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
- await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ await page.locator('.demand-type-option[data-type="EmissaoInicial"]').click();
  await expect(page.locator('#demandWizardStep1 .analyst-chip')).toContainText(['Sem analista','Analista Editado']);
  await page.locator('#demandWizardStep1 [data-action="close-modal"]').first().click();
  await page.locator('[data-module="maintenance"]').click();
@@ -800,7 +800,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  const b=await backend(page,'Admin',false,{archivedDemandIds:['DEM-021'],analystNames:['Técnico A'],sprintRecords:sprints});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
- await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ await page.locator('.demand-type-option[data-type="EmissaoInicial"]').click();
  const step1=page.locator('#demandWizardStep1');
  await expect(step1).toBeVisible();
  await expect(step1.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
@@ -834,7 +834,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(createdCard).toBeVisible();
  await expect(createdCard).toHaveAttribute('data-id','DEM-022');
  await expect(createdCard.locator('.demand-code')).toHaveCount(0);
- await expect(createdCard.locator('.demand-type-badge')).toHaveText('Emissão');
+ await expect(createdCard.locator('.demand-type-badge')).toHaveText('Emissão Inicial');
  await expect(createdCard.locator('.demand-card-labels')).toHaveText(/Urgente.*Diretoria/);
  await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
  const createdChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-022');
@@ -862,7 +862,7 @@ test('first selected analyst leads and every involved discipline persists its po
  const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Carla']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
- await page.getByRole('button',{name:/Emissão Inicial/}).click();
+ await page.locator('.demand-type-option[data-type="EmissaoInicial"]').click();
  const step1=page.locator('#demandWizardStep1');
  const analysts=step1.locator('[data-demand-analyst-selector]');
  await analysts.locator('label.analyst-chip').filter({hasText:'Bruno'}).click();
