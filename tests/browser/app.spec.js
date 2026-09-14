@@ -284,13 +284,36 @@ test('kanban shows column totals and time in the current stage for every demand 
  for(const demand of demands){
   const card=page.locator(`article[data-id="${demand.id}"]`);
   await expect(card.locator('.demand-card-stage-time')).toContainText('Tempo na etapa');
-  await expect(card.locator('.demand-card-stage-time strong')).toHaveText(/1 d 2 h/);
+  await expect(card.locator('.demand-card-stage-time strong')).toHaveText('1 dia');
   await card.click();
   const stageSummary=page.locator('#demandDetailForm .demand-stage-summary');
   await expect(stageSummary).toContainText('Tempo na etapa atual');
-  await expect(stageSummary.locator('strong')).toHaveText(/1 d 2 h/);
+  await expect(stageSummary.locator('strong')).toHaveText('1 dia');
   await page.locator('#demandDetailForm footer').getByRole('button',{name:'Fechar',exact:true}).click();
  }
+ expect(b.errors).toEqual([]);
+});
+
+test('moving a demand resets the current stage timer and preserves every previous period',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-(74*60*60*1000)).toISOString();
+ const demand={...structuredClone(payload.state.demands[1]),id:'stage-history-demand',obraId:'test-work',coluna:'fazer',phaseStartedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const card=page.locator('article[data-id="stage-history-demand"]');
+ await expect(card.locator('.demand-card-stage-time strong')).toHaveText('3 dias');
+ await card.click();
+ const form=page.locator('#demandDetailForm');
+ await form.locator('[name="coluna"]').selectOption('fazendo');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(card.locator('.demand-card-stage-time strong')).toHaveText('menos de 1 dia');
+ await card.click();
+ const periods=page.locator('#demandDetailForm .demand-stage-period');
+ await expect(periods).toHaveCount(2);
+ await expect(periods.nth(0)).toContainText('Fazer');
+ await expect(periods.nth(0)).toContainText('3 dias');
+ await expect(periods.nth(1)).toContainText('Fazendo');
+ await expect(periods.nth(1)).toContainText('menos de 1 dia');
+ await expect(periods.nth(1)).toHaveClass(/is-current/);
  expect(b.errors).toEqual([]);
 });
 
@@ -801,13 +824,13 @@ test('first selected analyst leads and every involved discipline persists its po
 });
 
 test('analyst chips use the configured spelling without case duplicates',async({page})=>{
- const demand={...structuredClone(payload.state.demands[1]),analistaResponsavel:'SKARTH'};
+ const demand={...structuredClone(payload.state.demands[1]),analistaResponsavel:'SKART'};
  const b=await backend(page,'Admin',false,{analystNames:['Skarth'],demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('.operational-board-panel [data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
  const detail=page.locator('#demandDetailForm');
  await expect(detail.locator('[data-demand-analyst-option][value="Skarth"]')).toHaveCount(1);
- await expect(detail.locator('[data-demand-analyst-option][value="SKARTH"]')).toHaveCount(0);
+ await expect(detail.locator('[data-demand-analyst-option][value="SKART"]')).toHaveCount(0);
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Skarth · Complementares: Nenhum');
  expect(b.errors).toEqual([]);
 });
@@ -1108,7 +1131,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
  await page.mouse.up();
  await expect(fazendoColumn.locator('article[data-id="test-demand"]')).toBeVisible();
- await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-time strong')).toHaveText('menos de 1 h');
+ await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-time strong')).toHaveText('menos de 1 dia');
  await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.waitForTimeout(400);
  await fazendoColumn.locator('article[data-id="test-demand"]').click();

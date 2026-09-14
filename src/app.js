@@ -783,10 +783,17 @@ function normalizeDemands(demands = [], works = []) {
   return arrayOrFallback(demands).map((item) => normalizeDemandRecord(item, works));
 }
 
+const analystNameAliases = new Map([
+  ["skart", "Skarth"],
+  ["skarth", "Skarth"],
+]);
+
 function canonicalAnalystName(name) {
   const cleanName = String(name || "").trim();
   const key = normalizeSearchText(cleanName);
   if (!key) return "";
+  const aliasName = analystNameAliases.get(key);
+  if (aliasName) return aliasName;
   const directoryName = (globalThis.SLT_CLOUD?.analysts || [])
     .map((analyst) => String(analyst.nome || "").trim())
     .find((analystName) => normalizeSearchText(analystName) === key);
@@ -5732,13 +5739,10 @@ function demandStageInstant(value) {
   return Number.isNaN(instant.getTime()) ? null : instant;
 }
 
-function formatDemandStageElapsed(startedAt) {
-  const elapsedHours = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 3600000));
-  if (elapsedHours < 1) return "menos de 1 h";
-  if (elapsedHours < 24) return `${elapsedHours} h`;
-  const days = Math.floor(elapsedHours / 24);
-  const hours = elapsedHours % 24;
-  return hours ? `${days} d ${hours} h` : `${days} d`;
+function formatDemandStageDuration(startedAt, endedAt = new Date()) {
+  const elapsedDays = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 86400000));
+  if (elapsedDays < 1) return "menos de 1 dia";
+  return `${elapsedDays} ${elapsedDays === 1 ? "dia" : "dias"}`;
 }
 
 function demandStageTimeInfo(demand) {
@@ -5776,7 +5780,10 @@ function demandStageTimeInfo(demand) {
     || demandStageInstant(todayISO());
   const estimated = explicit ? Boolean(demand?.phaseStartedAtEstimated) : !historyInstant;
   return {
-    durationLabel: formatDemandStageElapsed(startedAt),
+    stageId: currentStage?.id || demand?.coluna || "",
+    stageLabel: currentStage?.label || demand?.coluna || "Sem etapa",
+    startedAt,
+    durationLabel: formatDemandStageDuration(startedAt),
     startedLabel: new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
       timeStyle: "short",
@@ -5784,6 +5791,105 @@ function demandStageTimeInfo(demand) {
     }).format(startedAt),
     estimated,
   };
+}
+
+function demandStageId(value) {
+  const key = normalizeSearchText(value);
+  return columns.find((column) => normalizeSearchText(column.id) === key || normalizeSearchText(column.label) === key)?.id || "";
+}
+
+function demandDerivedClosedStagePeriods(demand) {
+  const changes = arrayOrFallback(state.history)
+    .filter((item) => item.entidadeId === demand?.id && normalizeSearchText(item.entidade) === "demanda" && normalizeSearchText(item.campo) === "coluna")
+    .map((item) => ({ ...item, instant: demandStageInstant(item.timestamp) }))
+    .filter((item) => item.instant)
+    .sort((left, right) => left.instant.getTime() - right.instant.getTime());
+  if (!changes.length) return [];
+  const creationInstant = arrayOrFallback(state.history)
+    .filter((item) => item.entidadeId === demand?.id && normalizeSearchText(item.entidade) === "demanda" && normalizeSearchText(item.campo) === "criacao")
+    .map((item) => demandStageInstant(item.timestamp))
+    .filter(Boolean)
+    .sort((left, right) => left.getTime() - right.getTime())[0];
+  const periods = [];
+  let stageId = demandStageId(changes[0].valorAnterior);
+  let startedAt = creationInstant;
+  changes.forEach((change) => {
+    if (stageId && startedAt && change.instant >= startedAt) {
+      periods.push({
+        stageId,
+        stageLabel: columnById(stageId)?.label || change.valorAnterior || stageId,
+        startedAt: startedAt.toISOString(),
+        endedAt: change.instant.toISOString(),
+        estimated: true,
+      });
+    }
+    stageId = demandStageId(change.valorNovo);
+    startedAt = change.instant;
+  });
+  return periods;
+}
+
+function demandStagePeriods(demand) {
+  const stored = arrayOrFallback(demand?.phaseHistory)
+    .map((period) => {
+      const startedAt = demandStageInstant(period.startedAt);
+      const endedAt = demandStageInstant(period.endedAt);
+      const stageId = demandStageId(period.stageId || period.stageLabel);
+      if (!startedAt || !endedAt || !stageId) return null;
+      return {
+        stageId,
+        stageLabel: columnById(stageId)?.label || period.stageLabel || stageId,
+        startedAt,
+        endedAt,
+        estimated: Boolean(period.estimated),
+        current: false,
+      };
+    })
+    .filter(Boolean);
+  const closed = stored.length
+    ? stored
+    : demandDerivedClosedStagePeriods(demand).map((period) => ({
+        ...period,
+        startedAt: demandStageInstant(period.startedAt),
+        endedAt: demandStageInstant(period.endedAt),
+      }));
+  const current = demandStageTimeInfo(demand);
+  return [
+    ...closed,
+    {
+      stageId: current.stageId,
+      stageLabel: current.stageLabel,
+      startedAt: current.startedAt,
+      endedAt: new Date(),
+      estimated: current.estimated,
+      current: true,
+    },
+  ].filter((period) => period.startedAt && period.endedAt && period.stageId);
+}
+
+function demandStageMomentLabel(instant) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  }).format(instant);
+}
+
+function renderDemandStagePeriods(demand) {
+  const periods = demandStagePeriods(demand);
+  return `
+    <div class="demand-stage-history" aria-label="Histórico de tempo por etapa">
+      ${periods.map((period) => `
+        <article class="demand-stage-period ${period.current ? "is-current" : ""}">
+          <div>
+            <strong>${escapeAttribute(period.stageLabel)}</strong>
+            <small>${demandStageMomentLabel(period.startedAt)} → ${period.current ? "agora" : demandStageMomentLabel(period.endedAt)}${period.estimated ? " · horário estimado" : ""}</small>
+          </div>
+          <span>${formatDemandStageDuration(period.startedAt, period.endedAt)}</span>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function demandCardDateInfo(demand) {
@@ -15233,6 +15339,11 @@ function openDemandDetailModal(id) {
                 <strong>${stageTime.durationLabel}</strong>
                 <small>${demandStatusLabel(demand)} · desde ${stageTime.startedLabel}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
               </div>
+              <div class="demand-stage-history-block full-span">
+                <strong>Histórico de permanência por etapa</strong>
+                <p class="muted">O contador reinicia a cada mudança de status; os períodos anteriores permanecem registrados.</p>
+                ${renderDemandStagePeriods(demand)}
+              </div>
             </div>
           </section>
 
@@ -17908,6 +18019,8 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
   if (demand.coluna === nextColumnId) return demand;
+  const previousStageTime = demandStageTimeInfo(demand);
+  const transitionedAt = new Date().toISOString();
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
     nextColumnId = "aprovacaoDiretoria";
@@ -17940,8 +18053,18 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
   }
   const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
+  demand.phaseHistory = [
+    ...arrayOrFallback(demand.phaseHistory),
+    {
+      stageId: demand.coluna,
+      stageLabel: previous,
+      startedAt: previousStageTime.startedAt.toISOString(),
+      endedAt: transitionedAt,
+      estimated: previousStageTime.estimated,
+    },
+  ];
   demand.coluna = nextColumnId;
-  demand.phaseStartedAt = new Date().toISOString();
+  demand.phaseStartedAt = transitionedAt;
   demand.phaseStartedAtEstimated = false;
   if (demand.coluna === "concluido") {
     if (!demand.dataEntregaReal) demand.dataEntregaReal = todayISO();

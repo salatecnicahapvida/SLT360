@@ -37,7 +37,10 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
  try{
   await seed(db,{state:{
    works:[{id:'w',nome:'Test',classificacaoObra:'Outros'},{id:'inactive-work',nome:'Inactive'}],
-   demands:[{id:'d',obraId:'w',titulo:'Test',tipo:'SIC',coluna:'fazer',sprintId:'sprint-15'}],
+   demands:[
+    {id:'d',obraId:'w',titulo:'Test',tipo:'SIC',coluna:'fazer',sprintId:'sprint-15',analistaResponsavel:'Skarth'},
+    {id:'skart-demand',obraId:'w',titulo:'Grafia antiga',tipo:'ReemissaoCompleta',coluna:'fazer',sprintId:'sprint-15',analistaResponsavel:'SKART'},
+   ],
    sprints:[
     {id:'sprint-15',nome:'Sprint 15',status:'Encerrada',dataInicio:'2026-08-17',dataFim:'2026-08-28'},
     {id:'sprint-017',nome:'Sprint 17',status:'Ativa',dataInicio:'2026-09-14',dataFim:'2026-09-27'},
@@ -47,6 +50,10 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   for(const name of migrations)await db.exec(await fs.readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
   assert.equal((await db.query("select extra->>'classificacaoObra' category from slt_projects_works where record_key='w'")).rows[0].category,'');
   assert.equal((await db.query("select sprint_id from slt_budget_demands where record_key='d'")).rows[0].sprint_id,'sprint-017');
+  const skarthAssignment=(await db.query("select assignee,assignee_id from slt_budget_demands where record_key='skart-demand'")).rows[0];
+  assert.equal(skarthAssignment.assignee,'Skarth');
+  assert.ok(skarthAssignment.assignee_id);
+  assert.equal((await db.query("select count(*)::int total from slt_core_analysts where lower(btrim(nome))='skart'")).rows[0].total,0);
   const phaseTracking=(await db.query("select extra->>'phaseStartedAt' started_at, extra->>'phaseStartedAtEstimated' estimated from slt_budget_demands where record_key='d'")).rows[0];
   assert.match(phaseTracking.started_at,/^\d{4}-\d{2}-\d{2}T/);
   assert.equal(phaseTracking.estimated,'true');
@@ -81,7 +88,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   const home=(await db.query('select slt_home_summary() result')).rows[0].result;
   assert.equal(home.schema_version,2);
   assert.equal(Number(home.works.totalWorks),1);
-  assert.equal(Number(home.works.activeCount),2);
+  assert.equal(Number(home.works.activeCount),3);
   await assert.rejects(commit([{entity:'budget_demands',key:'d',operation:'delete',expected_revision:1}]),{code:'22023'});
   const backup=(await db.query("select slt_backup_manual('test') result")).rows[0].result;
   const daily=(await db.query('select slt_backup_daily() result')).rows[0].result;
@@ -91,7 +98,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.ok((await db.query('select count(*)::integer total from slt_backup_list()')).rows[0].total<=2);
   assert.equal((await db.query('select description from slt_budget_approval_works')).rows[0].description,'Approval');
   await assert.rejects(commit([{...changes.find(c=>c.entity==='budget_approval_works'),expected_revision:2}]),{code:'40001'});
-  assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,2);
+  assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,3);
   await as('authenticated','22222222-2222-4222-8222-222222222222');
   await assert.rejects(db.query('select slt_backup_restore($1)',[backup.id]),{code:'42501'});
   assert.equal((await db.query('select * from slt_budget_approval_works')).rows.length,0);
