@@ -6928,25 +6928,38 @@ button.alert-item {
   outline: none;
 }
 
-.demand-code {
-  color: #96a9be;
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
 .demand-type-badge {
   display: inline-flex;
   align-items: center;
   min-height: 19px;
-  border: 1px solid rgba(255, 138, 0, 0.35);
+  border: 1px solid rgba(0, 92, 169, 0.32);
   border-radius: 999px;
-  background: #fff3df;
-  color: #b65300;
+  background: #e8f3ff;
+  color: #004c8c;
   padding: 2px 7px;
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.03em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.demand-type-badge[data-type="ReemissaoCompleta"] {
+  border-color: rgba(110, 53, 218, 0.3);
+  background: #f1ebff;
+  color: #5c25bd;
+}
+
+.demand-type-badge[data-type="DemandaExtra"] {
+  border-color: rgba(0, 121, 134, 0.3);
+  background: #e5f7f8;
+  color: #006b76;
+}
+
+.demand-type-badge[data-type="SIC"] {
+  border-color: rgba(255, 138, 0, 0.35);
+  background: #fff3df;
+  color: #b65300;
 }
 
 .demand-card-labels {

@@ -281,8 +281,17 @@ test('kanban shows column totals and time in the current stage for every demand 
  const counts=page.locator('.operational-board-panel .kanban-count');
  await expect(counts).toHaveText(['1','1','1','0','1','0','0','0']);
  expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
+ const expectedTypeBadges=new Map([
+  ['stage-initial','Emissão'],['stage-revision','Revisão EV'],['stage-extra','Extra'],['stage-sic','SIC'],
+ ]);
+ const expectedTypeTitles=new Map([
+  ['stage-initial','Emissão Inicial'],['stage-revision','Revisão completa do EV'],['stage-extra','Demanda Extra'],['stage-sic','SIC - Solicitação de Informação'],
+ ]);
  for(const demand of demands){
   const card=page.locator(`article[data-id="${demand.id}"]`);
+  await expect(card.locator('.demand-code')).toHaveCount(0);
+  await expect(card.locator('.demand-type-badge')).toHaveText(expectedTypeBadges.get(demand.id));
+  await expect(card.locator('.demand-type-badge')).toHaveAttribute('title',expectedTypeTitles.get(demand.id));
   await expect(card.locator('.demand-card-stage-time')).toContainText('Tempo na etapa');
   await expect(card.locator('.demand-card-stage-time strong')).toHaveText('1 dia');
   await card.click();
@@ -358,7 +367,12 @@ test('existing operational card saves sprint together with the other edits',asyn
  const form=page.locator('#demandDetailForm');
  await form.locator('[name="sprintId"]').selectOption('sprint-17');
  await expect(form).toBeVisible();
- await form.locator('[name="observacao"]').fill('Descrição atualizada no mesmo salvamento');
+ await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
+ await expect(form.locator('[name="obraId"]')).toHaveValue('test-work');
+ await expect(form.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
+ await expect(form.getByText('Sprint atual',{exact:true})).toHaveCount(0);
+ await expect(form.locator('[name="sprintId"]')).toHaveCount(1);
+ await form.locator('[name="descricao"]').fill('Descrição atualizada no mesmo salvamento');
  await form.locator('[name="prioridade"]').selectOption('Alta');
  await form.locator('[name="dataPrevistaEntrega"]').fill('2026-09-27');
  await form.getByRole('button',{name:'Salvar',exact:true}).click();
@@ -366,10 +380,46 @@ test('existing operational card saves sprint together with the other edits',asyn
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const reopened=page.locator('#demandDetailForm');
  await expect(reopened.locator('[name="sprintId"]')).toHaveValue('sprint-17');
- await expect(reopened.locator('[name="observacao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
+ await expect(reopened.locator('[name="descricao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
  await expect(reopened.locator('[name="prioridade"]')).toHaveValue('Alta');
  await expect(reopened.locator('[name="dataPrevistaEntrega"]')).toHaveValue('2026-09-27');
+ await reopened.locator('[name="obraBusca"]').fill('Obra nova sem EV');
+ await expect(reopened.locator('[name="obraId"]')).toHaveValue('work-without-ev');
+ await reopened.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect.poll(()=>b.requests.length).toBeGreaterThan(0);
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='test-budget-demand');
+  return changes.at(-1)?.document?.obraId;
+ }).toBe('work-without-ev');
+ expect(b.errors).toEqual([]);
+});
+
+test('SIC card exposes the same editable identification fields used at creation',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  sprintId:'sprint-17',
+  analistaResponsavel:'Ana',
+  sicMetadata:{
+   lecomNumber:'LECOM-2026-001',obraNumber:'TEST',obraNome:'Obra de teste',tituloSic:'SIC de teste',numeroSic:'SIC-001',
+   descricaoSic:'Descrição da SIC',analistaSalaTecnica:'Ana',motivo:'AlteracaoProjeto',
+  },
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-action="open-demand-detail"][data-id="test-demand"]').click();
+ const form=page.locator('#demandDetailForm');
+ await expect(form.locator('[name="sprintId"]')).toHaveCount(1);
+ await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
+ await expect(form.locator('[name="lecomNumber"]')).toHaveValue('LECOM-2026-001');
+ await expect(form.locator('[name="obraNumber"]')).toHaveValue('TEST');
+ await expect(form.locator('[name="obraNome"]')).toHaveValue('Obra de teste');
+ await expect(form.locator('[name="tituloSic"]')).toHaveValue('SIC de teste');
+ await expect(form.locator('[name="numeroSic"]')).toHaveValue('SIC-001');
+ await expect(form.locator('[name="sicDescricao"]')).toHaveValue('Descrição da SIC');
+ await expect(form.locator('[name="motivo"]')).toHaveValue('AlteracaoProjeto');
+ await expect(form.locator('[name="prioridade"]')).toHaveCount(1);
+ await expect(form.locator('[name="dataPrevistaEntrega"]')).toHaveCount(1);
+ await expect(form.locator('[name="projetosEnvolvidos"]')).toHaveCount(12);
  expect(b.errors).toEqual([]);
 });
 
@@ -510,7 +560,7 @@ test('analyst edits and moves existing demands but cannot create or delete them'
  const detail=page.locator('#demandDetailForm');
  await expect(detail).toBeVisible();
  await expect(detail.locator('[data-action="open-delete-demand"]')).toBeHidden();
- await detail.locator('[name="observacao"]').fill('Descrição ajustada pelo analista');
+ await detail.locator('[name="descricao"]').fill('Descrição ajustada pelo analista');
  await detail.locator('[name="nota"]').fill('Ajuste permitido ao analista');
  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='budget_demands'&&change.key==='test-budget-demand'&&change.operation==='upsert'))).toBe(true);
@@ -820,11 +870,10 @@ test('first selected analyst leads and every involved discipline persists its po
  const saved=b.requests.flatMap(request=>request.changes).find(item=>item.entity==='budget_demands'&&item.document?.analistaResponsavel==='Bruno');
  await page.locator(`[data-action="open-demand-detail"][data-id="${saved.document.id}"]`).click();
  const detail=page.locator('#demandDetailForm');
- const contextGrid=detail.locator('.demand-context-grid');
- await expect(contextGrid).toBeVisible();
- expect(await contextGrid.locator('.split-item').first().evaluate(node=>({display:getComputedStyle(node).display,textAlign:getComputedStyle(node.querySelector('span')).textAlign}))).toEqual({display:'grid',textAlign:'left'});
+ await expect(detail.locator('.demand-context-grid')).toHaveCount(0);
+ await expect(detail.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
  await expect(detail.getByText('Descrição da demanda',{exact:true})).toBeVisible();
- await expect(detail.locator('[name="observacao"]')).not.toHaveAttribute('required','');
+ await expect(detail.locator('[name="descricao"]')).not.toHaveAttribute('required','');
  await expect(detail.locator('[data-demand-analyst-summary]')).toHaveText('Líder: Bruno · Complementares: Ana, Carla');
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ARQ"]')).toBeChecked();
  await expect(detail.locator('[name="projetosEnvolvidos"][value="ELE"]')).toBeChecked();

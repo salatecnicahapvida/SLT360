@@ -2198,6 +2198,16 @@ function demandTypeLabel(value) {
   return map[demandTypeKey(value)] || value;
 }
 
+function demandTypeCardLabel(value) {
+  const map = {
+    EmissaoInicial: "Emissão",
+    ReemissaoCompleta: "Revisão EV",
+    DemandaExtra: "Extra",
+    SIC: "SIC",
+  };
+  return map[demandTypeKey(value)] || "Demanda";
+}
+
 function nextCode(prefix, collection) {
   const items = Array.isArray(collection) ? collection : [];
   const highest = items.reduce((max, item) => {
@@ -5689,8 +5699,7 @@ function renderDemandCard(demand) {
     <article class="demand-card ${isSic ? "is-sic" : ""}" data-status="${demand.coluna}" data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <div class="demand-card-top">
         <div class="demand-card-id">
-          <span class="demand-code">${demand.id}</span>
-          ${isSic ? `<span class="demand-type-badge">SIC</span>` : ""}
+          <span class="demand-type-badge" data-type="${escapeAttribute(demandTypeKey(demand.tipo))}" title="${escapeAttribute(demandTypeLabel(demand.tipo))}">${escapeAttribute(demandTypeCardLabel(demand.tipo))}</span>
         </div>
         <div class="demand-card-actions">
           <span class="sprint-flag" title="${escapeAttribute(sprintName)}">${sprintFlag}</span>
@@ -15112,22 +15121,45 @@ function renderDemandSicMetadata(demand) {
   if (!info) return "";
   const approval = sicApprovalReading(demand);
   const canPost = approval.status === "Aprovado";
-  const safeDescription = info.descricaoSic === "—" ? "" : escapeAttribute(info.descricaoSic);
+  const fieldValue = (value) => (value === "—" ? "" : escapeAttribute(value));
   return `
     <section class="modal-section sic-detail-section">
       <div class="section-title">
         <span>Dados da SIC</span>
       </div>
-      <div class="sic-detail-grid">
-        ${sicDetailItem("Nº do LECOM", info.lecomNumber)}
-        ${sicDetailItem("Nº da obra", info.obraNumber)}
-        ${sicDetailItem("Nome da obra", info.obraNome)}
-        ${sicDetailItem("Título da SIC", info.tituloSic)}
-        ${sicDetailItem("Analista ST", info.analistaSalaTecnica)}
+      <div class="form-grid">
+        <label class="field">
+          <span>Nº do LECOM</span>
+          <input name="lecomNumber" value="${fieldValue(info.lecomNumber)}" placeholder="Ex.: LECOM-2026-0000" />
+        </label>
+        <label class="field">
+          <span>Nº da obra</span>
+          <input name="obraNumber" value="${fieldValue(info.obraNumber)}" placeholder="Chave, OI ou nº de referência da obra" />
+        </label>
+        <label class="field full-span">
+          <span>Nome da obra</span>
+          <input name="obraNome" value="${fieldValue(info.obraNome)}" placeholder="Nome da obra vinculada à SIC" />
+        </label>
+        <label class="field">
+          <span>Título da SIC</span>
+          <input name="tituloSic" value="${fieldValue(info.tituloSic)}" />
+        </label>
+        <label class="field">
+          <span>Nº da SIC</span>
+          <input name="numeroSic" value="${fieldValue(info.numeroSic)}" placeholder="Ex.: SIC-001 ou código da contratada" />
+        </label>
+        <label class="field">
+          <span>Motivo</span>
+          <select name="motivo">
+            <option value="InformacaoContratada" ${info.motivo === "InformacaoContratada" ? "selected" : ""}>Solicitação de Informação da Contratada</option>
+            <option value="AlteracaoProjeto" ${info.motivo === "AlteracaoProjeto" ? "selected" : ""}>Alteração de Projeto</option>
+            <option value="SolicitacaoCampo" ${info.motivo === "SolicitacaoCampo" ? "selected" : ""}>Solicitação de Campo</option>
+          </select>
+        </label>
       </div>
       <label class="sic-description-box">
         <span>Descrição da SIC</span>
-        <textarea name="sicDescricao" required>${safeDescription}</textarea>
+        <textarea name="sicDescricao">${fieldValue(info.descricaoSic)}</textarea>
       </label>
       ${renderSicDraftDisciplineEditor(demand)}
       ${renderSicApprovalSyncPanel(demand)}
@@ -15207,15 +15239,6 @@ function renderDemandSicRiskAlert(demand) {
   `;
 }
 
-function sicDetailItem(label, value) {
-  return `
-    <div class="detail-card">
-      <span>${label}</span>
-      <strong>${escapeAttribute(value || "—")}</strong>
-    </div>
-  `;
-}
-
 function renderDemandUnitContext(demand, work = null) {
   const isExisting = demand.unidadeModo === "existente";
   const unitName = demand.unidadeNome || (isExisting ? "" : work?.nome || "");
@@ -15277,17 +15300,13 @@ function openDemandDetailModal(id) {
               ? ""
               : `<label class="field modal-section">
                   <span>Descrição da demanda</span>
-                  <textarea name="observacao">${demand.observacao || ""}</textarea>
+                  <textarea name="descricao" placeholder="Descreva o escopo desta demanda...">${escapeAttribute(demand.observacao || "")}</textarea>
                 </label>`
           }
 
-          ${renderDemandUnitContext(demand, work)}
-
-          ${renderDemandSicMetadata(demand)}
-
           <section class="modal-section">
             <div class="section-title">
-              <span>Classificação</span>
+              <span>Identificação da demanda</span>
             </div>
             <div class="form-grid">
               <label class="field">
@@ -15305,6 +15324,20 @@ function openDemandDetailModal(id) {
               </label>
             </div>
           </section>
+
+          <section class="modal-section">
+            <div class="section-title">
+              <span>Obra vinculada *</span>
+            </div>
+            <input type="hidden" name="obraId" value="${escapeAttribute(work?.id || demand.obraId || "")}" />
+            <label class="field">
+              <span>Buscar obra</span>
+              <input name="obraBusca" data-demand-work-search list="demandWorkOptions" value="${escapeAttribute(work?.nome || "")}" placeholder="Digite o nome da obra..." autocomplete="off" required />
+            </label>
+            ${demandWorkDatalist()}
+          </section>
+
+          ${renderDemandSicMetadata(demand)}
 
           <section class="demand-status-box demand-status-control" data-status="${demand.coluna}">
             <label class="field">
@@ -15327,11 +15360,6 @@ function openDemandDetailModal(id) {
                 </select>
               </label>
               ${renderDemandLabelsField(demand.etiquetas)}
-              <div class="detail-card">
-                <span>Sprint atual</span>
-                <strong>${sprint?.nome || "Sem sprint"}</strong>
-                <small>${sprint ? `${dateText(sprint.dataInicio)} a ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
-              </div>
               <div class="detail-card demand-stage-summary">
                 <span>Tempo na etapa atual</span>
                 <strong>${stageTime.durationLabel}</strong>
@@ -16120,7 +16148,7 @@ function renderDemandWizardStep1(draft) {
             <input type="hidden" name="obraId" value="${escapeAttribute(draft.obraId)}" />
             <label class="field">
               <span>Buscar obra</span>
-              <input name="obraBusca" list="demandWorkOptions" value="${escapeAttribute(draft.obraBusca)}" placeholder="Digite o nome da obra..." autocomplete="off" required />
+              <input name="obraBusca" data-demand-work-search list="demandWorkOptions" value="${escapeAttribute(draft.obraBusca)}" placeholder="Digite o nome da obra..." autocomplete="off" required />
             </label>
             ${demandWorkDatalist()}
           </section>
@@ -17669,6 +17697,7 @@ async function handleDemandDetailSubmit(form) {
   const demand = state.demands[demandIndex];
   if (!demand) return;
   const demandSnapshot = clone(demand);
+  const previousWorkId = demand.obraId || "";
   const workIndex = state.works.findIndex((item) => item.id === demand.obraId);
   const workSnapshot = workIndex >= 0 ? clone(state.works[workIndex]) : null;
   const sicsSnapshot = clone(state.sics || []);
@@ -17679,6 +17708,16 @@ async function handleDemandDetailSubmit(form) {
   const previousProjectDetails = normalizeDemandProjectDetails(demand.projetosEnvolvidosDetalhes);
   const analystAssignment = analystAssignmentFromForm(form, demand);
   if (!validateDemandAnalysts(analystAssignment, form)) return;
+  const selectedWorkId = resolveWorkIdFromDemandForm(formData);
+  const selectedWork = workById(selectedWorkId);
+  if (!selectedWork) {
+    showFormError("Selecione uma obra válida do portfólio antes de salvar a demanda.", form);
+    return;
+  }
+  if (demandTypeKey(demand.tipo) === "SIC" && (demand.sicIds || []).length && selectedWork.id !== previousWorkId) {
+    showFormError("Uma SIC já postada no EV não pode ser transferida para outra obra. Edite os demais campos ou crie uma nova SIC na obra correta.", form);
+    return;
+  }
   const previousSprint = demand.sprintId || "";
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
@@ -17693,6 +17732,15 @@ async function handleDemandDetailSubmit(form) {
       : "";
 
   Object.assign(demand, analystAssignment);
+  demand.obraId = selectedWork.id;
+  if (demand.unidadeModo !== "existente") {
+    demand.unidadeNome = selectedWork.nome || "";
+    demand.unidadeTipo = selectedWork.tipoUnidade || "";
+    demand.unidadeCnpj = selectedWork.cnpj || "";
+    demand.unidadeMunicipio = [selectedWork.cidade, selectedWork.uf].filter(Boolean).join("/");
+    demand.unidadeCentro = selectedWork.codigoOriginal || "";
+    demand.unidadeSource = "Portfólio de obras";
+  }
   demand.tipo = formData.get("tipo") || demand.tipo;
   demand.sprintId = formData.get("sprintId") || "";
   demand.prioridade = formData.get("prioridade") || demand.prioridade;
@@ -17700,8 +17748,26 @@ async function handleDemandDetailSubmit(form) {
   if (isSicDemand) {
     demand.sicMetadata = demand.sicMetadata || {};
     demand.sicMetadata.analistaSalaTecnica = demand.analistaResponsavel || "";
-    demand.sicMetadata.descricaoSic = formData.get("sicDescricao") || demand.sicMetadata.descricaoSic || demand.observacao || "";
+    demand.sicMetadata.lecomNumber = String(formData.get("lecomNumber") || "").trim();
+    demand.sicMetadata.obraNumber = String(formData.get("obraNumber") || selectedWork.chaveUnica || selectedWork.codigoOriginal || "").trim();
+    demand.sicMetadata.obraNome = String(formData.get("obraNome") || selectedWork.nome || "").trim();
+    demand.sicMetadata.tituloSic = String(formData.get("tituloSic") || "").trim();
+    demand.sicMetadata.numeroSic = String(formData.get("numeroSic") || "").trim();
+    demand.sicMetadata.descricaoSic = String(formData.get("sicDescricao") || "").trim();
+    demand.sicMetadata.motivo = formData.get("motivo") || "InformacaoContratada";
     demand.observacao = demand.sicMetadata.descricaoSic;
+    (demand.sicIds || []).forEach((sicId) => {
+      const sic = state.sics.find((item) => item.id === sicId);
+      if (!sic) return;
+      sic.lecomNumber = demand.sicMetadata.lecomNumber;
+      sic.obraNumber = demand.sicMetadata.obraNumber;
+      sic.obraNome = demand.sicMetadata.obraNome;
+      sic.titulo = demand.sicMetadata.tituloSic;
+      sic.numeroSic = demand.sicMetadata.numeroSic || sic.id;
+      sic.descricao = demand.sicMetadata.descricaoSic;
+      sic.analistaSalaTecnica = demand.sicMetadata.analistaSalaTecnica;
+      sic.motivo = demand.sicMetadata.motivo;
+    });
     let newAttachments = [];
     try {
       newAttachments = await fileAttachmentMetadata(form.querySelector('[name="sicDetailFiles"]'), { entidade: "demanda", entidadeId: demand.id, tipo: "SIC" });
@@ -17728,7 +17794,7 @@ async function handleDemandDetailSubmit(form) {
       });
     }
   } else {
-    demand.observacao = formData.get("observacao") || "";
+    demand.observacao = formData.get("descricao") || "";
   }
   demand.nota = formData.get("nota") || "";
   const projectSelection = readDemandProjectsFromForm(form);
@@ -17835,6 +17901,15 @@ async function handleDemandDetailSubmit(form) {
       campo: "etiquetas",
       valorAnterior: previousLabels.join(", ") || "Nenhuma",
       valorNovo: demand.etiquetas.join(", ") || "Nenhuma",
+    });
+  }
+  if (previousWorkId !== demand.obraId) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "obraVinculada",
+      valorAnterior: workById(previousWorkId)?.nome || previousWorkId || "Sem obra",
+      valorNovo: selectedWork.nome || selectedWork.id,
     });
   }
 
@@ -19275,7 +19350,7 @@ function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
 }
 
 document.addEventListener("input", (event) => {
-  if (event.target.matches('#demandWizardStep1 [name="obraBusca"]')) {
+  if (event.target.matches("[data-demand-work-search]")) {
     const work = findWorkByExactTypedSearch(event.target.value);
     const form = event.target.closest("form");
     const workId = form?.querySelector('[name="obraId"]');
