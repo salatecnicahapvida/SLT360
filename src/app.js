@@ -7,7 +7,6 @@ const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
 
 const MIRO_FLOW_URL = "https://miro.com/app/board/uXjVKxg3MFc=/";
 const AUTH_SESSION_KEY = "slt360-auth-session-v1";
-const HAPTEC_POSITION_KEY = "slt360-haptec-position-v1";
 const ATTACHMENT_DB_NAME = "slt360-attachments-v1";
 const ATTACHMENT_STORE_NAME = "files";
 
@@ -639,9 +638,6 @@ let clinicalFilters = {
 };
 let haptecOpen = false;
 let haptecMessages = [];
-let haptecPosition = loadHaptecPosition();
-let haptecDragState = null;
-let haptecSuppressToggleClick = false;
 let demandWizardDraft = {};
 let workModalReturnMode = "";
 let workModalPlanDraft = null;
@@ -3312,43 +3308,6 @@ function renderHaptecRobot(extraClass = "", face = haptecCurrentFace()) {
 function latestHaptecBotText() {
   const lastBot = [...haptecMessages].reverse().find((message) => message.role === "bot");
   return lastBot?.text || haptecWelcomeText();
-}
-
-function loadHaptecPosition() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(HAPTEC_POSITION_KEY) || "null");
-    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) return saved;
-  } catch (error) {
-    console.warn("Não foi possível carregar a posição do Haptec360.", error);
-  }
-  return null;
-}
-
-function clampHaptecPosition(position = {}) {
-  const margin = 12;
-  const width = haptecOpen ? 390 : 248;
-  const height = haptecOpen ? Math.min(560, Math.max(window.innerHeight - 24, 280)) : 104;
-  const maxX = Math.max(margin, window.innerWidth - width - margin);
-  const maxY = Math.max(margin, window.innerHeight - height - margin);
-  return {
-    x: Math.min(Math.max(Number(position.x) || margin, margin), maxX),
-    y: Math.min(Math.max(Number(position.y) || margin, margin), maxY),
-  };
-}
-
-function saveHaptecPosition(position = haptecPosition) {
-  if (!position) return;
-  try {
-    localStorage.setItem(HAPTEC_POSITION_KEY, JSON.stringify(clampHaptecPosition(position)));
-  } catch (error) {
-    console.warn("Não foi possível salvar a posição do Haptec360.", error);
-  }
-}
-
-function haptecPositionStyle() {
-  if (!haptecPosition) return "";
-  haptecPosition = clampHaptecPosition(haptecPosition);
-  return ` style="left:${haptecPosition.x}px; top:${haptecPosition.y}px; right:auto; bottom:auto;"`;
 }
 
 function speakHaptec(text = latestHaptecBotText()) {
@@ -18171,11 +18130,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "toggle-haptec") {
-    if (haptecSuppressToggleClick) {
-      event.preventDefault();
-      haptecSuppressToggleClick = false;
-      return;
-    }
     haptecOpen = !haptecOpen;
     render();
     return;
@@ -18786,53 +18740,6 @@ document.addEventListener("pointerup", (event) => {
 });
 
 document.addEventListener("pointercancel", clearDemandDragState);
-
-document.addEventListener("pointerdown", (event) => {
-  const handle = event.target.closest("[data-haptec-drag-handle]");
-  if (!handle || event.target.closest(".haptec-header-actions, .haptec-form")) return;
-  const assistant = handle.closest(".haptec-assistant");
-  if (!assistant) return;
-  const rect = assistant.getBoundingClientRect();
-  haptecDragState = {
-    assistant,
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    originX: rect.left,
-    originY: rect.top,
-    moved: false,
-  };
-  assistant.classList.add("is-dragging");
-  handle.setPointerCapture?.(event.pointerId);
-});
-
-document.addEventListener("pointermove", (event) => {
-  if (!haptecDragState) return;
-  const dx = event.clientX - haptecDragState.startX;
-  const dy = event.clientY - haptecDragState.startY;
-  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) haptecDragState.moved = true;
-  haptecPosition = clampHaptecPosition({
-    x: haptecDragState.originX + dx,
-    y: haptecDragState.originY + dy,
-  });
-  haptecDragState.assistant.style.left = `${haptecPosition.x}px`;
-  haptecDragState.assistant.style.top = `${haptecPosition.y}px`;
-  haptecDragState.assistant.style.right = "auto";
-  haptecDragState.assistant.style.bottom = "auto";
-});
-
-document.addEventListener("pointerup", () => {
-  if (!haptecDragState) return;
-  haptecDragState.assistant.classList.remove("is-dragging");
-  if (haptecDragState.moved) {
-    haptecSuppressToggleClick = true;
-    saveHaptecPosition(haptecPosition);
-    setTimeout(() => {
-      haptecSuppressToggleClick = false;
-    }, 260);
-  }
-  haptecDragState = null;
-});
 
 document.addEventListener("keydown", (event) => {
   if (event.target.matches('.portfolio-work-row') && ["Enter", " "].includes(event.key)) {

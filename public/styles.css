@@ -12427,6 +12427,13 @@ button.analyst-chip {
   transform: none;
 }
 
+.header-support .haptec-assistant,
+.header-support .haptec-assistant *,
+.header-support .haptec-assistant *::before,
+.header-support .haptec-assistant *::after {
+  animation: none !important;
+}
+
 .header-support .haptec-launcher {
   min-height: 40px;
   padding: 4px 12px 4px 7px;

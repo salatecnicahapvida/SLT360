@@ -95,6 +95,18 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  const b=await backend(page);await login(page);
  const supportMount=page.locator('#supportAssistantMount');
  await expect(supportMount.getByRole('button',{name:/^Suporte360/})).toBeVisible();
+ const supportLauncher=supportMount.locator('.haptec-launcher');
+ await expect(supportLauncher).toHaveCSS('cursor','pointer');
+ const supportAnimationNames=await supportLauncher.evaluate(element=>{
+  const nodes=[element,...element.querySelectorAll('*')];
+  return nodes.flatMap(node=>[
+   getComputedStyle(node).animationName,
+   getComputedStyle(node,'::before').animationName,
+   getComputedStyle(node,'::after').animationName,
+  ]);
+ });
+ expect([...new Set(supportAnimationNames)]).toEqual(['none']);
+ await expect(supportMount.locator('[data-haptec-drag-handle]')).toHaveCount(0);
  await expect(page.getByText('Haptec360',{exact:true})).toHaveCount(0);
  expect(await supportMount.evaluate(element=>element.closest('.app-header')!==null)).toBe(true);
  await supportMount.getByRole('button',{name:/^Suporte360/}).click();
