@@ -267,6 +267,33 @@ test('operational demand cards and list standardize work names',async({page})=>{
  expect(b.errors).toEqual([]);
 });
 
+test('kanban shows column totals and time in the current stage for every demand type',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-(26*60*60*1000)).toISOString();
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseStartedAtEstimated:false};
+ const demands=[
+  {...base,id:'stage-initial',tipo:'EmissaoInicial',coluna:'fazer'},
+  {...base,id:'stage-revision',tipo:'ReemissaoCompleta',coluna:'fazendo'},
+  {...base,id:'stage-extra',tipo:'DemandaExtra',coluna:'pausado'},
+  {...structuredClone(payload.state.demands[0]),id:'stage-sic',obraId:'test-work',tipo:'SIC',coluna:'validacaoObras',phaseStartedAt,phaseStartedAtEstimated:false},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const counts=page.locator('.operational-board-panel .kanban-count');
+ await expect(counts).toHaveText(['1','1','1','0','1','0','0','0']);
+ expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
+ for(const demand of demands){
+  const card=page.locator(`article[data-id="${demand.id}"]`);
+  await expect(card.locator('.demand-card-stage-time')).toContainText('Tempo na etapa');
+  await expect(card.locator('.demand-card-stage-time strong')).toHaveText(/1 d 2 h/);
+  await card.click();
+  const stageSummary=page.locator('#demandDetailForm .demand-stage-summary');
+  await expect(stageSummary).toContainText('Tempo na etapa atual');
+  await expect(stageSummary.locator('strong')).toHaveText(/1 d 2 h/);
+  await page.locator('#demandDetailForm footer').getByRole('button',{name:'Fechar',exact:true}).click();
+ }
+ expect(b.errors).toEqual([]);
+});
+
 test('existing operational card saves sprint together with the other edits',async({page})=>{
  const sprints=[
   {id:'sprint-16',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},
@@ -1081,6 +1108,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
  await page.mouse.up();
  await expect(fazendoColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-time strong')).toHaveText('menos de 1 h');
  await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.waitForTimeout(400);
  await fazendoColumn.locator('article[data-id="test-demand"]').click();

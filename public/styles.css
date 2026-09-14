@@ -6739,15 +6739,19 @@ button.alert-item {
 }
 
 .kanban-count {
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--blue);
-  color: transparent;
-  font-size: 0;
+  color: #fff;
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .kanban-column[data-column="fazendo"] .kanban-count {
@@ -8031,6 +8035,23 @@ button.alert-item {
 .sic-work-results strong,
 .sic-work-selected strong {
   color: var(--navy);
+}
+
+.demand-card-stage-time {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid rgba(0, 92, 169, 0.12);
+  padding-top: 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.demand-card-stage-time strong {
+  color: var(--navy);
+  font-size: 0.73rem;
+  white-space: nowrap;
 }
 
 .sic-work-results small,

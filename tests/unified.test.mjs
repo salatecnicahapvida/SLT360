@@ -37,7 +37,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
  try{
   await seed(db,{state:{
    works:[{id:'w',nome:'Test',classificacaoObra:'Outros'},{id:'inactive-work',nome:'Inactive'}],
-   demands:[{id:'d',obraId:'w',titulo:'Test',tipo:'SIC',sprintId:'sprint-15'}],
+   demands:[{id:'d',obraId:'w',titulo:'Test',tipo:'SIC',coluna:'fazer',sprintId:'sprint-15'}],
    sprints:[
     {id:'sprint-15',nome:'Sprint 15',status:'Encerrada',dataInicio:'2026-08-17',dataFim:'2026-08-28'},
     {id:'sprint-017',nome:'Sprint 17',status:'Ativa',dataInicio:'2026-09-14',dataFim:'2026-09-27'},
@@ -47,6 +47,9 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   for(const name of migrations)await db.exec(await fs.readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
   assert.equal((await db.query("select extra->>'classificacaoObra' category from slt_projects_works where record_key='w'")).rows[0].category,'');
   assert.equal((await db.query("select sprint_id from slt_budget_demands where record_key='d'")).rows[0].sprint_id,'sprint-017');
+  const phaseTracking=(await db.query("select extra->>'phaseStartedAt' started_at, extra->>'phaseStartedAtEstimated' estimated from slt_budget_demands where record_key='d'")).rows[0];
+  assert.match(phaseTracking.started_at,/^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(phaseTracking.estimated,'true');
   await db.query("update slt_projects_works set deleted_at=now() where record_key='inactive-work'");
   for(const type of ['EmissaoInicial','ReemissaoCompleta','SIC']){
    await assert.rejects(

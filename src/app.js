@@ -5653,6 +5653,7 @@ function renderDemandCard(demand) {
   const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
   const sprintFlag = sprintFlagLabel(sprintName);
   const timing = demandTimingInfo(demand);
+  const stageTime = demandStageTimeInfo(demand);
   const complementCount = (demand.analistasComplementares || []).length;
   const isSic = demandTypeKey(demand.tipo) === "SIC";
   const lecomNumber = isSic ? demandSicInfo(demand)?.lecomNumber : "";
@@ -5687,6 +5688,10 @@ function renderDemandCard(demand) {
         <span>${demand.analistaResponsavel || "Analista a definir"}</span>
         ${complementCount ? `<b>+${complementCount}</b>` : ""}
       </div>
+      <div class="demand-card-stage-time" title="Desde ${escapeAttribute(stageTime.startedLabel)}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
+        <span>Tempo na etapa</span>
+        <strong>${stageTime.durationLabel}</strong>
+      </div>
       <span class="demand-card-date">${timing.dateLabel}</span>
       <div class="demand-card-alert" data-tone="${timing.tone}">
         <i></i>
@@ -5717,6 +5722,68 @@ function renderDemandLabelsField(labels = []) {
       <small class="muted">Separe por vírgulas. Até 6 etiquetas serão exibidas dentro do card.</small>
     </label>
   `;
+}
+
+function demandStageInstant(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00:00-03:00` : text;
+  const instant = new Date(normalized);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
+function formatDemandStageElapsed(startedAt) {
+  const elapsedHours = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 3600000));
+  if (elapsedHours < 1) return "menos de 1 h";
+  if (elapsedHours < 24) return `${elapsedHours} h`;
+  const days = Math.floor(elapsedHours / 24);
+  const hours = elapsedHours % 24;
+  return hours ? `${days} d ${hours} h` : `${days} d`;
+}
+
+function demandStageTimeInfo(demand) {
+  const currentStage = columnById(demand?.coluna);
+  const stageKey = normalizeSearchText(currentStage?.label || demand?.coluna || "");
+  const histories = arrayOrFallback(state.history)
+    .filter((item) => {
+      if (item.entidadeId !== demand?.id || normalizeSearchText(item.entidade) !== "demanda") return false;
+      if (normalizeSearchText(item.campo) !== "coluna") return false;
+      return !stageKey || normalizeSearchText(item.valorNovo) === stageKey;
+    })
+    .map((item) => demandStageInstant(item.timestamp))
+    .filter(Boolean)
+    .sort((left, right) => right.getTime() - left.getTime());
+  const creationHistory = arrayOrFallback(state.history)
+    .filter((item) => item.entidadeId === demand?.id && normalizeSearchText(item.entidade) === "demanda" && normalizeSearchText(item.campo) === "criacao")
+    .map((item) => demandStageInstant(item.timestamp))
+    .filter(Boolean)
+    .sort((left, right) => right.getTime() - left.getTime());
+  const phaseDate = {
+    fazendo: demand?.dataInicioReal,
+    validacaoST: demand?.dataEnvioRealValidacaoObras,
+    validacaoObras: demand?.dataEnvioRealValidacaoObras,
+    aprovacaoDiretoria: demand?.dataValidacaoObras,
+    concluido: demand?.dataEntregaReal,
+  }[demand?.coluna];
+  const explicit = demandStageInstant(demand?.phaseStartedAt);
+  const historyInstant = histories[0] || null;
+  const startedAt = explicit
+    || historyInstant
+    || demandStageInstant(phaseDate)
+    || creationHistory[0]
+    || demandStageInstant(demand?.createdAt)
+    || demandStageInstant(demand?.dataPrevistaInicio)
+    || demandStageInstant(todayISO());
+  const estimated = explicit ? Boolean(demand?.phaseStartedAtEstimated) : !historyInstant;
+  return {
+    durationLabel: formatDemandStageElapsed(startedAt),
+    startedLabel: new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    }).format(startedAt),
+    estimated,
+  };
 }
 
 function demandCardDateInfo(demand) {
@@ -15079,6 +15146,7 @@ function openDemandDetailModal(id) {
   const sprint = sprintById(demand.sprintId);
   const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
   const values = work ? workTotals(work) : { orcado: 0, aditivado: 0, contratado: 0, saldo: 0 };
+  const stageTime = demandStageTimeInfo(demand);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card demand-detail-form" id="demandDetailForm" data-id="${demand.id}" aria-labelledby="demandDetailTitle">
@@ -15159,6 +15227,11 @@ function openDemandDetailModal(id) {
                 <span>Sprint atual</span>
                 <strong>${sprint?.nome || "Sem sprint"}</strong>
                 <small>${sprint ? `${dateText(sprint.dataInicio)} a ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+              </div>
+              <div class="detail-card demand-stage-summary">
+                <span>Tempo na etapa atual</span>
+                <strong>${stageTime.durationLabel}</strong>
+                <small>${demandStatusLabel(demand)} · desde ${stageTime.startedLabel}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
               </div>
             </div>
           </section>
@@ -17281,6 +17354,8 @@ async function handleDemandSubmit(form) {
     prioridade: formData.get("prioridade"),
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
     coluna: tipo === "SIC" ? "fazer" : formData.get("coluna") || "fazer",
+    phaseStartedAt: new Date().toISOString(),
+    phaseStartedAtEstimated: false,
     dataPrevistaInicio: formData.get("dataPrevistaInicio") || todayISO(),
     dataInicioReal: formData.get("dataInicioReal") || "",
     dataPrevEnvioValidacaoObras: formData.get("dataPrevEnvioValidacaoObras") || "",
@@ -17866,6 +17941,8 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
   const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
   demand.coluna = nextColumnId;
+  demand.phaseStartedAt = new Date().toISOString();
+  demand.phaseStartedAtEstimated = false;
   if (demand.coluna === "concluido") {
     if (!demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
     if (!isSicDemand) syncCompletedDemandWithEV(workById(demand.obraId), demand);
@@ -17958,6 +18035,8 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     origemModulo: "Projetos 360",
     projectPlanRow: projectStatusOverrideKey(record),
     origemProjetoRow: projectStatusOverrideKey(record),
+    phaseStartedAt: new Date().toISOString(),
+    phaseStartedAtEstimated: false,
     createdAt: todayISO(),
     updatedAt: todayISO(),
   };
