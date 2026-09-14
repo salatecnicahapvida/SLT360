@@ -5801,7 +5801,7 @@ function completedDemands() {
 
 function currentSprint() {
   const sprints = Array.isArray(state.sprints) ? state.sprints : [];
-  return sprints.find((sprint) => sprint.status === "Ativa") || sprints[sprints.length - 1];
+  return sprints.find((sprint) => sprint.status === "Ativa") || null;
 }
 
 function sprintById(id) {
@@ -14414,7 +14414,6 @@ function renderWorksSettings() {
   return `
     ${renderWorksToolbar("worksSettings", "Configurações de Obras", "Legenda da chave e listas de apoio do módulo Obras", `
       <button class="secondary-action" type="button" data-view="settings">Configuração global</button>
-      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras</button>
     `)}
 
     <div class="content-grid">
@@ -14582,6 +14581,7 @@ function renderSprintsTable() {
             <th>Fim</th>
             <th>Status</th>
             <th>Uso</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -14596,13 +14596,18 @@ function renderSprintsTable() {
                   <td>${dateText(sprint.dataFim)}</td>
                   <td><span class="status-pill" data-status="${sprint.status === "Ativa" ? "Completo" : "Aguardando"}">${sprint.status}</span></td>
                   <td><span class="tag">Todos os módulos</span></td>
+                  <td>
+                    ${sprint.status === "Ativa"
+                      ? `<span class="tag">Atual</span>`
+                      : `<button class="secondary-action compact-action" type="button" data-action="update-sprint-status" data-id="${escapeAttribute(sprint.id)}" aria-label="Tornar atual — ${escapeAttribute(sprint.nome)}">Tornar atual</button>`}
+                  </td>
                 </tr>
               `
                   )
                   .join("")
               : `
                 <tr>
-                  <td colspan="5"><span class="muted">Nenhuma sprint cadastrada. Crie a primeira sprint global para alimentar os kanbans.</span></td>
+                  <td colspan="6"><span class="muted">Nenhuma sprint cadastrada. Crie a primeira sprint global para alimentar os kanbans.</span></td>
                 </tr>
               `
           }
@@ -14820,9 +14825,7 @@ function handleConfigurationCatalogSubmit(form) {
 function renderSettings() {
   const history = Array.isArray(state.history) ? state.history : [];
   return `
-    ${renderToolbar("Configuração", "Sprints, equipe, perfis, dicionários e auditoria global do SLT 360", `
-      <button class="danger-action" type="button" data-action="reset-demo">Restaurar base Obras</button>
-    `)}
+    ${renderToolbar("Configuração", "Sprints, equipe, perfis, dicionários e auditoria global do SLT 360")}
     ${renderSprintSettingsPanel()}
     ${renderUsersSettingsPanel()}
     ${renderConfigurationCatalogsPanel()}
@@ -16971,6 +16974,26 @@ function handleSprintSubmit(form) {
   render();
 }
 
+function activateSprint(id) {
+  const sprint = (state.sprints || []).find((item) => String(item.id) === String(id));
+  if (!sprint || sprint.status === "Ativa") return;
+  const previousActive = currentSprint();
+  state.sprints = (state.sprints || []).map((item) => ({
+    ...item,
+    status: item.id === sprint.id ? "Ativa" : item.status === "Ativa" ? "Encerrada" : item.status,
+  }));
+  addHistory({
+    entidade: "sprint",
+    entidadeId: sprint.id,
+    campo: "status",
+    valorAnterior: sprint.status,
+    valorNovo: `Ativa${previousActive ? ` | ${previousActive.nome} encerrada` : ""}`,
+  });
+  saveState();
+  render();
+  showToast(`${sprint.nome} agora é a sprint atual.`);
+}
+
 function handleWorkSubmit(form) {
   const formData = new FormData(form);
   const nome = String(formData.get("nome") || "").trim();
@@ -18246,6 +18269,10 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
+  if (action === "update-sprint-status") {
+    activateSprint(actionButton.dataset.id);
+    return;
+  }
   if (action === "open-config-catalog") {
     openConfigurationCatalogModal(actionButton.dataset.catalogType, actionButton.dataset.catalogId || "");
     return;

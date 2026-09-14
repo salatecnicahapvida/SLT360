@@ -21,11 +21,12 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
  if(Array.isArray(evRecords))input.state.evs=evRecords;
+ if(Array.isArray(sprintRecords))input.state.sprints=sprintRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -365,6 +366,26 @@ test('kanban horizontal scrollbar stays above the column names',async({page})=>{
  await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
  await expectTopScrollbar();
  await page.screenshot({path:'outputs/clinical-kanban-top-scroll.png',fullPage:false});
+});
+
+test('settings activate an existing sprint and do not expose the work-base restore button',async({page})=>{
+ const sprints=[
+  {id:'sprint-16',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Ativa'},
+  {id:'sprint-17',nome:'Sprint 17',dataInicio:'2026-09-14',dataFim:'2026-09-27',status:'Planejada'},
+ ];
+ const b=await backend(page,'Admin',false,{sprintRecords:sprints});await login(page);
+ await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
+ await expect(page.getByRole('button',{name:'Restaurar base Obras',exact:true})).toHaveCount(0);
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 16');
+ const sprint16=page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 16'});
+ const sprint17=page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 17'});
+ await expect(sprint16.locator('td').nth(5)).toHaveText('Atual');
+ await sprint17.getByRole('button',{name:'Tornar atual — Sprint 17'}).click();
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 17');
+ await expect(page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 16'}).locator('td').nth(3)).toHaveText('Encerrada');
+ await expect(page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 17'}).locator('td').nth(3)).toHaveText('Ativa');
+ await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='core_sprints'&&change.key==='sprint-17'&&change.document.status==='Ativa'))).toBe(true);
+ expect(b.errors).toEqual([]);
 });
 
 test('analyst directory is separate from users and feeds every analyst filter',async({page})=>{
