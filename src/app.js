@@ -5509,7 +5509,15 @@ function filteredDemands() {
     }
     if (selectedSprints.length && !sprint) return false;
     return true;
-  });
+  }).sort(compareOperationalDemandsByDelivery);
+}
+
+function compareOperationalDemandsByDelivery(first, second) {
+  const firstDate = dateOnly(first?.dataPrevistaEntrega) || "9999-12-31";
+  const secondDate = dateOnly(second?.dataPrevistaEntrega) || "9999-12-31";
+  const dateComparison = firstDate.localeCompare(secondDate);
+  if (dateComparison) return dateComparison;
+  return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
 }
 
 function operationalFilterValues(key) {

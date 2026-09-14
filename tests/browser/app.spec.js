@@ -175,6 +175,23 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('operational demands are always ordered by nearest delivery date',async({page})=>{
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',coluna:'fazer'};
+ const demands=[
+  {...base,id:'delivery-no-date',dataPrevistaEntrega:''},
+  {...base,id:'delivery-far',dataPrevistaEntrega:'2026-10-20'},
+  {...base,id:'delivery-overdue',dataPrevistaEntrega:'2026-09-01'},
+  {...base,id:'delivery-near',dataPrevistaEntrega:'2026-09-20'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const expected=['delivery-overdue','delivery-near','delivery-far','delivery-no-date'];
+ expect(await page.locator('.kanban-column[data-column="fazer"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expected);
+ await page.getByRole('button',{name:'Lista',exact:true}).click();
+ expect(await page.locator('.operational-list-table tbody tr').evaluateAll(rows=>rows.map(row=>row.dataset.id))).toEqual(expected);
+ expect(b.errors).toEqual([]);
+});
+
 test('operational demand cards and list standardize work names',async({page})=>{
  const work={...structuredClone(payload.state.works[0]),nome:'9902. PA BARRA DA TIJUCA - RJ',codigoOriginal:'9902',uf:'RJ'};
  const demand={...structuredClone(payload.state.demands[1]),id:'uppercase-work-demand',obraId:work.id,coluna:'fazer',observacao:'Descrição inicial da demanda para conferência.'};
