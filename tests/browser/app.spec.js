@@ -880,7 +880,8 @@ test('portfolio includes works without EV, selectable filters and the single req
 });
 
 test('only SICs enter director approval after Works validation',async({page})=>{
- const b=await backend(page);await login(page);
+ const legacySic={...structuredClone(payload.state.demands[0]),tipo:'Solicitação de Informações'};
+ const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
  await expect(kanbanColumns).toHaveCount(8);
@@ -892,12 +893,12 @@ test('only SICs enter director approval after Works validation',async({page})=>{
 
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const nonSicStatus=page.locator('[data-action="update-demand-status"][data-id="test-budget-demand"]');
- await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveCount(0);
+ await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveAttribute('disabled','');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
  await page.locator('[data-action="open-demand-detail"][data-id="test-demand"]').click();
  const sicStatus=page.locator('[data-action="update-demand-status"][data-id="test-demand"]');
- await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveCount(1);
+ await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
  await sicStatus.selectOption('validacaoObras');
  await sicStatus.selectOption('concluido');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');

@@ -2122,7 +2122,11 @@ function demandTypeKey(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalized === "sic" || normalized.startsWith("sic ") || normalized.startsWith("sic-") || normalized.includes("solicitacao de informacao")) return "SIC";
+  if (
+    /\bsic\b/.test(normalized)
+    || /solicitacao\s+(?:de\s+)?informac(?:ao|oes)/.test(normalized)
+    || normalized.replace(/\s+/g, "") === "informacaocontratada"
+  ) return "SIC";
   if (normalized.includes("reemissao") || normalized.includes("revisao")) return "ReemissaoCompleta";
   if (normalized.includes("emissao") || normalized.includes("demanda inicial") || normalized.includes("novo orcamento")) return "EmissaoInicial";
   return value;
@@ -15430,13 +15434,15 @@ function sprintOptions(selected) {
 }
 
 function columnsForDemand(demand) {
-  if (demandTypeKey(demand?.tipo) === "SIC") return columns;
-  return columns.filter((column) => column.id !== "aprovacaoDiretoria");
+  return columns.map((column) => ({
+    ...column,
+    disabled: column.id === "aprovacaoDiretoria" && demandTypeKey(demand?.tipo) !== "SIC",
+  }));
 }
 
 function columnOptions(demand) {
   return columnsForDemand(demand)
-    .map((column) => `<option value="${column.id}" ${column.id === demand.coluna ? "selected" : ""}>${column.label}</option>`)
+    .map((column) => `<option value="${column.id}" ${column.id === demand.coluna ? "selected" : ""} ${column.disabled ? "disabled" : ""}>${column.label}</option>`)
     .join("");
 }
 
