@@ -193,15 +193,15 @@ test('operational demands are always ordered by nearest delivery date',async({pa
 });
 
 test('operational demand cards and list standardize work names',async({page})=>{
- const work={...structuredClone(payload.state.works[0]),nome:'9902. PA BARRA DA TIJUCA - RJ',codigoOriginal:'9902',uf:'RJ'};
+ const work={...structuredClone(payload.state.works[0]),nome:'9902. PA BARRA IT DA TIJUCA - RJ',codigoOriginal:'9902',uf:'RJ'};
  const demand={...structuredClone(payload.state.demands[1]),id:'uppercase-work-demand',obraId:work.id,coluna:'fazer',observacao:'Descrição inicial da demanda para conferência.'};
  const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const card=page.locator('article[data-id="uppercase-work-demand"]');
- await expect(card.locator('h3')).toHaveText('9902. PA Barra da Tijuca');
+ await expect(card.locator('h3')).toHaveText('9902. PA Barra IT da Tijuca');
  await expect(card.locator('.demand-card-description')).toHaveText('Descrição inicial da demanda para conferência.');
  await page.getByRole('button',{name:'Lista',exact:true}).click();
- await expect(page.locator('tr[data-id="uppercase-work-demand"] td').nth(1)).toHaveText('9902. PA Barra da Tijuca');
+ await expect(page.locator('tr[data-id="uppercase-work-demand"] td').nth(1)).toHaveText('9902. PA Barra IT da Tijuca');
  expect(b.errors).toEqual([]);
 });
 
@@ -722,7 +722,7 @@ test('portfolio rows expose only the unified EV action and work editing',async({
 
 test('portfolio standardizes work names, preserves acronyms and supplies missing codes',async({page})=>{
  const works=[
-  {id:'upper-work',nome:'9902. PA BARRA DE HTL / HS - RJ',codigoOriginal:'',uf:'RJ',cidade:'Rio de Janeiro',tipoUnidade:'Pronto Atendimento'},
+  {id:'upper-work',nome:'9902. PA BARRA DE HTL / HS / IT - RJ',codigoOriginal:'',uf:'RJ',cidade:'Rio de Janeiro',tipoUnidade:'Pronto Atendimento'},
   {id:'lower-work',nome:'novo centro de tea - sp',codigoOriginal:'1234',uf:'SP',cidade:'São Paulo',tipoUnidade:'TEA'},
   {id:'missing-code-work',nome:'clínica de apoio - ce',codigoOriginal:'',uf:'CE',cidade:'Fortaleza',tipoUnidade:'Clínica'},
  ];
@@ -732,7 +732,7 @@ test('portfolio standardizes work names, preserves acronyms and supplies missing
  const rows=page.locator('.portfolio-works-table tbody tr');
  await expect(rows).toHaveCount(3);
  await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(0)).toHaveText('9902');
- await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(1)).toHaveText('9902. PA Barra de HTL / HS');
+ await expect(rows.filter({hasText:'PA Barra'}).locator('td').nth(1)).toHaveText('9902. PA Barra de HTL / HS / IT');
  await expect(rows.filter({hasText:'Novo Centro'}).locator('td').nth(1)).toHaveText('1234. Novo Centro de TEA');
  await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(0)).toHaveText('0000');
  await expect(rows.filter({hasText:'Clínica de Apoio'}).locator('td').nth(1)).toHaveText('0000. Clínica de Apoio');

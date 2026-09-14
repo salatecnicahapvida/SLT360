@@ -6882,7 +6882,7 @@ const workNameAcronyms = new Set([
   "HTL", "HS", "HO", "TEA", "HC", "HAP", "PA", "NTE", "NTO", "AME", "CD",
   "EV", "SIC", "SPDA", "UTI", "UPA", "UBS", "CDI", "CME", "CTI", "UCI", "SADT",
   "CCIH", "AVCB", "PPCI", "PPC", "AVC", "HVAC", "CEO", "CER", "CAPS", "PS", "PSF",
-  "RH", "TI", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
+  "RH", "TI", "IT", "ADM", "NDI", "NIR", "NHE", "SAMU", "SUS", "RNM", "RM", "TC", "RX",
   "USG", "ECG", "EEG", "RFT", "AMP", "RFA", "NVU",
 ]);
 const workNameLowercaseWords = new Set(["a", "as", "de", "da", "das", "do", "dos", "e", "o", "os"]);
