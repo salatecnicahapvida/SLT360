@@ -572,6 +572,8 @@ let viewNavigationRequest = 0;
 let selectedWorkId = state.works[0]?.id || "";
 let searchTerm = "";
 let operationalViewMode = "kanban";
+let demandPointerDragState = null;
+let demandDragSuppressClickUntil = 0;
 let operationalFilters = {
   query: "",
   sprintId: [],
@@ -2468,7 +2470,8 @@ function render() {
     suppliers: renderSuppliers,
     settings: renderSettings,
   };
-  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`${(views[currentView] || renderDashboard)()}${renderHaptecAssistant()}`);
+  app.innerHTML = globalThis.SLT_CLOUD.cleanHTML((views[currentView] || renderDashboard)());
+  refreshHaptecAssistant();
   applyRolePermissions();
   enhanceSortableTables();
   mountKanbanTopScrollbars();
@@ -2705,7 +2708,7 @@ function haptecGreeting() {
 }
 
 const haptecPersona = Object.freeze({
-  name: "Haptec360",
+  name: "Suporte360",
   role: "assistente generativo, guia de navegação, analista de dados e auditor proativo do SLT 360",
   missingData:
     "Ainda não encontrei esse dado atualizado no SLT 360. Gostaria de navegar até a tela de cadastro para inseri-lo?",
@@ -2751,7 +2754,7 @@ function haptecCurrentContext() {
 function haptecWelcomeText() {
   return haptecWithFace(
     "smiling_ready",
-    `${haptecGreeting()}! Sou o Haptec360, seu guia, analista de dados e auditor da Sala Técnica. Posso te ajudar a navegar, encontrar obras, conferir Kanban, EVs, SICs, verbas e indicadores. Você está em ${haptecCurrentContext()}.`
+    `${haptecGreeting()}! Sou o Suporte360, seu guia, analista de dados e auditor da Sala Técnica. Posso te ajudar a navegar, encontrar obras, conferir Kanban, EVs, SICs, verbas e indicadores. Você está em ${haptecCurrentContext()}.`
   );
 }
 
@@ -3232,8 +3235,8 @@ function haptecSystemNotice(message, face = "smiling_ready", shouldOpen = false)
 }
 
 function refreshHaptecAssistant() {
-  const assistant = document.querySelector(".haptec-assistant");
-  if (assistant) assistant.outerHTML = globalThis.SLT_CLOUD.cleanHTML(renderHaptecAssistant());
+  const mount = document.querySelector("#supportAssistantMount");
+  if (mount) mount.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderHaptecAssistant());
 }
 
 function haptecFaceForSystemMessage(message = "") {
@@ -3349,7 +3352,7 @@ function haptecPositionStyle() {
 
 function speakHaptec(text = latestHaptecBotText()) {
   if (!("speechSynthesis" in window)) {
-    showToast("Seu navegador não liberou voz para o Haptec360.");
+    showToast("Seu navegador não liberou voz para o Suporte360.");
     return;
   }
   window.speechSynthesis.cancel();
@@ -3372,11 +3375,11 @@ function renderHaptecAssistant() {
   const messages = haptecMessages.length ? haptecMessages : [{ role: "bot", text: haptecWelcomeText() }];
   const currentFace = haptecExtractFace([...messages].reverse().find((message) => message.role === "bot")?.text || haptecWelcomeText());
   return `
-    <aside class="haptec-assistant ${haptecOpen ? "is-open" : ""}" data-face="${currentFace}" aria-label="Haptec360 - assistente do SLT 360"${haptecPositionStyle()}>
-      <button class="haptec-launcher" type="button" data-action="toggle-haptec" data-haptec-drag-handle title="Arraste para mover o Haptec360" aria-expanded="${haptecOpen ? "true" : "false"}">
+    <aside class="haptec-assistant ${haptecOpen ? "is-open" : ""}" data-face="${currentFace}" aria-label="Suporte360 - assistente do SLT 360">
+      <button class="haptec-launcher" type="button" data-action="toggle-haptec" title="Abrir Suporte360" aria-expanded="${haptecOpen ? "true" : "false"}">
         ${renderHaptecRobot("is-launcher", currentFace)}
         <span>
-          <strong>Haptec360</strong>
+          <strong>Suporte360</strong>
           <small>${haptecFaceLabel(currentFace)} · Guia SLT</small>
         </span>
       </button>
@@ -3384,17 +3387,17 @@ function renderHaptecAssistant() {
         haptecOpen
           ? `
             <section class="haptec-panel">
-              <header data-haptec-drag-handle title="Arraste para mover o Haptec360">
+              <header>
                 <div class="haptec-title">
                   ${renderHaptecRobot("is-panel", currentFace)}
                   <div>
-                    <strong>Haptec360</strong>
+                    <strong>Suporte360</strong>
                     <small><span class="haptec-face-state" data-face="${currentFace}">${haptecFaceLabel(currentFace)}</span> · ${haptecCurrentContext()}</small>
                   </div>
                 </div>
                 <div class="haptec-header-actions">
                   <button class="ghost-button compact-action" type="button" data-action="haptec-speak">Ouvir</button>
-                  <button class="icon-button" type="button" aria-label="Minimizar Haptec360" data-action="toggle-haptec">×</button>
+                  <button class="icon-button" type="button" aria-label="Minimizar Suporte360" data-action="toggle-haptec">×</button>
                 </div>
               </header>
               <div class="haptec-body">
@@ -3432,7 +3435,7 @@ function renderHaptecAssistant() {
                 </details>
               </div>
               <form class="haptec-form" id="haptecForm">
-                <input name="question" autocomplete="off" placeholder="Pergunte ao Haptec360..." />
+                <input name="question" autocomplete="off" placeholder="Pergunte ao Suporte360..." />
                 <button type="submit">Enviar</button>
               </form>
             </section>
@@ -5685,6 +5688,7 @@ function renderDemandCard(demand) {
   const timing = demandTimingInfo(demand);
   const complementCount = (demand.analistasComplementares || []).length;
   const isSic = demandTypeKey(demand.tipo) === "SIC";
+  const lecomNumber = isSic ? demandSicInfo(demand)?.lecomNumber : "";
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandProducedValue(demand) || (approval ? sicApprovalValue(demand) : 0);
   return `
@@ -5702,6 +5706,7 @@ function renderDemandCard(demand) {
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
       ${description ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
+      ${isSic ? `<div class="sic-card-lecom"><span>LECOM</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         approval && approval.status !== "Pendente"
@@ -15958,6 +15963,7 @@ function renderDemandWizardStep1(draft) {
             <div class="section-title">
               <span>Obra vinculada *</span>
             </div>
+            <input type="hidden" name="obraId" value="${escapeAttribute(draft.obraId)}" />
             <label class="field">
               <span>Buscar obra</span>
               <input name="obraBusca" list="demandWorkOptions" value="${escapeAttribute(draft.obraBusca)}" placeholder="Digite o nome da obra..." autocomplete="off" required />
@@ -16131,16 +16137,29 @@ function suggestHistoricalAnalystInForm(form, work) {
   selector.outerHTML = globalThis.SLT_CLOUD.cleanHTML(analystChipOptions({ analistaResponsavel: analyst }));
 }
 
-function resolveDemandWorkFromQuery(query) {
+function resolveDemandWorkFromQuery(query, preferredId = "") {
+  const preferred = workById(preferredId) || demandWorkCatalog().find((work) => String(work.id) === String(preferredId));
+  if (preferred) return preferred;
   const normalized = normalizeSearchText(query);
   if (!normalized) return null;
+  const typedCode = String(query || "").trim().match(/^(\d{1,10})(?:\s*[.]|\s|$)/)?.[1] || "";
+  if (typedCode) {
+    const codeMatches = demandWorkCatalog().filter((work) => portfolioWorkDisplayCode(work) === typedCode);
+    if (codeMatches.length === 1) return codeMatches[0];
+    const termsWithoutCode = normalized.replace(new RegExp(`^${typedCode}\\s*`), "").split(/\s+/).filter(Boolean);
+    const identified = codeMatches.find((work) => {
+      const text = normalizeSearchText(workOptionLabel(work));
+      return termsWithoutCode.every((term) => text.includes(term));
+    });
+    if (identified) return identified;
+  }
   return findWorkByExactTypedSearch(query) || findWorkByTypedSearch(query);
 }
 
 function handleDemandWizardStep1(form) {
   const formData = new FormData(form);
   const selectedAnalysts = analystAssignmentFromForm(form);
-  const work = resolveDemandWorkFromQuery(formData.get("obraBusca"));
+  const work = resolveDemandWorkFromQuery(formData.get("obraBusca"), formData.get("obraId"));
   if (!work) {
     showFormError("Selecione uma obra válida do portfólio antes de avançar.", form);
     return;
@@ -16793,7 +16812,7 @@ function showEVHaptecConfirmation(form, mode, readings) {
     <article class="ev-haptec-confirm-card" role="dialog" aria-modal="true" aria-labelledby="evHaptecConfirmTitle">
       <header>
         <div class="ev-haptec-avatar"><span>!</span></div>
-        <div><span class="eyebrow">Haptec360 · validação histórica</span><h2 id="evHaptecConfirmTitle">Averigue os valores antes de confirmar</h2><p>Este EV possui ${readings.length} disciplina${readings.length === 1 ? "" : "s"} fora da faixa histórica${critical ? `, sendo ${critical} crítica${critical === 1 ? "" : "s"}` : ""}.</p></div>
+        <div><span class="eyebrow">Suporte360 · validação histórica</span><h2 id="evHaptecConfirmTitle">Averigue os valores antes de confirmar</h2><p>Este EV possui ${readings.length} disciplina${readings.length === 1 ? "" : "s"} fora da faixa histórica${critical ? `, sendo ${critical} crítica${critical === 1 ? "" : "s"}` : ""}.</p></div>
       </header>
       <div class="ev-haptec-confirm-list">
         ${readings.slice(0, 6).map((reading) => {
@@ -17822,10 +17841,6 @@ function updateDemandColumn(id, nextColumnId) {
   if (demand.coluna === nextColumnId) return demand;
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
-    if (demand.coluna !== "validacaoObras") {
-      showToast("A SIC precisa passar pela validação de Obras e pela aprovação da Diretoria antes de ser concluída.");
-      return false;
-    }
     nextColumnId = "aprovacaoDiretoria";
     nextColumn = columnById(nextColumnId);
   }
@@ -17834,11 +17849,7 @@ function updateDemandColumn(id, nextColumnId) {
       showToast("Somente demandas do tipo SIC podem aguardar aprovação da Diretoria.");
       return false;
     }
-    if (demand.coluna !== "validacaoObras") {
-      showToast("A SIC precisa estar em Aguardando Validação Obras antes de seguir para a Diretoria.");
-      return false;
-    }
-    if (!demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
+    if (demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
   }
   if (nextColumnId === "concluido") {
     const work = workById(demand.obraId);
@@ -18106,6 +18117,11 @@ function openWorkFromInvestmentPlan(rowNumber) {
 }
 
 document.addEventListener("click", async (event) => {
+  if (Date.now() < demandDragSuppressClickUntil && event.target.closest(".operational-board-panel .demand-card")) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   const viewButton = event.target.closest("[data-view]");
   if (viewButton) {
     if (viewButton.closest(".modal-card")) closeModal();
@@ -18676,6 +18692,74 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+function clearDemandDragState() {
+  document.querySelectorAll(".demand-card.is-dragging").forEach((card) => card.classList.remove("is-dragging"));
+  document.querySelectorAll(".operational-board-panel .kanban-column.is-drag-over").forEach((column) => column.classList.remove("is-drag-over"));
+  demandPointerDragState = null;
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "mouse" || event.button !== 0) return;
+  const card = event.target.closest?.(".operational-board-panel .demand-card[data-id]");
+  if (!card || event.target.closest?.("button, input, select, textarea, a")) return;
+  if (!canMutateUI("update-demand-status")) {
+    showToast("Seu acesso permite apenas consulta.");
+    return;
+  }
+  demandPointerDragState = {
+    demandId: card.dataset.id || "",
+    card,
+    startX: event.clientX,
+    startY: event.clientY,
+    targetColumnId: "",
+    moved: false,
+  };
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!demandPointerDragState || event.pointerType !== "mouse" || !(event.buttons & 1)) return;
+  const dx = event.clientX - demandPointerDragState.startX;
+  const dy = event.clientY - demandPointerDragState.startY;
+  if (!demandPointerDragState.moved && Math.hypot(dx, dy) < 6) return;
+  demandPointerDragState.moved = true;
+  demandPointerDragState.card.classList.add("is-dragging");
+  event.preventDefault();
+
+  const board = document.querySelector(".operational-board-panel [data-kanban-scroll-board]");
+  if (board) {
+    const rect = board.getBoundingClientRect();
+    if (event.clientX < rect.left + 54) board.scrollLeft -= 24;
+    if (event.clientX > rect.right - 54) board.scrollLeft += 24;
+  }
+
+  const column = document.elementFromPoint(event.clientX, event.clientY)?.closest?.(".operational-board-panel .kanban-column[data-column]");
+  const demand = state.demands.find((item) => item.id === demandPointerDragState.demandId);
+  const target = demand && columnsForDemand(demand).find((item) => item.id === column?.dataset.column);
+  document.querySelectorAll(".operational-board-panel .kanban-column.is-drag-over").forEach((item) => {
+    if (item !== column) item.classList.remove("is-drag-over");
+  });
+  demandPointerDragState.targetColumnId = !column || !demand || !target || target.disabled ? "" : column.dataset.column;
+  if (demandPointerDragState.targetColumnId) column.classList.add("is-drag-over");
+});
+
+document.addEventListener("pointerup", (event) => {
+  if (!demandPointerDragState || event.pointerType !== "mouse") return;
+  const { demandId, targetColumnId, moved } = demandPointerDragState;
+  const demand = state.demands.find((item) => item.id === demandId);
+  const previousColumnId = demand?.coluna || "";
+  clearDemandDragState();
+  if (!moved) return;
+  demandDragSuppressClickUntil = Date.now() + 350;
+  event.preventDefault();
+  if (!demand || !targetColumnId || previousColumnId === targetColumnId) return;
+  const updated = updateDemandColumn(demandId, targetColumnId);
+  if (!updated) return;
+  render();
+  showToast(`Card movido para ${demandStatusLabel(updated)}.`);
+});
+
+document.addEventListener("pointercancel", clearDemandDragState);
+
 document.addEventListener("pointerdown", (event) => {
   const handle = event.target.closest("[data-haptec-drag-handle]");
   if (!handle || event.target.closest(".haptec-header-actions, .haptec-form")) return;
@@ -19070,7 +19154,10 @@ function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
 document.addEventListener("input", (event) => {
   if (event.target.matches('#demandWizardStep1 [name="obraBusca"]')) {
     const work = findWorkByExactTypedSearch(event.target.value);
-    if (work) suggestHistoricalAnalystInForm(event.target.closest("form"), work);
+    const form = event.target.closest("form");
+    const workId = form?.querySelector('[name="obraId"]');
+    if (workId) workId.value = work?.id || "";
+    if (work) suggestHistoricalAnalystInForm(form, work);
     return;
   }
   if (event.target.matches("[data-clinical-park-search]")) {

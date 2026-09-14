@@ -6615,6 +6615,12 @@ button.alert-item {
   height: clamp(1100px, 150vh, 1600px);
 }
 
+.operational-board-panel .kanban-column.is-drag-over {
+  border-color: var(--blue);
+  background: #dceeff;
+  box-shadow: inset 0 0 0 2px rgba(0, 92, 169, 0.2);
+}
+
 .kanban-column::before {
   content: "";
   display: block;
@@ -6825,6 +6831,18 @@ button.alert-item {
     border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
+}
+
+.operational-board-panel .demand-card {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.operational-board-panel .demand-card.is-dragging {
+  opacity: 0.42;
+  cursor: grabbing;
+  transform: scale(0.98);
 }
 
 .demand-card[data-status="concluido"] {
@@ -7059,6 +7077,24 @@ button.alert-item {
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.sic-card-lecom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #7a4b00;
+  font-size: 0.7rem;
+}
+
+.sic-card-lecom span {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.sic-card-lecom strong {
+  overflow-wrap: anywhere;
 }
 
 .demand-card-unit-badge {
@@ -12368,6 +12404,42 @@ button.analyst-chip {
 .haptec-launcher { min-height:58px;gap:8px;padding:6px 13px 6px 8px; }
 .haptec-launcher .haptec-robot.is-launcher { --robot-scale:0.68; }
 .haptec-launcher small { display:none; }
+
+/* Suporte360 fica preso ao cabeçalho, antes da identificação do usuário. */
+.header-support {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.header-support .haptec-assistant {
+  position: static;
+  display: flex;
+  justify-items: initial;
+  gap: 0;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.header-support .haptec-launcher {
+  min-height: 40px;
+  padding: 4px 12px 4px 7px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 56, 109, 0.2);
+}
+
+.header-support .haptec-launcher .haptec-robot.is-launcher {
+  --robot-scale: 0.54;
+}
+
+.header-support .haptec-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 320;
+}
 .home-launchpad-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
 @media(max-width:1100px){.home-launchpad-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:720px){.home-launchpad-grid{grid-template-columns:1fr;}}

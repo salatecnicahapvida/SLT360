@@ -93,6 +93,13 @@ async function login(page){await page.goto('./');await page.locator('#cloudLogin
 
 test('all active views load, SIC is native, no automatic writes on startup',async({page})=>{
  const b=await backend(page);await login(page);
+ const supportMount=page.locator('#supportAssistantMount');
+ await expect(supportMount.getByRole('button',{name:/^Suporte360/})).toBeVisible();
+ await expect(page.getByText('Haptec360',{exact:true})).toHaveCount(0);
+ expect(await supportMount.evaluate(element=>element.closest('.app-header')!==null)).toBe(true);
+ await supportMount.getByRole('button',{name:/^Suporte360/}).click();
+ await expect(supportMount.locator('.haptec-panel')).toBeVisible();
+ await supportMount.getByRole('button',{name:'Minimizar Suporte360'}).click();
  const homeCards=page.locator('.home-launchpad-card');
  await expect(homeCards).toHaveCount(4);
  await expect(homeCards.locator('.home-launchpad-card__number')).toHaveText(['01','02','03','04']);
@@ -232,6 +239,23 @@ test('budget demand forms, including extra demand, use one work selector and kee
    await step1.locator('[data-action="close-modal"]').first().click();
   }
  }
+ expect(b.errors).toEqual([]);
+});
+
+test('budget revision keeps the selected official work id for work 4201',async({page})=>{
+ const officialWork={...structuredClone(payload.state.works[0]),id:'EVW-evh-0012',nome:'Adequação Visa HO Jardim America (CME)',codigoOriginal:'4201',uf:'GO',cidade:'Goiânia',anoObra:'2026'};
+ const officialEV={id:'evh-0012',workId:officialWork.id,code:'42011',project:'42011. ADEQUAÇÃO VISA HO JARDIM AMERICA (CME) - GO',year:2026,date:'2026-08-27',revision:'REV03',typology:'Hospital',technician:'Leonardo',area:394.74,total:536542.5,disciplines:{'adequacoes-civis':39012.62},items:[]};
+ const b=await backend(page,'Admin',false,{workRecords:[officialWork],evRecords:[officialEV],demandRecords:[]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="ReemissaoCompleta"]').click();
+ const step1=page.locator('#demandWizardStep1');
+ await step1.locator('[name="obraBusca"]').fill('4201. Adequação Visa HO Jardim America (CME)');
+ await step1.getByRole('button',{name:/Avançar/}).click();
+ const step2=page.locator('#demandForm');
+ await expect(step2.locator('[name="obraId"]')).toHaveValue(officialWork.id);
+ await step2.getByRole('button',{name:'Salvar demanda',exact:true}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands')?.document?.obraId).toBe(officialWork.id);
  expect(b.errors).toEqual([]);
 });
 
@@ -919,7 +943,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  expect(b.errors).toEqual([]);
 });
 
-test('only SICs enter director approval after Works validation',async({page})=>{
+test('operational cards drag between columns and SICs enter director approval directly with LECOM visible',async({page})=>{
  const legacySic={...structuredClone(payload.state.demands[0]),tipo:'Solicitação de Informações'};
  const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -936,16 +960,28 @@ test('only SICs enter director approval after Works validation',async({page})=>{
  await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveAttribute('disabled','');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
- await page.locator('[data-action="open-demand-detail"][data-id="test-demand"]').click();
+ const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
+ const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
+ const fazendoColumn=page.locator('.kanban-column[data-column="fazendo"]');
+ const sicCard=fazerColumn.locator('article[data-id="test-demand"]');
+ await expect(sicCard.locator('.sic-card-lecom strong')).toHaveText('TEST-1');
+ await sicCard.scrollIntoViewIfNeeded();
+ const [sourceBox,targetBox]=await Promise.all([sicCard.boundingBox(),fazendoColumn.locator('.demand-list').boundingBox()]);
+ await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
+ await page.mouse.down();
+ await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
+ await page.mouse.up();
+ await expect(fazendoColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
+ await page.waitForTimeout(400);
+ await fazendoColumn.locator('article[data-id="test-demand"]').click();
  const sicStatus=page.locator('[data-action="update-demand-status"][data-id="test-demand"]');
+ await expect(sicStatus).toHaveValue('fazendo');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
- await sicStatus.selectOption('validacaoObras');
- await sicStatus.selectOption('concluido');
+ await sicStatus.selectOption('aprovacaoDiretoria');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
- const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
- await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
  await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
