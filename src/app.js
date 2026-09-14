@@ -5781,23 +5781,16 @@ function demandStageTimeInfo(demand) {
     .map((item) => demandStageInstant(item.timestamp))
     .filter(Boolean)
     .sort((left, right) => right.getTime() - left.getTime());
-  const phaseDate = {
-    fazendo: demand?.dataInicioReal,
-    validacaoST: demand?.dataEnvioRealValidacaoObras,
-    validacaoObras: demand?.dataEnvioRealValidacaoObras,
-    aprovacaoDiretoria: demand?.dataValidacaoObras,
-    concluido: demand?.dataEntregaReal,
-  }[demand?.coluna];
   const explicit = demandStageInstant(demand?.phaseStartedAt);
+  const explicitIsEstimated = Boolean(demand?.phaseStartedAtEstimated);
   const historyInstant = histories[0] || null;
-  const startedAt = explicit
+  const creationInstant = creationHistory[0] || demandStageInstant(demand?.createdAt);
+  const startedAt = (explicit && !explicitIsEstimated ? explicit : null)
     || historyInstant
-    || demandStageInstant(phaseDate)
-    || creationHistory[0]
-    || demandStageInstant(demand?.createdAt)
-    || demandStageInstant(demand?.dataPrevistaInicio)
+    || creationInstant
+    || explicit
     || demandStageInstant(todayISO());
-  const estimated = explicit ? Boolean(demand?.phaseStartedAtEstimated) : !historyInstant;
+  const estimated = explicit && !explicitIsEstimated ? false : !historyInstant;
   return {
     stageId: currentStage?.id || demand?.coluna || "",
     stageLabel: currentStage?.label || demand?.coluna || "Sem etapa",
@@ -5828,7 +5821,8 @@ function demandDerivedClosedStagePeriods(demand) {
     .filter((item) => item.entidadeId === demand?.id && normalizeSearchText(item.entidade) === "demanda" && normalizeSearchText(item.campo) === "criacao")
     .map((item) => demandStageInstant(item.timestamp))
     .filter(Boolean)
-    .sort((left, right) => left.getTime() - right.getTime())[0];
+    .sort((left, right) => left.getTime() - right.getTime())[0]
+    || demandStageInstant(demand?.createdAt);
   const periods = [];
   let stageId = demandStageId(changes[0].valorAnterior);
   let startedAt = creationInstant;
@@ -17468,6 +17462,7 @@ async function handleDemandSubmit(form) {
   }
   obraId = linkedWork.id;
 
+  const demandCreatedAt = new Date().toISOString();
   state.demands.unshift({
     id: demandId,
     obraId,
@@ -17478,8 +17473,9 @@ async function handleDemandSubmit(form) {
     prioridade: formData.get("prioridade"),
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
     coluna: tipo === "SIC" ? "fazer" : formData.get("coluna") || "fazer",
-    phaseStartedAt: new Date().toISOString(),
+    phaseStartedAt: demandCreatedAt,
     phaseStartedAtEstimated: false,
+    createdAt: demandCreatedAt,
     dataPrevistaInicio: formData.get("dataPrevistaInicio") || todayISO(),
     dataInicioReal: formData.get("dataInicioReal") || "",
     dataPrevEnvioValidacaoObras: formData.get("dataPrevEnvioValidacaoObras") || "",
@@ -18136,6 +18132,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
 
   const sprint = currentSprint();
   const startDate = record.inicioOrcamentacao || addDaysISO(record.terminoPlanejado, 1) || todayISO();
+  const demandCreatedAt = new Date().toISOString();
   const demand = {
     id: nextDemandCode(),
     obraId: work.id,
@@ -18172,10 +18169,10 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     origemModulo: "Projetos 360",
     projectPlanRow: projectStatusOverrideKey(record),
     origemProjetoRow: projectStatusOverrideKey(record),
-    phaseStartedAt: new Date().toISOString(),
+    phaseStartedAt: demandCreatedAt,
     phaseStartedAtEstimated: false,
-    createdAt: todayISO(),
-    updatedAt: todayISO(),
+    createdAt: demandCreatedAt,
+    updatedAt: demandCreatedAt,
   };
 
   state.demands.unshift(demand);

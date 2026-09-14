@@ -294,6 +294,29 @@ test('kanban shows column totals and time in the current stage for every demand 
  expect(b.errors).toEqual([]);
 });
 
+test('legacy stage counters start at demand creation instead of the demand start date',async({page})=>{
+ const createdAt=new Date(Date.now()-(50*60*60*1000)).toISOString();
+ const oldDemandStart=new Date(Date.now()-(15*24*60*60*1000)).toISOString();
+ const demand={
+  ...structuredClone(payload.state.demands[1]),
+  id:'creation-based-stage-demand',
+  obraId:'test-work',
+  coluna:'fazendo',
+  createdAt,
+  dataInicioReal:oldDemandStart.slice(0,10),
+  phaseStartedAt:oldDemandStart,
+  phaseStartedAtEstimated:true,
+  phaseHistory:[],
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const card=page.locator('article[data-id="creation-based-stage-demand"]');
+ await expect(card.locator('.demand-card-stage-time strong')).toHaveText('2 dias');
+ await card.click();
+ await expect(page.locator('#demandDetailForm .demand-stage-summary strong')).toHaveText('2 dias');
+ expect(b.errors).toEqual([]);
+});
+
 test('moving a demand resets the current stage timer and preserves every previous period',async({page})=>{
  const phaseStartedAt=new Date(Date.now()-(74*60*60*1000)).toISOString();
  const demand={...structuredClone(payload.state.demands[1]),id:'stage-history-demand',obraId:'test-work',coluna:'fazer',phaseStartedAt,phaseStartedAtEstimated:false,phaseHistory:[]};

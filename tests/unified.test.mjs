@@ -39,7 +39,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
    works:[{id:'w',nome:'Test',classificacaoObra:'Outros'},{id:'inactive-work',nome:'Inactive'}],
    demands:[
     {id:'d',obraId:'w',titulo:'Test',tipo:'SIC',coluna:'fazer',sprintId:'sprint-15',analistaResponsavel:'Skarth'},
-    {id:'skart-demand',obraId:'w',titulo:'Grafia antiga',tipo:'ReemissaoCompleta',coluna:'fazer',sprintId:'sprint-15',analistaResponsavel:'SKART'},
+    {id:'skart-demand',obraId:'w',titulo:'Grafia antiga',tipo:'ReemissaoCompleta',coluna:'fazendo',sprintId:'sprint-15',analistaResponsavel:'SKART',dataInicioReal:'2026-01-01'},
    ],
    sprints:[
     {id:'sprint-15',nome:'Sprint 15',status:'Encerrada',dataInicio:'2026-08-17',dataFim:'2026-08-28'},
@@ -67,9 +67,11 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(validAssignment.assignee,'Skarth');
   assert.deepEqual(validAssignment.complementary,['Skarth']);
   await db.query("delete from slt_budget_demands where record_key='valid-analyst'");
-  const phaseTracking=(await db.query("select extra->>'phaseStartedAt' started_at, extra->>'phaseStartedAtEstimated' estimated from slt_budget_demands where record_key='d'")).rows[0];
+  const phaseTracking=(await db.query("select extra->>'phaseStartedAt' started_at, extra->>'phaseStartedAtEstimated' estimated, extra->>'createdAt' demand_created_at, created_at from slt_budget_demands where record_key='skart-demand'")).rows[0];
   assert.match(phaseTracking.started_at,/^\d{4}-\d{2}-\d{2}T/);
-  assert.equal(phaseTracking.estimated,'true');
+  assert.equal(new Date(phaseTracking.started_at).getTime(),new Date(phaseTracking.demand_created_at).getTime());
+  assert.equal(new Date(phaseTracking.started_at).getTime(),new Date(phaseTracking.created_at).getTime());
+  assert.equal(phaseTracking.estimated,'false');
   await db.query("update slt_projects_works set deleted_at=now() where record_key='inactive-work'");
   for(const type of ['EmissaoInicial','ReemissaoCompleta','SIC']){
    await assert.rejects(
