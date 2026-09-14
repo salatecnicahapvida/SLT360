@@ -4047,7 +4047,7 @@ function projectPlanDatalist() {
 function projectWorkDatalist() {
   return `
     <datalist id="projectDemandWorkOptions">
-      ${state.works.map((work) => `<option value="${escapeAttribute(workOptionLabel(work))}">${escapeAttribute(work.codigoOriginal || work.chaveUnica || "")}</option>`).join("")}
+      ${state.works.map((work) => `<option value="${escapeAttribute(workOptionLabel(work))}">${escapeAttribute(workSearchYearText(work))}</option>`).join("")}
     </datalist>
   `;
 }
@@ -16150,7 +16150,11 @@ function handleDemandWizardStep1(form) {
 
 function workOptionLabel(work) {
   const location = [work.cidade, work.uf].filter(Boolean).join("/");
-  return [work.nome, work.chaveUnica || work.codigoOriginal, location].filter(Boolean).join(" | ");
+  return [work.nome, workSearchYearText(work), work.chaveUnica || work.codigoOriginal, location].filter(Boolean).join(" | ");
+}
+
+function workSearchYearText(work) {
+  return `Ano: ${demandWorkYear(work) || "Não informado"}`;
 }
 
 function findWorkByTypedSearch(value) {
@@ -16496,7 +16500,7 @@ function openContractModal() {
             <label class="field">
               <span>Obra</span>
               <select name="obraId" required data-action="contract-work-select">
-                ${state.works.map((item) => `<option value="${item.id}" ${item.id === work.id ? "selected" : ""}>${item.nome}</option>`).join("")}
+                ${state.works.map((item) => `<option value="${item.id}" ${item.id === work.id ? "selected" : ""}>${escapeAttribute(`${item.nome} | ${workSearchYearText(item)}`)}</option>`).join("")}
               </select>
             </label>
             <label class="field">

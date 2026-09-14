@@ -526,6 +526,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
  await expect(sicForm.locator('[data-sic-work-results]')).toContainText('Ano: 2025');
+ await expect(sicForm.locator('[data-sic-work-search]')).toHaveValue(/Ano: 2025/);
  await expect(sicForm.locator('[name="analistasSelecionados"]')).toHaveValue('["Técnico A"]');
  const today=await page.evaluate(()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}));
  const due=await sicForm.locator('[name="dataPrevistaEntrega"]').inputValue();
