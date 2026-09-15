@@ -1,0 +1,616 @@
+from pathlib import Path
+import re
+
+
+def read(path):
+    return Path(path).read_text(encoding='utf-8')
+
+
+def write(path, text):
+    Path(path).write_text(text, encoding='utf-8')
+
+
+def replace_once(text, old, new, label, optional=False):
+    count = text.count(old)
+    if count == 0 and optional:
+        return text
+    if count != 1:
+        raise SystemExit(f'{label}: esperado 1 trecho, encontrado {count}')
+    return text.replace(old, new, 1)
+
+
+def regex_once(text, pattern, replacement, label):
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S | re.M)
+    if count != 1:
+        raise SystemExit(f'{label}: esperado 1 trecho regex, encontrado {count}')
+    return updated
+
+
+path = 'src/module-model.js'
+text = read(path)
+old = "  entity('budget_demands','budget','state.demands',taskFields),"
+new = "  entity('budget_demands','budget','state.demands',{...taskFields,valorGerado:money('generated_amount'),evSemMudanca:f('ev_no_change','boolean')}),"
+if old in text:
+    text = replace_once(text, old, new, 'budget demand completion fields')
+elif new not in text:
+    raise SystemExit('budget demand completion fields: definição não localizada')
+write(path, text)
+
+path = 'src/app.js'
+text = read(path)
+
+old = '''function demandTypeLabel(value) {
+  const map = {
+    EmissaoInicial: "Emissão Inicial",
+    SIC: "SIC - Solicitação de Informação",
+    ReemissaoCompleta: "Revisão completa do EV",
+    DemandaExtra: "Demanda Extra",
+  };
+  return map[demandTypeKey(value)] || value;
+}'''
+new = '''function demandTypeLabel(value) {
+  const key = demandTypeKey(value);
+  return workDemandTypeDefinitions.find((type) => type.id === key)?.label || value;
+}'''
+if old in text:
+    text = replace_once(text, old, new, 'canonical demand type labels')
+
+text = replace_once(
+    text,
+    '${demandTypeOptions(demand.tipo)}',
+    '${workDemandTypeDefinitions.map((type) => `<option value="${type.id}" ${type.id === demandTypeKey(demand.tipo) ? "selected" : ""}>${type.label}</option>`).join("")}',
+    'detail demand type options',
+)
+
+text = text.replace('      ${renderDemandSicRiskAlert(demand)}\n', '')
+text = text.replace('  const values = work ? workTotals(work) : { orcado: 0, aditivado: 0, contratado: 0, saldo: 0 };\n', '')
+
+old = '''            <div class="split-list compact">
+              ${splitItem("EV atual", work ? `REV${String(work.ev.versaoAtual).padStart(2, "0")} | ${money(values.orcado + values.aditivado)}` : "—")}
+              ${splitItem("Saldo", money(values.saldo))}
+            </div>'''
+new = '''            <div class="split-list compact">
+              ${splitItem("EV atual", work ? `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")} · ${work.ev?.status || "Rascunho"}` : "—")}
+            </div>'''
+text = replace_once(text, old, new, 'operational EV summary without balance')
+
+text = text.replace(
+    '  const value = demandProducedValue(demand) || (approval ? sicApprovalValue(demand) : 0);',
+    '  const value = demandProducedValue(demand);',
+)
+text = replace_once(
+    text,
+    '<td class="numeric">${value ? money(value) : "—"}</td>',
+    '<td class="numeric">${demandHasRecordedValue(demand) ? money(value) : "—"}</td>',
+    'operational list explicit zero value',
+)
+text = replace_once(
+    text,
+    '        demand.coluna === "concluido" && value',
+    '        demand.coluna === "concluido" && demandHasRecordedValue(demand)',
+    'completed card explicit zero value',
+)
+
+card_block = '''      <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
+        <span>Tempo na etapa:</span>
+        <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
+      </div>'''
+card_replacement = '''      ${demand.coluna === "concluido" ? "" : `
+      <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
+        <span>Tempo na etapa:</span>
+        <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
+      </div>
+      `}'''
+text = replace_once(text, card_block, card_replacement, 'hide completed card stage time')
+
+detail_block = '''              <div class="detail-card demand-stage-summary">
+                <span>Tempo na etapa atual</span>
+                <strong>${stageTime.durationLabel}</strong>
+                <small>${demandStatusLabel(demand)} · ${stageTime.closed ? `contagem encerrada em ${stageTime.endedLabel}` : `desde ${stageTime.startedLabel}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
+              </div>'''
+detail_replacement = '''              ${demand.coluna === "concluido" ? "" : `
+              <div class="detail-card demand-stage-summary">
+                <span>Tempo na etapa atual</span>
+                <strong>${stageTime.durationLabel}</strong>
+                <small>${demandStatusLabel(demand)} · ${stageTime.closed ? `contagem encerrada em ${stageTime.endedLabel}` : `desde ${stageTime.startedLabel}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
+              </div>
+              `}'''
+text = replace_once(text, detail_block, detail_replacement, 'hide completed detail stage time')
+
+text = regex_once(
+    text,
+    r'function demandProducedValue\(demand\) \{.*?^\}\n',
+    '''function demandHasRecordedValue(demand) {
+  return demand?.valorGerado !== undefined && demand?.valorGerado !== null && String(demand.valorGerado).trim() !== "";
+}
+
+function demandProducedValue(demand) {
+  return demandHasRecordedValue(demand) ? Math.abs(Number(demand.valorGerado) || 0) : 0;
+}
+''',
+    'demand generated value only',
+)
+
+text = text.replace(
+    '      { label: "Valor estimado", value: money(item.demands.reduce((sum, demand) => sum + demandProducedValue(demand), 0)) },',
+    '      { label: "Sem analista", value: String(item.demands.filter((demand) => !demand.analistaResponsavel).length) },',
+)
+text = text.replace('"Valor EV", "Observação"', '"Valor da demanda", "Observação"')
+text = text.replace('      work ? money(workBudgetValue(work)) : "",', '      demandHasRecordedValue(demand) ? money(demandProducedValue(demand)) : "",')
+
+completion_code = r'''function demandHasEVUpdateForCompletion(demand) {
+  const work = workById(demand?.obraId);
+  if (!work) return false;
+  if (demandTypeKey(demand.tipo) === "SIC") {
+    return (demand.sicIds || []).length > 0 && sicApprovalReading(demand).status === "Postada";
+  }
+  return arrayOrFallback(work.ev?.versions).some((version) => String(version.origem || "") === String(demand.id));
+}
+
+function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) return;
+  const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
+        <header>
+          <div>
+            <span class="eyebrow">Conclusão da demanda</span>
+            <h2 id="demandCompletionTitle">Quanto esta demanda gerou?</h2>
+            <p class="muted">${escapeAttribute(demand.id)} · ${escapeAttribute(work.nome || "Obra vinculada")}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <input type="hidden" name="evSemMudanca" value="${evNoChange ? "true" : "false"}" />
+          <section class="modal-section">
+            <div class="section-title"><span>Impacto financeiro da demanda</span></div>
+            <label class="field">
+              <span>Valor gerado (R$) *</span>
+              <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" autofocus />
+              <small>Informe 0,00 quando a demanda não tiver gerado impacto financeiro.</small>
+            </label>
+          </section>
+          <p class="muted">${evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação deste valor."}</p>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">Concluir demanda</button>
+        </footer>
+      </form>
+    </div>
+  `);
+}
+
+function openDemandCompletionModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) {
+    showToast("Não foi possível localizar a obra vinculada antes da conclusão.");
+    return;
+  }
+  if (demandTypeKey(demand.tipo) === "SIC" && sicApprovalReading(demand).status !== "Postada") {
+    sicViewMode = "approval";
+    sicSearchQuery = demand.id;
+    closeModal();
+    showToast("A SIC precisa ser aprovada e postada no EV antes de concluir o card.");
+    setView("sics");
+    return;
+  }
+  if (demandHasEVUpdateForCompletion(demand)) {
+    openDemandCompletionAmountModal(id, { evNoChange: false });
+    return;
+  }
+  if (demand.evSemMudanca === true) {
+    openDemandCompletionAmountModal(id, { evNoChange: true });
+    return;
+  }
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <section class="modal-card demand-completion-card" aria-labelledby="demandCompletionEvTitle">
+        <header>
+          <div>
+            <span class="eyebrow">Conclusão da demanda</span>
+            <h2 id="demandCompletionEvTitle">Confirme o impacto no EV</h2>
+            <p class="muted">Antes de concluir ${escapeAttribute(demand.id)}, atualize o Estudo de Viabilidade ou informe que esta demanda não gerou mudança no EV.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="demand-completion-options">
+            <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
+              <span class="demand-type-icon">EV</span>
+              <span><strong>Atualizar o EV</strong><small>Abrir o EV da obra, registrar as alterações e salvar uma nova versão.</small></span>
+            </button>
+            <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
+              <span class="demand-type-icon demand-type-icon--green">✓</span>
+              <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
+            </button>
+          </div>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+        </footer>
+      </section>
+    </div>
+  `);
+}
+
+async function handleDemandCompletionSubmit(form) {
+  const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
+  const demand = state.demands[demandIndex];
+  if (!demand) return;
+  const formData = new FormData(form);
+  const rawValue = String(formData.get("valorGerado") || "").trim();
+  if (!rawValue) {
+    showFormError("Informe quanto esta demanda gerou. Use 0,00 quando não houver impacto financeiro.", form);
+    return;
+  }
+  const valorGerado = parseCurrency(rawValue);
+  if (valorGerado < 0) {
+    showFormError("O valor gerado deve ser zero ou positivo.", form);
+    return;
+  }
+  const evSemMudanca = formData.get("evSemMudanca") === "true";
+  if (!evSemMudanca && !demandHasEVUpdateForCompletion(demand)) {
+    showFormError("Atualize e salve o EV ou informe que não houve mudança antes de concluir.", form);
+    return;
+  }
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
+  demand.valorGerado = valorGerado;
+  demand.evSemMudanca = evSemMudanca;
+  const updated = await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
+  if (updated === false) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    return;
+  }
+  addHistory({
+    entidade: "demanda",
+    entidadeId: demand.id,
+    campo: "valor gerado",
+    valorAnterior: demandHasRecordedValue(demandSnapshot) ? money(demandSnapshot.valorGerado) : "Não informado",
+    valorNovo: money(valorGerado),
+  });
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A conclusão não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
+  closeModal();
+  await setView("worksOperational");
+  showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
+}
+
+'''
+
+replacement_update = completion_code + r'''async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false } = {}) {
+  const demand = state.demands.find((item) => item.id === id);
+  let nextColumn = columnById(nextColumnId);
+  if (!demand || !nextColumn) return false;
+  if (demand.coluna === nextColumnId) return demand;
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
+    nextColumnId = "aprovacaoDiretoria";
+    nextColumn = columnById(nextColumnId);
+  }
+  if (nextColumnId === "aprovacaoDiretoria") {
+    if (!isSicDemand) {
+      showToast("Somente demandas do tipo SIC podem aguardar aprovação da Diretoria.");
+      return false;
+    }
+    if (demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
+  }
+  if (nextColumnId === "concluido" && !skipCompletionGate) {
+    openDemandCompletionModal(demand.id);
+    return false;
+  }
+
+  const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
+  const previousStageTime = demandStageTimeInfo(demand);
+  const transitionedAt = new Date().toISOString();
+  const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
+  const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
+  demand.phaseHistory = [
+    ...arrayOrFallback(demand.phaseHistory),
+    {
+      stageId: demand.coluna,
+      stageLabel: previous,
+      startedAt: previousStageTime.startedAt.toISOString(),
+      endedAt: previousStageTime.closed ? previousStageTime.endedAt.toISOString() : transitionedAt,
+      estimated: previousStageTime.estimated,
+    },
+  ];
+  demand.coluna = nextColumnId;
+  demand.phaseStartedAt = transitionedAt;
+  demand.phaseEndedAt = ["concluido", "cancelado"].includes(nextColumnId) ? transitionedAt : "";
+  demand.phaseStartedAtEstimated = false;
+  if (demand.coluna === "concluido" && !demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
+  addHistory({
+    entidade: "demanda",
+    entidadeId: demand.id,
+    campo: "coluna",
+    valorAnterior: previous,
+    valorNovo: nextColumn.label,
+  });
+  if (persist) {
+    try {
+      await saveStateAndWait();
+    } catch (error) {
+      if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+      state.history = historySnapshot;
+      showToast(error?.message || "A movimentação do card não foi confirmada no banco. Recarregue os dados.");
+      render();
+      return false;
+    }
+  }
+  return demand;
+}
+
+async function moveDemand(id, direction) {
+  const demand = state.demands.find((item) => item.id === id);
+  if (!demand) return false;
+  const allowedColumns = columnsForDemand(demand);
+  const currentIndex = allowedColumns.findIndex((column) => column.id === demand.coluna);
+  const nextIndex = Math.max(0, Math.min(allowedColumns.length - 1, currentIndex + direction));
+  const updated = await updateDemandColumn(id, allowedColumns[nextIndex].id);
+  if (updated === false) return false;
+  render();
+  return updated;
+}
+
+function createBudgetDemandFromProject'''
+
+text = regex_once(
+    text,
+    r'function updateDemandColumn\(id, nextColumnId, \{ persist = true \} = \{\}\) \{.*?^\}\n\nfunction moveDemand\(id, direction\) \{.*?^\}\n\nfunction createBudgetDemandFromProject',
+    replacement_update,
+    'completion workflow',
+)
+
+old = '''  const statusUpdate = updateDemandColumn(demand.id, formData.get("coluna") || demand.coluna, { persist: false });
+  if (statusUpdate === false) {
+    state.demands[demandIndex] = demandSnapshot;
+    if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
+    state.sics = sicsSnapshot;
+    state.history = historySnapshot;
+    return;
+  }'''
+new = '''  const requestedColumn = formData.get("coluna") || demand.coluna;
+  const nextTypeIsSic = demandTypeKey(demand.tipo) === "SIC";
+  const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovacaoDiretoria");
+  const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false });
+  if (statusUpdate === false) {
+    state.demands[demandIndex] = demandSnapshot;
+    if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
+    state.sics = sicsSnapshot;
+    state.history = historySnapshot;
+    return;
+  }'''
+text = replace_once(text, old, new, 'detail completion interception')
+
+old = '''  closeModal();
+  showToast("Demanda atualizada e Kanban sincronizado.");
+  render();
+}'''
+new = '''  closeModal();
+  if (completionRequested) {
+    openDemandCompletionModal(demand.id);
+    return;
+  }
+  showToast("Demanda atualizada e Kanban sincronizado.");
+  render();
+}'''
+text = replace_once(text, old, new, 'detail completion continuation')
+
+old = '''async function handleEVSubmit(form, mode = "final") {
+  const work = workById(form.dataset.workId);
+  if (!work) return;'''
+new = '''async function handleEVSubmit(form, mode = "final") {
+  const work = workById(form.dataset.workId);
+  if (!work) return;
+  const completionDemandId = String(form.dataset.completionDemandId || "");
+  const completionDemand = state.demands.find((item) => item.id === completionDemandId && item.obraId === work.id) || null;'''
+text = replace_once(text, old, new, 'EV completion context')
+text = replace_once(
+    text,
+    '      origem: "Edição manual SLT 360",',
+    '      origem: mode === "final" && completionDemand ? completionDemand.id : "Edição manual SLT 360",',
+    'EV version origin',
+)
+old = '''  showToast(mode === "draft" ? "Rascunho do EV salvo." : "EV salvo com nova versão.");
+
+  if (form.closest(".ev-modal-card")) openEVModal(work.id);
+  else render();'''
+new = '''  showToast(mode === "draft" ? "Rascunho do EV salvo." : "EV salvo com nova versão.");
+
+  if (mode === "final" && completionDemand) {
+    openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
+    return;
+  }
+  if (form.closest(".ev-modal-card")) openEVModal(work.id);
+  else render();'''
+text = replace_once(text, old, new, 'EV completion continuation')
+
+text = replace_once(
+    text,
+    '    moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));',
+    '    await moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));',
+    'await move demand click',
+)
+insertion = '''  if (action === "complete-demand-no-ev-change") {
+    openDemandCompletionAmountModal(actionButton.dataset.id, { evNoChange: true });
+    return;
+  }
+  if (action === "complete-demand-update-ev") {
+    const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
+    const work = demand && workById(demand.obraId);
+    if (!demand || !work) return;
+    selectedWorkId = work.id;
+    closeModal();
+    await setView("ev");
+    openEVModal(work.id);
+    const evForm = document.querySelector("#evForm");
+    if (evForm) evForm.dataset.completionDemandId = demand.id;
+    return;
+  }
+'''
+text = replace_once(text, '  if (action === "open-work-ev") {', insertion + '  if (action === "open-work-ev") {', 'completion actions')
+
+text = replace_once(text, 'document.addEventListener("pointerup", (event) => {', 'document.addEventListener("pointerup", async (event) => {', 'async drag completion')
+text = replace_once(text, '  const updated = updateDemandColumn(demandId, targetColumnId);', '  const updated = await updateDemandColumn(demandId, targetColumnId);', 'await dragged demand')
+
+old = '''  if (event.target.id === "demandDetailForm") {
+    event.preventDefault();
+    await handleDemandDetailSubmit(event.target);
+  }
+  if (event.target.id === "deleteDemandForm") {'''
+new = '''  if (event.target.id === "demandDetailForm") {
+    event.preventDefault();
+    await handleDemandDetailSubmit(event.target);
+  }
+  if (event.target.id === "demandCompletionForm") {
+    event.preventDefault();
+    await handleDemandCompletionSubmit(event.target);
+  }
+  if (event.target.id === "deleteDemandForm") {'''
+text = replace_once(text, old, new, 'completion form submit')
+write(path, text)
+
+path = 'public/index.html'
+text = read(path)
+text = replace_once(text, '<div id="cloudStatus" role="status">Conectado ao banco</div>', '<div id="cloudStatus" role="status" data-state="saved">Sincronizado</div>', 'initial cloud status')
+write(path, text)
+
+path = 'src/boot.js'
+text = read(path)
+text = replace_once(
+    text,
+    "      node.textContent = status === 'saving' ? 'Salvando no banco…' : status === 'saved' ? 'Salvo no banco' : 'Não salvo — recarregue antes de continuar';",
+    "      node.textContent = status === 'saving' ? 'Sincronizando…' : status === 'saved' ? 'Sincronizado' : 'Falha na sincronização';",
+    'cloud status messages',
+)
+write(path, text)
+
+path = 'public/cloud.css'
+text = read(path)
+text = regex_once(
+    text,
+    r'#cloudStatus \{.*?body:has\(#legacyShell:not\(\[hidden\]\)\) \{ padding-bottom:28px; \}',
+    '''#cloudStatus { position:fixed; right:14px; bottom:12px; left:auto; z-index:99; padding:4px 9px; border:1px solid #d7e5dc; border-radius:999px; font-size:10px; color:#557264; background:rgba(248,251,249,.95); box-shadow:0 2px 10px rgba(20,52,38,.08); text-align:center; }
+#cloudStatus[data-state="saving"] { border-color:#ead9aa; background:rgba(255,250,235,.96); color:#7a641f; }
+#cloudStatus[data-state="failed"] { border-color:#efb9b5; background:rgba(255,241,240,.97); color:#9b3029; font-weight:700; }
+body:has(#legacyShell:not([hidden])) { padding-bottom:0; }''',
+    'subtle cloud status',
+)
+write(path, text)
+
+path = 'tests/browser/app.spec.js'
+text = read(path)
+text = text.replace("'Salvo no banco'", "'Sincronizado'")
+text = text.replace("'Revisão completa do EV'", "'Revisão de Orçamento'")
+text = text.replace("'SIC - Solicitação de Informação'", "'SIC'")
+text = text.replace(
+    "{id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',sicIds:[]}",
+    "{id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',valorGerado:100,sicIds:[]}",
+)
+text = text.replace(
+    "{id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',sicIds:[]}",
+    "{id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',valorGerado:200,sicIds:[]}",
+)
+
+old_stage_test = r'''test('stage time stops when a demand is completed or canceled',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
+ const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseEndedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
+ const demands=[
+  {...base,id:'stage-completed',tipo:'EmissaoInicial',coluna:'concluido',dataEntregaReal:phaseEndedAt.slice(0,10)},
+  {...base,id:'stage-canceled',tipo:'DemandaExtra',coluna:'cancelado'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ for(const demand of demands){
+  const card=page.locator(`article[data-id="${demand.id}"]`);
+  await expect(card.locator('.demand-card-stage-duration')).toHaveText('2 dias');
+  await expect(card.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
+  await card.click();
+  const detail=page.locator('#demandDetailForm');
+  await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
+  await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
+  await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
+ }
+ expect(b.errors).toEqual([]);
+});'''
+new_stage_test = r'''test('completed demand hides current-stage age while canceled demand keeps its stopped counter',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
+ const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseEndedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
+ const demands=[
+  {...base,id:'stage-completed',tipo:'EmissaoInicial',coluna:'concluido',dataEntregaReal:phaseEndedAt.slice(0,10),valorGerado:0},
+  {...base,id:'stage-canceled',tipo:'DemandaExtra',coluna:'cancelado'},
+ ];
+ const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const completed=page.locator('article[data-id="stage-completed"]');
+ await expect(completed.locator('.demand-card-stage-time')).toHaveCount(0);
+ await completed.click();
+ let detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('.demand-stage-summary')).toHaveCount(0);
+ await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
+ await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
+ const canceled=page.locator('article[data-id="stage-canceled"]');
+ await expect(canceled.locator('.demand-card-stage-duration')).toHaveText('2 dias');
+ await expect(canceled.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
+ await canceled.click();
+ detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
+ await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
+ expect(b.errors).toEqual([]);
+});'''
+if old_stage_test not in text:
+    raise SystemExit('stage time browser test not found')
+text = text.replace(old_stage_test, new_stage_test, 1)
+
+extra_test = r'''
+
+test('operational completion requires EV decision then generated amount',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="finish-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[name="tipo"] option')).toHaveText(['Emissão Inicial','Revisão de Orçamento','Demanda Extra','SIC']);
+ await expect(detail.getByText('Saldo',{exact:true})).toHaveCount(0);
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await expect(completion).toBeVisible();
+ await completion.locator('[name="valorGerado"]').fill('0,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido')?.document?.evSemMudanca).toBe(true);
+ const completedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido');
+ expect(completedChange.document.valorGerado).toBe(0);
+ const card=page.locator('article[data-id="finish-demand"]');
+ await expect(card).toBeVisible();
+ await expect(card.locator('.demand-card-stage-time')).toHaveCount(0);
+ await expect(card.locator('.demand-card-value')).toContainText('R$ 0,00');
+ expect(b.errors).toEqual([]);
+});
+'''
+if 'operational completion requires EV decision then generated amount' not in text:
+    text += extra_test
+write(path, text)
+
+print('Ajustes operacionais aplicados.')
