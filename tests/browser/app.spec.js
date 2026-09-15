@@ -508,6 +508,62 @@ test('budget demand forms, including extra demand, use one work selector and kee
  expect(b.errors).toEqual([]);
 });
 
+test('new work demands list only works from 2025 onward, including SIC',async({page})=>{
+ const older={...structuredClone(payload.state.works[0]),id:'older-work',nome:'Obra de 2024',codigoOriginal:'2024',anoObra:'2024'};
+ const noYear={...structuredClone(payload.state.works[0]),id:'undated-work',nome:'Obra sem ano',codigoOriginal:'0000',anoObra:'',ev:{...structuredClone(payload.state.works[0].ev),versions:[{numero:1,data:'2026-06-01'}]}};
+ const eligible={...structuredClone(payload.state.works[0]),id:'eligible-work',nome:'Obra de 2025',codigoOriginal:'2025',anoObra:'2025'};
+ const b=await backend(page,'Admin',false,{workRecords:[older,noYear,eligible,payload.state.works[0]],demandRecords:[]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ for(const type of ['EmissaoInicial','ReemissaoCompleta','DemandaExtra']){
+  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+  await page.locator(`.demand-type-option[data-type="${type}"]`).click();
+  const step1=page.locator('#demandWizardStep1');
+  await expect(step1.locator('#demandWorkOptions option[value="Obra de 2025"]')).toHaveCount(1);
+  await expect(step1.locator('#demandWorkOptions option[value="Obra de 2024"]')).toHaveCount(0);
+  await expect(step1.locator('#demandWorkOptions option[value="Obra sem ano"]')).toHaveCount(0);
+  await expect(step1.locator('#demandWorkOptions option[value="Obra histórica Sul - RS"]')).toHaveCount(0);
+  await step1.locator('[name="obraBusca"]').fill('Obra de 2024');
+  await step1.locator('[name="obraId"]').evaluate(element=>{element.value='older-work';});
+  await step1.getByRole('button',{name:/Avançar/}).click();
+  await expect(step1.locator('#formError')).toContainText('2025 em diante');
+  await step1.locator('[name="obraBusca"]').fill('Obra de 2025');
+  await step1.getByRole('button',{name:/Avançar/}).click();
+  await expect(page.locator('#demandForm [name="obraId"]')).toHaveValue('eligible-work');
+  await page.locator('#demandForm [data-action="close-modal"]').first().click();
+ }
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="SIC"]').click();
+ const sic=page.locator('#demandForm');
+ await sic.locator('[data-sic-work-search]').fill('Obra de 2024');
+ await expect(sic.locator('[data-sic-work-results] [data-action="select-sic-work"]')).toHaveCount(0);
+ await sic.locator('[name="obraId"]').evaluate(element=>{element.value='older-work';});
+ await sic.locator('[name="obraNumber"]').fill('2024');
+ await sic.locator('[name="obraNome"]').fill('Obra de 2024');
+ await sic.locator('[data-action="submit-demand-form"]').click();
+ await expect(sic.locator('#formError')).toContainText('2025 em diante');
+ expect(b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands')).toHaveLength(0);
+ await sic.locator('[data-sic-work-search]').fill('Obra de 2025');
+ await expect(sic.locator('[data-sic-work-results] [data-action="select-sic-work"]')).toHaveCount(1);
+ await sic.locator('[data-action="select-sic-work"]').click();
+ await expect(sic.locator('[name="obraId"]')).toHaveValue('eligible-work');
+ expect(b.errors).toEqual([]);
+});
+
+test('existing demands linked to older works can still be edited',async({page})=>{
+ const older={...structuredClone(payload.state.works[0]),id:'older-work',nome:'Obra de 2024',anoObra:'2024'};
+ const demand={...structuredClone(payload.state.demands[1]),id:'older-demand',obraId:older.id,coluna:'fazer'};
+ const b=await backend(page,'Admin',false,{workRecords:[older],demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="older-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[name="obraId"]')).toHaveValue(older.id);
+ await expect(detail.locator('#demandWorkOptions option[value="Obra de 2024"]')).toHaveCount(0);
+ await detail.locator('[name="nota"]').fill('Ajuste em demanda histórica');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key===demand.id)?.document?.obraId).toBe(older.id);
+ expect(b.errors).toEqual([]);
+});
+
 test('budget revision keeps the selected official work id for work 4201',async({page})=>{
  const officialWork={...structuredClone(payload.state.works[0]),id:'EVW-evh-0012',nome:'Adequação Visa HO Jardim America (CME)',codigoOriginal:'4201',uf:'GO',cidade:'Goiânia',anoObra:'2026'};
  const officialEV={id:'evh-0012',workId:officialWork.id,code:'42011',project:'42011. ADEQUAÇÃO VISA HO JARDIM AMERICA (CME) - GO',year:2026,date:'2026-08-27',revision:'REV03',typology:'Hospital',technician:'Leonardo',area:394.74,total:536542.5,disciplines:{'adequacoes-civis':39012.62},items:[]};

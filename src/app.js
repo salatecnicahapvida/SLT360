@@ -4059,7 +4059,7 @@ function projectPlanDatalist() {
 function projectWorkDatalist() {
   return `
     <datalist id="projectDemandWorkOptions">
-      ${state.works.map((work) => `<option value="${escapeAttribute(workOptionLabel(work))}">${escapeAttribute(workSearchYearText(work))}</option>`).join("")}
+      ${eligibleDemandWorkCatalog().map((work) => `<option value="${escapeAttribute(workOptionLabel(work))}">${escapeAttribute(workSearchYearText(work))}</option>`).join("")}
     </datalist>
   `;
 }
@@ -4211,7 +4211,11 @@ function handleProjectDemandSubmit(form) {
     return;
   }
 
-  const work = findWorkByTypedSearch(formData.get("obraBusca"));
+  const work = findWorkByTypedSearch(formData.get("obraBusca"), eligibleDemandWorkCatalog());
+  if (String(formData.get("obraBusca") || "").trim() && !work) {
+    showFormError("Para vincular uma obra à demanda, selecione uma obra do ano de 2025 em diante.", form);
+    return;
+  }
   const id = nextCode("PRJ", state.projectDemands || []);
   const cidadeUf = work ? [work.cidade, work.uf].filter(Boolean).join("/") : "";
   const demand = {
@@ -16012,9 +16016,10 @@ function openDemandWizardModal(type = "EmissaoInicial", step = 1, draft = {}) {
 }
 
 function demandWizardDefaultDraft(type, draft = {}) {
-  const work = draft.obraId
+  const candidate = draft.obraId
     ? workById(draft.obraId) || demandWorkCatalog().find((item) => String(item.id) === String(draft.obraId))
     : null;
+  const work = isDemandWorkEligible(candidate) ? candidate : null;
   const sprint = sprintById(draft.sprintId) || currentSprint();
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   const analystAssignment = normalizeDemandAnalysts(draft);
@@ -16022,7 +16027,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
     obraId: work?.id || "",
-    obraBusca: draft.obraBusca || work?.nome || "",
+    obraBusca: work ? draft.obraBusca || work.nome : draft.obraId ? "" : draft.obraBusca || "",
     unidadeModo: unitMode,
     unidadeId: draft.unidadeId || "",
     unidadeBusca: draft.unidadeBusca || "",
@@ -16127,7 +16132,7 @@ function renderDemandWizardStep1(draft) {
 }
 
 function renderDemandWizardStep2(draft) {
-  const work = workById(draft.obraId) || demandWorkCatalog().find((item) => String(item.id) === String(draft.obraId)) || workById(selectedWorkId) || state.works[0];
+  const work = eligibleDemandWorkCatalog().find((item) => String(item.id) === String(draft.obraId));
   const title = demandTypeLabel(draft.tipo);
   return `
     <div class="modal-backdrop" data-action="close-modal">
@@ -16243,13 +16248,22 @@ function demandWizardHiddenFields(draft) {
 function demandWorkDatalist() {
   return `
     <datalist id="demandWorkOptions">
-      ${demandWorkCatalog().map((work) => `<option value="${escapeAttribute(work.nome)}">${escapeAttribute(demandWorkYear(work))}</option>`).join("")}
+      ${eligibleDemandWorkCatalog().map((work) => `<option value="${escapeAttribute(work.nome)}">${escapeAttribute(demandWorkYear(work))}</option>`).join("")}
     </datalist>
   `;
 }
 
 function demandWorkCatalog() {
   return [...new Map(budgetWorks().map((work) => [String(work.id), work])).values()];
+}
+
+function isDemandWorkEligible(work) {
+  const year = String(work?.anoObra || "").slice(0, 4);
+  return /^\d{4}$/.test(year) && Number(year) >= 2025;
+}
+
+function eligibleDemandWorkCatalog() {
+  return demandWorkCatalog().filter(isDemandWorkEligible);
 }
 
 function demandWorkYear(work) {
@@ -16284,13 +16298,14 @@ function suggestHistoricalAnalystInForm(form, work) {
 }
 
 function resolveDemandWorkFromQuery(query, preferredId = "") {
-  const preferred = workById(preferredId) || demandWorkCatalog().find((work) => String(work.id) === String(preferredId));
+  const works = eligibleDemandWorkCatalog();
+  const preferred = works.find((work) => String(work.id) === String(preferredId));
   if (preferred) return preferred;
   const normalized = normalizeSearchText(query);
   if (!normalized) return null;
   const typedCode = String(query || "").trim().match(/^(\d{1,10})(?:\s*[.]|\s|$)/)?.[1] || "";
   if (typedCode) {
-    const codeMatches = demandWorkCatalog().filter((work) => portfolioWorkDisplayCode(work) === typedCode);
+    const codeMatches = works.filter((work) => portfolioWorkDisplayCode(work) === typedCode);
     if (codeMatches.length === 1) return codeMatches[0];
     const termsWithoutCode = normalized.replace(new RegExp(`^${typedCode}\\s*`), "").split(/\s+/).filter(Boolean);
     const identified = codeMatches.find((work) => {
@@ -16299,7 +16314,7 @@ function resolveDemandWorkFromQuery(query, preferredId = "") {
     });
     if (identified) return identified;
   }
-  return findWorkByExactTypedSearch(query) || findWorkByTypedSearch(query);
+  return findWorkByExactTypedSearch(query, works) || findWorkByTypedSearch(query, works);
 }
 
 function handleDemandWizardStep1(form) {
@@ -16308,7 +16323,7 @@ function handleDemandWizardStep1(form) {
   if (!validateDemandAnalysts(selectedAnalysts, form)) return;
   const work = resolveDemandWorkFromQuery(formData.get("obraBusca"), formData.get("obraId"));
   if (!work) {
-    showFormError("Selecione uma obra válida do portfólio antes de avançar.", form);
+    showFormError("Selecione uma obra cadastrada do ano de 2025 em diante antes de avançar.", form);
     return;
   }
   const unidadeModo = formData.get("unidadeModo") === "existente" ? "existente" : "nova";
@@ -16343,10 +16358,10 @@ function workSearchYearText(work) {
   return `Ano: ${demandWorkYear(work) || "Não informado"}`;
 }
 
-function findWorkByTypedSearch(value) {
+function findWorkByTypedSearch(value, works = demandWorkCatalog()) {
   const terms = normalizeSearchText(value).split(/\s+/).filter(Boolean);
   if (!terms.length) return null;
-  return demandWorkCatalog().find((work) => {
+  return works.find((work) => {
     const text = normalizeSearchText([
       work.id,
       workOptionLabel(work),
@@ -16360,27 +16375,28 @@ function findWorkByTypedSearch(value) {
   }) || null;
 }
 
-function findWorkByExactTypedSearch(value) {
+function findWorkByExactTypedSearch(value, works = demandWorkCatalog()) {
   const normalized = normalizeSearchText(value).trim();
   if (!normalized) return null;
   return (
-    demandWorkCatalog().find((work) => normalizeSearchText(workOptionLabel(work)) === normalized) ||
-    demandWorkCatalog().find((work) => normalizeSearchText(work.nome) === normalized) ||
-    demandWorkCatalog().find((work) => normalizeSearchText(work.chaveUnica || work.codigoOriginal) === normalized)
+    works.find((work) => normalizeSearchText(workOptionLabel(work)) === normalized) ||
+    works.find((work) => normalizeSearchText(work.nome) === normalized) ||
+    works.find((work) => normalizeSearchText(work.chaveUnica || work.codigoOriginal) === normalized)
   );
 }
 
-function resolveWorkIdFromDemandForm(formData) {
+function resolveWorkIdFromDemandForm(formData, { eligibleOnly = false } = {}) {
+  const works = eligibleOnly ? eligibleDemandWorkCatalog() : demandWorkCatalog();
   const selectedId = formData.get("obraId");
-  if (workById(selectedId)) return selectedId;
+  if (works.some((work) => String(work.id) === String(selectedId))) return selectedId;
   const lookupValues = [formData.get("obraBusca")];
   if (formData.get("tipo") === "SIC") {
     lookupValues.push(formData.get("obraNumber"), formData.get("obraNome"), `${formData.get("obraNumber") || ""} ${formData.get("obraNome") || ""}`);
   }
   for (const value of lookupValues) {
-    const exactWork = findWorkByExactTypedSearch(value);
+    const exactWork = findWorkByExactTypedSearch(value, works);
     if (exactWork) return exactWork.id;
-    const typedWork = findWorkByTypedSearch(value);
+    const typedWork = findWorkByTypedSearch(value, works);
     if (typedWork) return typedWork.id;
   }
   return "";
@@ -16414,7 +16430,8 @@ function ensureDemandWorkPersisted(work) {
 }
 
 function renderSicWorkSearchResults(query = "", selectedId = "") {
-  const selectedWork = workById(selectedId);
+  const candidate = workById(selectedId);
+  const selectedWork = isDemandWorkEligible(candidate) ? candidate : null;
   const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
   if (selectedWork) {
     return `
@@ -16429,7 +16446,7 @@ function renderSicWorkSearchResults(query = "", selectedId = "") {
     return `<p class="muted">Digite parte do nome, chave, cidade, UF, tipo ou região para localizar a obra do portfólio.</p>`;
   }
   const suggestions = state.works
-    .filter((work) => terms.every((term) => workSearchText(work).includes(term)))
+    .filter((work) => isDemandWorkEligible(work) && terms.every((term) => workSearchText(work).includes(term)))
     .slice(0, 8);
   if (!suggestions.length) {
     return `<div class="empty-state compact">Nenhuma obra encontrada. Você pode ajustar a busca ou cadastrar uma nova obra.</div>`;
@@ -16465,7 +16482,8 @@ function updateSicWorkSearch(input) {
 }
 
 function openSicDemandModal(workId = "") {
-  const selectedWork = workId ? workById(workId) : null;
+  const candidate = workById(workId);
+  const selectedWork = isDemandWorkEligible(candidate) ? candidate : null;
   const suggestedAnalyst = registeredAnalystName(historicalAnalystForWork(selectedWork));
   const selectedSprint = currentSprint();
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
@@ -17352,7 +17370,7 @@ async function handleDemandSubmit(form) {
   if (!validateDemandAnalysts(analystAssignment, form)) return;
   const projectSelection = readDemandProjectsFromForm(form);
   const tipo = formData.get("tipo");
-  let obraId = resolveWorkIdFromDemandForm(formData);
+  let obraId = resolveWorkIdFromDemandForm(formData, { eligibleOnly: true });
   // Demandas excluídas continuam reservando o código no banco. Considerá-las
   // evita tentar recriar, por exemplo, DEM-021 sobre um registro arquivado.
   const demandId = nextDemandCode();
@@ -17361,13 +17379,17 @@ async function handleDemandSubmit(form) {
   let sicDraftDisciplines = [];
 
   if (!obraId) {
-    showFormError("Use o assistente de busca para selecionar uma obra do portfólio ou cadastre uma nova obra antes de salvar a demanda.", form);
+    showFormError("Selecione uma obra cadastrada do ano de 2025 em diante antes de salvar a demanda.", form);
     return;
   }
 
   let linkedWork = workById(obraId);
   if (!linkedWork) {
     showFormError("A obra vinculada não está ativa. Selecione uma obra cadastrada no portfólio antes de salvar a demanda.", form);
+    return;
+  }
+  if (!isDemandWorkEligible(linkedWork)) {
+    showFormError("Para cadastrar uma demanda, selecione uma obra do ano de 2025 em diante.", form);
     return;
   }
   const unidadeModo = formData.get("unidadeModo") === "existente" ? "existente" : "nova";
@@ -18166,6 +18188,12 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     else showToast(message);
     return null;
   }
+  if (!isDemandWorkEligible(work)) {
+    const message = "Para criar uma demanda em Obras, vincule uma obra do ano de 2025 em diante.";
+    if (options.form) showFormError(message, options.form);
+    else showToast(message);
+    return null;
+  }
 
   const sprint = currentSprint();
   const startDate = record.inicioOrcamentacao || addDaysISO(record.terminoPlanejado, 1) || todayISO();
@@ -18887,7 +18915,7 @@ document.addEventListener("click", async (event) => {
     const results = form?.querySelector("[data-sic-work-results]");
     const workCode = form?.querySelector("[data-sic-work-code]");
     const workName = form?.querySelector("[data-sic-work-name]");
-    if (work && input && hidden) {
+    if (isDemandWorkEligible(work) && input && hidden) {
       input.value = workOptionLabel(work);
       hidden.value = work.id;
       if (workCode) workCode.value = work.chaveUnica || work.codigoOriginal || "";
@@ -19313,7 +19341,8 @@ function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-demand-work-search]")) {
-    const work = findWorkByExactTypedSearch(event.target.value);
+    const works = event.target.closest("#demandWizardStep1") ? eligibleDemandWorkCatalog() : demandWorkCatalog();
+    const work = findWorkByExactTypedSearch(event.target.value, works);
     const form = event.target.closest("form");
     const workId = form?.querySelector('[name="obraId"]');
     if (workId) workId.value = work?.id || "";
