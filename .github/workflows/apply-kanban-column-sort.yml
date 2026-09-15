@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/patch-kanban-column-sort.mjs
+      - scripts/patch-kanban-column-sort-accessibility.mjs
       - .github/workflows/apply-kanban-column-sort.yml
   workflow_dispatch:
 
@@ -35,7 +36,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Aplicar ordenação do Kanban
-        run: node scripts/patch-kanban-column-sort.mjs
+        run: |
+          node scripts/patch-kanban-column-sort.mjs
+          node scripts/patch-kanban-column-sort-accessibility.mjs
 
       - name: Validar aplicação
         run: pnpm lint && pnpm test && pnpm build
