@@ -24,6 +24,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Preparar patch
+        run: python3 scripts/repair-operational-fixes.py
       - name: Aplicar alterações
         run: python3 scripts/apply-operational-fixes.py
       - name: Testar código
@@ -39,7 +41,7 @@ jobs:
         run: |
           git config user.name "salatecnicahapvida"
           git config user.email "ciceroc@hapvida.com.br"
-          git rm -f .github/workflows/apply-operational-fixes.yml .github/workflows/finalize-persistence-audit.yml .github/workflows/run-finalize-audit.yml .audit-trigger scripts/apply-operational-fixes.py 2>/dev/null || true
+          git rm -f .github/workflows/apply-operational-fixes.yml .github/workflows/finalize-persistence-audit.yml .github/workflows/run-finalize-audit.yml .audit-trigger scripts/apply-operational-fixes.py scripts/repair-operational-fixes.py 2>/dev/null || true
           git add src public tests
           git commit -m "Ajusta conclusão e visão operacional de demandas"
           git push origin main
