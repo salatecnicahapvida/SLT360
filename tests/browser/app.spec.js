@@ -752,6 +752,7 @@ test('kanban horizontal scrollbar stays above the column names',async({page})=>{
  };
 
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  await expectTopScrollbar();
  await page.getByRole('button',{name:'Manutenção',exact:true}).click();
  await page.locator('[data-view="maintenanceOperational"]').filter({visible:true}).first().click();
@@ -1435,6 +1436,7 @@ test('operational cards drag between columns and SICs enter director approval di
  };
  const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
  await expect(kanbanColumns).toHaveCount(8);
  expect((await kanbanColumns.first().boundingBox()).height).toBeGreaterThanOrEqual(1100);
