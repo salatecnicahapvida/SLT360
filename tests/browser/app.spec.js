@@ -273,6 +273,17 @@ test('operational demand cards and list standardize work names',async({page})=>{
  expect(b.errors).toEqual([]);
 });
 
+test('SIC without a title does not put its description on the card',async({page})=>{
+ const sic={...structuredClone(payload.state.demands[0]),id:'sic-without-title',titulo:'',observacao:'Descrição legada da SIC',sicMetadata:{lecomNumber:'TEST-2',descricaoSic:'Descrição legada da SIC'}};
+ const b=await backend(page,'Admin',false,{demandRecords:[sic]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const card=page.locator('article[data-id="sic-without-title"]');
+ await expect(card.locator('.sic-card-title')).toHaveCount(0);
+ await expect(card.locator('.demand-card-description')).toHaveCount(0);
+ await expect(card).not.toContainText('Descrição legada da SIC');
+ expect(b.errors).toEqual([]);
+});
+
 test('kanban shows column totals and time in the current stage for every demand type',async({page})=>{
  const phaseStartedAt=new Date(Date.now()-(26*60*60*1000)).toISOString();
  const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseStartedAtEstimated:false};
@@ -1344,6 +1355,7 @@ test('operational cards drag between columns and SICs enter director approval di
  const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
  const fazendoColumn=page.locator('.kanban-column[data-column="fazendo"]');
  const sicCard=fazerColumn.locator('article[data-id="test-demand"]');
+ await expect(sicCard.locator('.sic-card-title')).toHaveText('Teste');
  await expect(sicCard.locator('.sic-card-lecom span')).toHaveText('Lecon');
  await expect(sicCard.locator('.sic-card-lecom strong')).toHaveText('TEST-1');
  await expect(sicCard.locator('.demand-card-description')).toHaveCount(0);

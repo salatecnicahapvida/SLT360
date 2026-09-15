@@ -888,7 +888,7 @@ function normalizeDemandRecord(item = {}, works = []) {
       lecomNumber: rawMetadata.lecomNumber || demand.lecomNumber || demand.lecom || demand.numeroSic || "",
       obraNumber: rawMetadata.obraNumber || demand.obraNumber || "",
       obraNome: rawMetadata.obraNome || demand.obraNome || works.find((work) => work.id === demand.obraId)?.nome || "",
-      tituloSic: rawMetadata.tituloSic || demand.tituloSic || demand.titulo || demand.observacao || "",
+      tituloSic: rawMetadata.tituloSic || demand.tituloSic || demand.titulo || "",
       numeroSic: rawMetadata.numeroSic || demand.numeroSic || rawMetadata.lecomNumber || demand.lecomNumber || "",
       descricaoSic: rawMetadata.descricaoSic || demand.descricaoSic || demand.observacao || "",
       analistaSalaTecnica: rawMetadata.analistaSalaTecnica || demand.analistaSalaTecnica || demand.analistaResponsavel || "",
@@ -5709,7 +5709,9 @@ function renderDemandCard(demand) {
   const stageTime = demandStageTimeInfo(demand);
   const complementCount = (demand.analistasComplementares || []).length;
   const isSic = demandTypeKey(demand.tipo) === "SIC";
-  const lecomNumber = isSic ? demandSicInfo(demand)?.lecomNumber : "";
+  const sicInfo = isSic ? demandSicInfo(demand) : null;
+  const sicTitle = String(sicInfo?.tituloSic || "").trim();
+  const lecomNumber = sicInfo?.lecomNumber || "";
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandProducedValue(demand) || (approval ? sicApprovalValue(demand) : 0);
   return `
@@ -5725,6 +5727,7 @@ function renderDemandCard(demand) {
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
       ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
+      ${isSic && sicTitle && sicTitle !== "—" ? `<p class="sic-card-title" title="${escapeAttribute(sicTitle)}">${escapeAttribute(sicTitle)}</p>` : ""}
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
@@ -15090,7 +15093,7 @@ function demandSicInfo(demand) {
     lecomNumber: metadata.lecomNumber || sic?.lecomNumber || "—",
     obraNumber: metadata.obraNumber || sic?.obraNumber || "—",
     obraNome: metadata.obraNome || sic?.obraNome || workById(demand.obraId)?.nome || "—",
-    tituloSic: metadata.tituloSic || sic?.titulo || demand.observacao || "—",
+    tituloSic: metadata.tituloSic || sic?.titulo || demand.tituloSic || demand.titulo || "—",
     numeroSic: metadata.numeroSic || sic?.numeroSic || sic?.id || "—",
     descricaoSic: metadata.descricaoSic || sic?.descricao || demand.observacao || "—",
     analistaSalaTecnica: metadata.analistaSalaTecnica || sic?.analistaSalaTecnica || demand.analistaResponsavel || "—",

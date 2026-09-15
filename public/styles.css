@@ -7070,6 +7070,18 @@ button.alert-item {
   -webkit-line-clamp: 2;
 }
 
+.sic-card-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #7a4b00;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .sic-card-lecom {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
