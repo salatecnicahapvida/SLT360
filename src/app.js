@@ -10914,7 +10914,7 @@ function syncWorkFundRecord(work, origem, ordemInterna, verbaAportada) {
   const oiKey = normalizeOiKey(ordemInterna);
   const existing = state.funds.find((fund) => {
     const fundOi = normalizeOiKey(fund.ordemInternaSAP || fund.ordemInterna || fund.account || "");
-    return fund.workId === work.id || fund.obraId === work.id || (oiKey && fundOi === oiKey);
+    return fund.workId === work.id || fund.obraId === work.id || (!fund.workId && !fund.obraId && oiKey && fundOi === oiKey);
   });
   const now = new Date().toISOString();
   const fund = existing || {
@@ -17198,7 +17198,8 @@ function activateSprint(id) {
   showToast(`${sprint.nome} agora é a sprint atual.`);
 }
 
-function handleWorkSubmit(form) {
+async function handleWorkSubmit(form) {
+  if (form.dataset.saving === "true") return;
   const formData = new FormData(form);
   let nome = String(formData.get("nome") || "").trim();
   const tipoUnidade = String(formData.get("tipoUnidade") || "").trim();
@@ -17212,13 +17213,39 @@ function handleWorkSubmit(form) {
     return;
   }
 
-  const existingWork = workById(formData.get("workId"));
   const sourceHistoricalRecordId = String(formData.get("sourceHistoricalRecordId") || "").trim();
   const areaEquivalente = parseCurrency(formData.get("areaEquivalente"));
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
   const anoObra = String(formData.get("anoObra") || "").replace(/[^\d]/g, "").slice(0, 4);
   const codigoOriginal = String(formData.get("codigoOriginal") || "").trim().replace(/[.\s]+$/g, "") || "0000";
+  const tipoVerba = String(formData.get("tipoVerba") || "").trim().toUpperCase();
+  const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
+  const valorVerbaAportada = parseCurrency(formData.get("valorVerbaAportada"));
+  const valorEstimado = parseCurrency(formData.get("valorEstimado"));
+  if (tipoVerba && !["CAPEX", "OPEX"].includes(tipoVerba)) {
+    showFormError("Selecione uma origem da verba válida (CAPEX ou OPEX).", form);
+    return;
+  }
+  const needsFinancialIntegration = ["CAPEX", "OPEX"].includes(tipoVerba) && ordemInternaSAP && valorVerbaAportada > 0;
+  if (needsFinancialIntegration) {
+    try {
+      await globalThis.SLT_CLOUD.ensureModule("budget");
+      if (!globalThis.SLT_CLOUD.canWrite("budget")) {
+        showFormError("Para integrar a verba desta obra, é necessária permissão de edição em Controle de Verbas.", form);
+        return;
+      }
+    } catch (error) {
+      showFormError(error?.message || "Não foi possível carregar o banco do Controle de Verbas. Tente novamente.", form);
+      return;
+    }
+  }
+  // Carregar Verbas reidrata o estado inteiro; localizar a obra somente depois.
+  const existingWork = workById(formData.get("workId"));
+  if (formData.get("workId") && !existingWork) {
+    showFormError("Esta obra não foi encontrada no banco. Recarregue antes de editar.", form);
+    return;
+  }
   const normalizedName = normalizeSearchText(nome);
   const duplicateWork = (state.works || []).find((work) => {
     if (work === existingWork || work?._deleted) return false;
@@ -17228,14 +17255,6 @@ function handleWorkSubmit(form) {
   if (duplicateWork) {
     showFormError(`Esta obra já está cadastrada como ${workDisplayLabel(duplicateWork)}. Edite o cadastro existente para evitar duplicidade.`, form);
     form.querySelector('[name="nome"]')?.focus();
-    return;
-  }
-  const tipoVerba = String(formData.get("tipoVerba") || "").trim().toUpperCase();
-  const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
-  const valorVerbaAportada = parseCurrency(formData.get("valorVerbaAportada"));
-  const valorEstimado = parseCurrency(formData.get("valorEstimado"));
-  if (tipoVerba && !["CAPEX", "OPEX"].includes(tipoVerba)) {
-    showFormError("Selecione uma origem da verba válida (CAPEX ou OPEX).", form);
     return;
   }
 
@@ -17269,6 +17288,10 @@ function handleWorkSubmit(form) {
   };
 
   if (existingWork) {
+    const previousWork = clone(existingWork);
+    const previousFunds = clone(state.funds || []);
+    const previousOiRows = clone(state.capexManualOiRows || []);
+    const previousHistory = clone(state.history || []);
     const previous = `${existingWork.nome} | ${existingWork.chaveUnica}`;
     Object.assign(existingWork, {
       ...workFields,
@@ -17283,7 +17306,27 @@ function handleWorkSubmit(form) {
       valorAnterior: previous,
       valorNovo: `${existingWork.nome} | ${existingWork.chaveUnica}`,
     });
-    saveState();
+    form.dataset.saving = "true";
+    let workSaved = false;
+    try {
+      const snapshot = persistedStatePayload();
+      await globalThis.SLT_CLOUD.saveAndWait("works", snapshot);
+      workSaved = true;
+      if (needsFinancialIntegration) await globalThis.SLT_CLOUD.saveAndWait("budget", snapshot);
+    } catch (error) {
+      if (!workSaved) {
+        Object.assign(existingWork, previousWork);
+        state.funds = previousFunds;
+        state.capexManualOiRows = previousOiRows;
+        state.history = previousHistory;
+      }
+      showFormError(workSaved
+        ? "A obra foi salva, mas a integração financeira falhou. Recarregue do banco antes de continuar."
+        : error?.message || "A edição da obra não foi confirmada pelo banco.", form);
+      return;
+    } finally {
+      delete form.dataset.saving;
+    }
     closeModal();
     workModalPlanDraft = null;
     showToast("Dados da obra atualizados no portfólio.");
@@ -17316,6 +17359,10 @@ function handleWorkSubmit(form) {
     },
   };
 
+  const previousFunds = clone(state.funds || []);
+  const previousOiRows = clone(state.capexManualOiRows || []);
+  const previousHistory = clone(state.history || []);
+  const previousSelectedWorkId = selectedWorkId;
   state.works.unshift(work);
   syncWorkBudgetIntegration(work);
   selectedWorkId = work.id;
@@ -17329,17 +17376,38 @@ function handleWorkSubmit(form) {
     valorAnterior: "Não existia",
     valorNovo: `${work.nome} | ${work.chaveUnica}`,
   });
-  saveState();
+  form.dataset.saving = "true";
+  let workSaved = false;
+  try {
+    const snapshot = persistedStatePayload();
+    await globalThis.SLT_CLOUD.saveAndWait("works", snapshot);
+    workSaved = true;
+    if (needsFinancialIntegration) await globalThis.SLT_CLOUD.saveAndWait("budget", snapshot);
+  } catch (error) {
+    if (!workSaved) {
+      state.works = state.works.filter((item) => item.id !== work.id);
+      state.funds = previousFunds;
+      state.capexManualOiRows = previousOiRows;
+      state.history = previousHistory;
+      selectedWorkId = previousSelectedWorkId;
+    }
+    showFormError(workSaved
+      ? "A obra foi salva, mas a integração financeira falhou. Recarregue do banco antes de continuar."
+      : error?.message || "O cadastro da obra não foi confirmado pelo banco.", form);
+    return;
+  } finally {
+    delete form.dataset.saving;
+  }
   if (workModalReturnMode === "sic") {
     workModalReturnMode = "";
-    showToast("Obra cadastrada com verba integrada. Continue o registro da SIC vinculada ao EV.");
+    showToast(`Obra cadastrada${needsFinancialIntegration ? " com verba integrada" : ""}. Continue o registro da SIC vinculada ao EV.`);
     openSicDemandModal(work.id);
     return;
   }
   closeModal();
   showToast(sourceHistoricalRecordId
     ? "Dados da obra histórica atualizados no portfólio sem duplicar o EV."
-    : "Obra cadastrada no portfólio com EV rascunho e verba integrada ao Controle de Verbas.");
+    : `Obra cadastrada no portfólio com EV rascunho${needsFinancialIntegration ? " e verba integrada ao Controle de Verbas" : ""}.`);
   render();
 }
 
@@ -19268,7 +19336,7 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "workForm") {
     event.preventDefault();
-    handleWorkSubmit(event.target);
+    await handleWorkSubmit(event.target);
   }
   if (event.target.id === "evForm") {
     event.preventDefault();

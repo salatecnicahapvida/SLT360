@@ -21,12 +21,13 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
  if(Array.isArray(evRecords))input.state.evs=evRecords;
  if(Array.isArray(sprintRecords))input.state.sprints=sprintRecords;
+ if(Array.isArray(fundRecords))input.state.funds=fundRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
@@ -82,6 +83,10 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   else if(p.endsWith('/slt_backup_daily'))data={created:false};
   else if(p.endsWith('/slt_commit_changes')){
    const body=req.postDataJSON();requests.push(body);
+   if(failFinanceCommit&&body.changes.some(change=>change.entity.startsWith('finance_'))){
+    await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:'permission denied for finance_funds',code:'42501'})});
+    return;
+   }
    for(const c of body.changes){records=records.filter(r=>!(r.entity===c.entity&&r.key===c.key));if(c.operation!=='delete')records.push({...c,revision:c.expected_revision+1});}
    data=body.changes.map(c=>({entity:c.entity,key:c.key,revision:c.expected_revision+1}));
   }
@@ -1143,6 +1148,67 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(updatedEmpty.locator('td').nth(10)).toHaveText('75,00');
  await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ expect(b.errors).toEqual([]);
+});
+
+test('work funding is persisted in Works and Finance before confirming the form',async({page})=>{
+ const b=await backend(page,'Admin',false,{fundRecords:[{id:'seed-fund',workId:'test-work',obraId:'test-work',ordemInternaSAP:'OI-TESTE-1',ordemInterna:'OI-TESTE-1',account:'OI-TESTE-1',type:'works',approved:50,requested:50}]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ const form=page.locator('#workForm');
+ await form.locator('[name="nome"]').fill('Nova obra com verba');
+ await form.locator('[name="tipoUnidade"]').fill('Hospital');
+ await form.locator('[name="cidade"]').fill('Recife');
+ await form.locator('[name="uf"]').fill('PE');
+ await form.locator('[name="regiao"]').fill('Nordeste');
+ await form.locator('[name="anoObra"]').fill('2026');
+ await form.locator('[name="tipoVerba"]').selectOption('CAPEX');
+ await form.locator('[name="ordemInternaSAP"]').fill('OI-TESTE-1');
+ await form.locator('[name="valorVerbaAportada"]').fill('1000');
+ await form.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+ await expect(form).toHaveCount(0);
+ const changes=b.requests.flatMap(request=>request.changes);
+ const work=changes.find(change=>change.entity==='projects_works'&&change.document?.nome?.toLowerCase()==='nova obra com verba');
+ expect(work).toBeTruthy();
+ expect(changes.filter(change=>change.entity==='projects_works'&&change.key===work.key)).toHaveLength(1);
+ expect(changes.some(change=>change.entity==='finance_funds'&&change.document?.workId===work.key)).toBe(true);
+ expect(changes.some(change=>change.entity==='finance_funds'&&change.key==='seed-fund')).toBe(false);
+ expect(changes.some(change=>change.entity==='finance_manual_orders'&&change.document?.workId===work.key)).toBe(true);
+ await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await page.locator(`[data-action="edit-portfolio-work"][data-id="${work.key}"]`).click();
+ const editForm=page.locator('#workForm');
+ await editForm.locator('[name="valorVerbaAportada"]').fill('1200');
+ await editForm.getByRole('button',{name:'Salvar alterações',exact:true}).click();
+ await expect(editForm).toHaveCount(0);
+ const updates=b.requests.flatMap(request=>request.changes).filter(change=>change.operation==='upsert');
+ expect(updates.some(change=>change.entity==='projects_works'&&change.key===work.key&&change.document.valorVerbaAportada===1200)).toBe(true);
+ expect(updates.some(change=>change.entity==='finance_funds'&&change.document?.workId===work.key&&change.document?.approved===1200)).toBe(true);
+ expect(updates.some(change=>change.entity==='finance_manual_orders'&&change.document?.workId===work.key&&change.document?.montantePlanejado===1200)).toBe(true);
+ expect(b.errors).toEqual([]);
+});
+
+test('work funding failure never reports a fully saved work',async({page})=>{
+ const b=await backend(page,'Admin',false,{failFinanceCommit:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ const form=page.locator('#workForm');
+ await form.locator('[name="nome"]').fill('Obra com falha financeira');
+ await form.locator('[name="tipoUnidade"]').fill('Hospital');
+ await form.locator('[name="cidade"]').fill('Recife');
+ await form.locator('[name="uf"]').fill('PE');
+ await form.locator('[name="regiao"]').fill('Nordeste');
+ await form.locator('[name="tipoVerba"]').selectOption('CAPEX');
+ await form.locator('[name="ordemInternaSAP"]').fill('OI-FALHA');
+ await form.locator('[name="valorVerbaAportada"]').fill('1000');
+ await form.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+ await expect(page.locator('#cloudStatus')).toHaveText('Não salvo — recarregue antes de continuar');
+ await expect(page.getByRole('heading',{name:'Alterações não confirmadas no banco'})).toBeVisible();
+ await expect(form).toBeVisible();
+ await expect(form.locator('#formError')).toContainText('A obra foi salva, mas a integração financeira falhou');
+ expect(b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'))).toBe(true);
+ expect(b.requests.some(request=>request.changes.some(change=>change.entity==='finance_funds'))).toBe(true);
  expect(b.errors).toEqual([]);
 });
 
