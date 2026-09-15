@@ -647,6 +647,8 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
  await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
  await expect(analystPanel.locator('tbody tr')).toHaveCount(1);
+ const managementGridTops=await page.locator('#mainContent .content-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
+ for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
  expect(b.errors).toEqual([]);
 });
 

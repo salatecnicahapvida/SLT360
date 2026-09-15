@@ -12607,3 +12607,15 @@ button.analyst-chip {
   .strategic-top-projects-grid article > b,
   .strategic-top-projects-grid article > em { grid-column:2; }
 }
+
+
+/* SLT360: alinhamento global de painéis em layouts estruturados */
+/*
+ * Painéis adjacentes recebem margem no fluxo vertical legado. Quando esses mesmos
+ * painéis são filhos diretos de uma grade, a própria grade já controla o espaço
+ * com gap; manter a margem desloca a segunda/terceira coluna para baixo.
+ * Esta regra é intencionalmente global para todas as visões e módulos.
+ */
+:where([class*="-grid"], .split-layout, .stacked-panels) > .panel {
+  margin-top: 0;
+}
