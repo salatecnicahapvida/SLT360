@@ -8053,8 +8053,8 @@ button.alert-item {
 .demand-card-stage-time {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 3px;
   border-top: 1px solid rgba(0, 92, 169, 0.12);
   padding-top: 7px;
   color: var(--muted);

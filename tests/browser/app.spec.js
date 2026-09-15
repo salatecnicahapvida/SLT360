@@ -298,8 +298,15 @@ test('kanban shows column totals and time in the current stage for every demand 
   await expect(card.locator('.demand-code')).toHaveCount(0);
   await expect(card.locator('.demand-type-badge')).toHaveText(expectedTypeBadges.get(demand.id));
   await expect(card.locator('.demand-type-badge')).toHaveAttribute('title',expectedTypeTitles.get(demand.id));
-  await expect(card.locator('.demand-card-stage-time')).toContainText('Tempo na etapa');
+  await expect(card.locator('.demand-card-stage-time span').first()).toHaveText('Tempo na etapa:');
   await expect(card.locator('.demand-card-stage-duration')).toHaveText('1 dia');
+  const positions=await card.locator('.demand-card-stage-time').evaluate(element=>{
+   const label=element.querySelector('span:first-child').getBoundingClientRect();
+   const duration=element.querySelector('.demand-card-stage-duration').getBoundingClientRect();
+   return {gap:duration.left-label.right,sameLine:Math.abs(duration.top-label.top)<1};
+  });
+  expect(positions.sameLine).toBe(true);
+  expect(positions.gap).toBeLessThanOrEqual(5);
   const stageTimeStyles=await card.locator('.demand-card-stage-time').evaluate(element=>{
    const label=getComputedStyle(element.querySelector('span:first-child'));
    const duration=getComputedStyle(element.querySelector('.demand-card-stage-duration'));

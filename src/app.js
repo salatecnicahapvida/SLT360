@@ -5733,7 +5733,7 @@ function renderDemandCard(demand) {
         ${complementCount ? `<b>+${complementCount}</b>` : ""}
       </div>
       <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
-        <span>Tempo na etapa</span>
+        <span>Tempo na etapa:</span>
         <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
       </div>
       <span class="demand-card-date">${timing.dateLabel}</span>
