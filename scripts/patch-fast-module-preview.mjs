@@ -79,5 +79,27 @@ if(!browser.includes("p.endsWith('/slt_module_preview')")){
   const backendReplacement=`  else if(p.endsWith('/slt_module_load')||p.endsWith('/slt_module_preview')){`;
   if(!browser.includes(backendAnchor)) throw new Error('Mock do carregamento modular não encontrado.');
   browser=browser.replace(backendAnchor,backendReplacement);
-  fs.writeFileSync(browserPath,browser);
 }
+
+const oldStartupAssertions=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>window.SLT_CLOUD.isModuleLoaded('works'))).toBe(true);
+ expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ const afterModule=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toHaveLength(1);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_core_analysts'))).toHaveLength(1);`;
+const newStartupAssertions=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ const afterPreview=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterPreview.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_preview'))).toHaveLength(1);
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.isModuleLoaded('works'))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ const afterModule=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_preview'))).toHaveLength(1);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toHaveLength(1);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_core_analysts'))).toHaveLength(1);`;
+if(!browser.includes('afterPreview=await page.evaluate')){
+  if(!browser.includes(oldStartupAssertions)) throw new Error('Asserções antigas do carregamento inicial não foram localizadas.');
+  browser=browser.replace(oldStartupAssertions,newStartupAssertions);
+}
+fs.writeFileSync(browserPath,browser);
