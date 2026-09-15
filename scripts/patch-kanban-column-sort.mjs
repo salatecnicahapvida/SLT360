@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 
 const appPath = 'src/app.js';
-const stylesPath = 'src/styles.css';
+const stylesPath = 'public/styles.css';
 const testPath = 'tests/browser/app.spec.js';
-
 let app = fs.readFileSync(appPath, 'utf8');
 let styles = fs.readFileSync(stylesPath, 'utf8');
 let tests = fs.readFileSync(testPath, 'utf8');
@@ -16,8 +15,7 @@ const comparatorAnchor = `function compareOperationalDemandsByDelivery(first, se
   return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
 }
 `;
-
-const comparatorReplacement = `${comparatorAnchor}
+const comparatorAddition = `
 function operationalDemandCreationTimestamp(demand) {
   const raw = demand?.createdAt || demand?.dataCriacao || demand?.dataPrevistaInicio || "";
   const instant = raw ? new Date(raw).getTime() : Number.NaN;
@@ -40,7 +38,6 @@ function compareKanbanColumnDemands(first, second, columnId) {
     const markerComparison = firstMarker.localeCompare(secondMarker);
     if (markerComparison) return markerComparison;
   }
-
   const creationComparison = operationalDemandCreationTimestamp(first) - operationalDemandCreationTimestamp(second);
   if (creationComparison) return creationComparison;
   return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
@@ -50,28 +47,13 @@ function sortKanbanColumnDemands(demands, columnId) {
   return [...demands].sort((first, second) => compareKanbanColumnDemands(first, second, columnId));
 }
 `;
-
 if (!app.includes('function compareKanbanColumnDemands(first, second, columnId)')) {
   if (!app.includes(comparatorAnchor)) throw new Error('Comparador operacional não localizado.');
-  app = app.replace(comparatorAnchor, comparatorReplacement);
+  app = app.replace(comparatorAnchor, comparatorAnchor + comparatorAddition);
 }
 
-const kanbanOld = `        .map((column) => {
-          const demands = filtered.filter((demand) => demand.coluna === column.id);
-          return \`
-            <section class="kanban-column" data-column="\${column.id}">
-              <header>
-                <h2>\${column.label}</h2>
-                <span class="kanban-count" aria-label="\${demands.length} demandas">\${demands.length}</span>
-              </header>
-              <div class="demand-list">
-                \${demands.length ? demands.map(renderDemandCard).join("") : \`<div class="empty-state kanban-empty">Nenhuma demanda</div>\`}
-              </div>
-            </section>
-          \`;
-        })`;
-
-const kanbanNew = `        .map((column) => {
+const kanbanPattern = /        \.map\(\(column\) => \{\n          const demands = filtered\.filter\(\(demand\) => demand\.coluna === column\.id\);\n          return `\n            <section class="kanban-column" data-column="\$\{column\.id\}">\n              <header>\n                <h2>\$\{column\.label\}<\/h2>\n                <span class="kanban-count" aria-label="\$\{demands\.length\} demandas">\$\{demands\.length\}<\/span>\n              <\/header>/;
+const kanbanReplacement = `        .map((column) => {
           const demands = sortKanbanColumnDemands(filtered.filter((demand) => demand.coluna === column.id), column.id);
           const sortTitle = column.id === "concluido"
             ? "Reordenar por conclusão real, da mais recente para a mais antiga"
@@ -84,17 +66,10 @@ const kanbanNew = `        .map((column) => {
                   <span class="kanban-count" aria-label="\${demands.length} demandas">\${demands.length}</span>
                   <button class="kanban-sort-button" type="button" data-action="reorder-kanban-column" data-column="\${column.id}" aria-label="Reordenar etapa \${column.label}" title="\${escapeAttribute(sortTitle)}">⇅</button>
                 </div>
-              </header>
-              <div class="demand-list">
-                \${demands.length ? demands.map(renderDemandCard).join("") : \`<div class="empty-state kanban-empty">Nenhuma demanda</div>\`}
-              </div>
-            </section>
-          \`;
-        })`;
-
+              </header>`;
 if (!app.includes('data-action="reorder-kanban-column"')) {
-  if (!app.includes(kanbanOld)) throw new Error('Markup das colunas do Kanban não localizado.');
-  app = app.replace(kanbanOld, kanbanNew);
+  if (!kanbanPattern.test(app)) throw new Error('Cabeçalho das colunas do Kanban não localizado.');
+  app = app.replace(kanbanPattern, kanbanReplacement);
 }
 
 const actionAnchor = `  if (action === "set-operational-view") {
@@ -109,16 +84,14 @@ const actionReplacement = `  if (action === "reorder-kanban-column") {
       ? \`\${column.label}: ordenado pela conclusão real, do mais recente para o mais antigo.\`
       : \`\${column.label}: ordenado pelo marco exibido no card e, em empate, pela criação.\`);
   }
-  if (action === "set-operational-view") {
-    operationalViewMode = actionButton.dataset.mode || "kanban";
-    render();
-  }`;
+${actionAnchor}`;
 if (!app.includes('action === "reorder-kanban-column"')) {
-  if (!app.includes(actionAnchor)) throw new Error('Ação de troca de visualização operacional não localizada.');
+  if (!app.includes(actionAnchor)) throw new Error('Ação de visualização operacional não localizada.');
   app = app.replace(actionAnchor, actionReplacement);
 }
 
-const styleBlock = `
+if (!styles.includes('.kanban-sort-button {')) {
+  styles += `
 
 .kanban-column-header-meta {
   display: inline-flex;
@@ -133,7 +106,7 @@ const styleBlock = `
   padding: 0;
   border: 1px solid #d9e2ee;
   border-radius: 8px;
-  background: #ffffff;
+  background: #fff;
   color: #53657a;
   display: inline-grid;
   place-items: center;
@@ -155,7 +128,7 @@ const styleBlock = `
   outline-offset: 2px;
 }
 `;
-if (!styles.includes('.kanban-sort-button {')) styles += styleBlock;
+}
 
 const testPattern = /test\('operational demands are always ordered by nearest delivery date',[\s\S]*?\n\}\);\n\ntest\('operational demand cards and list standardize work names'/;
 const testReplacement = `test('kanban reorders by displayed milestone, creation date and real completion',async({page})=>{
@@ -166,8 +139,8 @@ const testReplacement = `test('kanban reorders by displayed milestone, creation 
   {...base,id:'sort-validation-near-new',dataPrevEnvioValidacaoObras:'2099-01-02',dataPrevistaEntrega:'2099-12-31',createdAt:'2026-09-12T09:00:00Z'},
   {...base,id:'sort-validation-near-old',dataPrevEnvioValidacaoObras:'2099-01-02',dataPrevistaEntrega:'2099-12-31',createdAt:'2026-09-10T09:00:00Z'},
   {...base,id:'sort-overdue-validation',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-01-01',createdAt:'2026-09-09T09:00:00Z'},
-  {...base,id:'sort-completed-old',coluna:'concluido',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-12-31',dataEntregaReal:'2026-09-10',createdAt:'2026-08-01T09:00:00Z'},
-  {...base,id:'sort-completed-new',coluna:'concluido',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-01-01',dataEntregaReal:'2026-09-14',createdAt:'2026-08-02T09:00:00Z'},
+  {...base,id:'sort-completed-old',coluna:'concluido',dataEntregaReal:'2026-09-10',createdAt:'2026-08-01T09:00:00Z'},
+  {...base,id:'sort-completed-new',coluna:'concluido',dataEntregaReal:'2026-09-14',createdAt:'2026-08-02T09:00:00Z'},
  ];
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
