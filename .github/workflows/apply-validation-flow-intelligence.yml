@@ -1,0 +1,58 @@
+name: Ajustar inteligência de datas e fluxo do kanban
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/patch-validation-flow-intelligence.mjs
+      - .github/workflows/apply-validation-flow-intelligence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Aplicar inteligência de fluxo
+        run: node scripts/patch-validation-flow-intelligence.mjs
+
+      - name: Validar aplicação
+        run: pnpm lint && pnpm test && pnpm build
+
+      - name: Validar no navegador
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chrome
+        run: pnpm test:browser
+
+      - name: Publicar correção no repositório
+        run: |
+          if git diff --quiet -- src/app.js tests/browser/app.spec.js; then
+            echo "Nenhuma alteração pendente."
+            exit 0
+          fi
+          git config user.name "salatecnicahapvida"
+          git config user.email "ciceroc@hapvida.com.br"
+          git add src/app.js tests/browser/app.spec.js
+          git commit -m "Aprimora datas e avanço automático das demandas"
+          git push origin HEAD:main
