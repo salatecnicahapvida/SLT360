@@ -102,4 +102,24 @@ if(!browser.includes('afterPreview=await page.evaluate')){
   if(!browser.includes(oldStartupAssertions)) throw new Error('Asserções antigas do carregamento inicial não foram localizadas.');
   browser=browser.replace(oldStartupAssertions,newStartupAssertions);
 }
+
+const scrollbarAnchor=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expectTopScrollbar();`;
+const scrollbarStable=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ await expectTopScrollbar();`;
+if(!browser.includes("canWrite('works'))).toBe(true);\n await expectTopScrollbar()")){
+  if(!browser.includes(scrollbarAnchor)) throw new Error('Âncora do teste da barra superior não encontrada.');
+  browser=browser.replace(scrollbarAnchor,scrollbarStable);
+}
+
+const dragAnchor=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const kanbanColumns=page.locator('.operational-board-panel .kanban-column');`;
+const dragStable=` await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ const kanbanColumns=page.locator('.operational-board-panel .kanban-column');`;
+if(!browser.includes("canWrite('works'))).toBe(true);\n const kanbanColumns=page.locator('.operational-board-panel .kanban-column')")){
+  if(!browser.includes(dragAnchor)) throw new Error('Âncora do teste de arraste do kanban não encontrada.');
+  browser=browser.replace(dragAnchor,dragStable);
+}
 fs.writeFileSync(browserPath,browser);
