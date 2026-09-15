@@ -1,1 +1,2 @@
 Publicação do carregamento progressivo da Visão Operacional de Obras.
+Validação final com testes estabilizados para a fase de prévia somente consulta.
