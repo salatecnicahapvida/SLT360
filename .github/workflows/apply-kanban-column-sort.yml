@@ -47,12 +47,12 @@ jobs:
 
       - name: Publicar correção no repositório
         run: |
-          if git diff --quiet -- src/app.js src/styles.css tests/browser/app.spec.js; then
+          if git diff --quiet -- src/app.js public/styles.css tests/browser/app.spec.js; then
             echo "Nenhuma alteração pendente."
             exit 0
           fi
           git config user.name "salatecnicahapvida"
           git config user.email "ciceroc@hapvida.com.br"
-          git add src/app.js src/styles.css tests/browser/app.spec.js
+          git add src/app.js public/styles.css tests/browser/app.spec.js
           git commit -m "Adiciona reordenação por etapa no Kanban"
           git push origin HEAD:main
