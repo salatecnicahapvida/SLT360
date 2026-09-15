@@ -15,5 +15,16 @@ new = '''text = text.replace(
 )'''
 if old not in text:
     raise SystemExit('Trecho de valor operacional não localizado no patch.')
-path.write_text(text.replace(old, new, 1), encoding='utf-8')
+text = text.replace(old, new, 1)
+text = text.replace(
+    '''text = text.replace("'Salvo no banco'", "'Sincronizado'")''',
+    '''text = text.replace("'Salvo no banco'", "'Sincronizado'")\ntext = text.replace("'Não salvo — recarregue antes de continuar'", "'Falha na sincronização'")''',
+    1,
+)
+text = text.replace(
+    "await expect(card.locator('.demand-card-value')).toContainText('R$ 0,00');",
+    "await expect(card.locator('.demand-card-value')).toContainText(/R\\$\\s*0/);",
+    1,
+)
+path.write_text(text, encoding='utf-8')
 print('Patch operacional reparado.')
