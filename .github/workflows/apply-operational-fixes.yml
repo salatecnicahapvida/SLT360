@@ -1,4 +1,5 @@
 name: Executar ajustes finais do operacional
+# retry: validação final
 
 on:
   push:
