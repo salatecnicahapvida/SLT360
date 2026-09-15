@@ -5565,6 +5565,37 @@ function compareOperationalDemandsByDelivery(first, second) {
   return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
 }
 
+function operationalDemandCreationTimestamp(demand) {
+  const raw = demand?.createdAt || demand?.dataCriacao || demand?.dataPrevistaInicio || "";
+  const instant = raw ? new Date(raw).getTime() : Number.NaN;
+  return Number.isFinite(instant) ? instant : Number.MAX_SAFE_INTEGER;
+}
+
+function compareKanbanColumnDemands(first, second, columnId) {
+  if (columnId === "concluido") {
+    const firstCompleted = dateOnly(first?.dataEntregaReal) || "";
+    const secondCompleted = dateOnly(second?.dataEntregaReal) || "";
+    if (firstCompleted || secondCompleted) {
+      if (!firstCompleted) return 1;
+      if (!secondCompleted) return -1;
+      const completedComparison = secondCompleted.localeCompare(firstCompleted);
+      if (completedComparison) return completedComparison;
+    }
+  } else {
+    const firstMarker = dateOnly(demandCardDateInfo(first)?.date) || "9999-12-31";
+    const secondMarker = dateOnly(demandCardDateInfo(second)?.date) || "9999-12-31";
+    const markerComparison = firstMarker.localeCompare(secondMarker);
+    if (markerComparison) return markerComparison;
+  }
+  const creationComparison = operationalDemandCreationTimestamp(first) - operationalDemandCreationTimestamp(second);
+  if (creationComparison) return creationComparison;
+  return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
+}
+
+function sortKanbanColumnDemands(demands, columnId) {
+  return [...demands].sort((first, second) => compareKanbanColumnDemands(first, second, columnId));
+}
+
 function operationalFilterValues(key) {
   const value = operationalFilters[key];
   if (Array.isArray(value)) return value.map((item) => String(item || "")).filter(Boolean);
@@ -5638,12 +5669,18 @@ function renderKanbanBoard(filtered) {
     <div class="kanban-board" data-kanban-scroll-board>
       ${columns
         .map((column) => {
-          const demands = filtered.filter((demand) => demand.coluna === column.id);
+          const demands = sortKanbanColumnDemands(filtered.filter((demand) => demand.coluna === column.id), column.id);
+          const sortTitle = column.id === "concluido"
+            ? "Reordenar por conclusão real, da mais recente para a mais antiga"
+            : "Reordenar pelo marco exibido no card; em empate, priorizar o card criado primeiro";
           return `
             <section class="kanban-column" data-column="${column.id}">
               <header>
                 <h2>${column.label}</h2>
-                <span class="kanban-count" aria-label="${demands.length} demandas">${demands.length}</span>
+                <div class="kanban-column-header-meta">
+                  <span class="kanban-count" aria-label="${demands.length} demandas">${demands.length}</span>
+                  <button class="kanban-sort-button" type="button" data-action="reorder-kanban-column" data-column="${column.id}" aria-label="Reordenar cards" title="${escapeAttribute(sortTitle)}">⇅</button>
+                </div>
               </header>
               <div class="demand-list">
                 ${demands.length ? demands.map(renderDemandCard).join("") : `<div class="empty-state kanban-empty">Nenhuma demanda</div>`}
@@ -18999,6 +19036,14 @@ document.addEventListener("click", async (event) => {
   if (action === "open-sic-timeline") openSicTimelineDetailModal(actionButton.dataset.mode, actionButton.dataset.key);
   if (action === "open-kpi-detail") openKpiDetail(actionButton.dataset.kpi);
   if (action === "apply-operational-filter") applyOperationalKpiFilter(actionButton.dataset.kpi);
+  if (action === "reorder-kanban-column") {
+    const column = columns.find((item) => item.id === actionButton.dataset.column);
+    if (!column) return;
+    render();
+    showToast(column.id === "concluido"
+      ? `${column.label}: ordenado pela conclusão real, do mais recente para o mais antigo.`
+      : `${column.label}: ordenado pelo marco exibido no card e, em empate, pela criação.`);
+  }
   if (action === "set-operational-view") {
     operationalViewMode = actionButton.dataset.mode || "kanban";
     render();

@@ -273,20 +273,35 @@ test('validation KPI includes and separates all three validation statuses',async
  expect(b.errors).toEqual([]);
 });
 
-test('operational demands are always ordered by nearest delivery date',async({page})=>{
- const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',coluna:'fazer'};
+test('kanban reorders by displayed milestone, creation date and real completion',async({page})=>{
+ const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',coluna:'fazer',dataEnvioRealValidacaoObras:'',dataValidacaoObras:''};
  const demands=[
-  {...base,id:'delivery-no-date',dataPrevistaEntrega:''},
-  {...base,id:'delivery-far',dataPrevistaEntrega:'2026-10-20'},
-  {...base,id:'delivery-overdue',dataPrevistaEntrega:'2026-09-01'},
-  {...base,id:'delivery-near',dataPrevistaEntrega:'2026-09-20'},
+  {...base,id:'sort-no-date',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'',createdAt:'2026-09-01T09:00:00Z'},
+  {...base,id:'sort-validation-far',dataPrevEnvioValidacaoObras:'2099-02-01',dataPrevistaEntrega:'2099-01-01',createdAt:'2026-09-01T09:00:00Z'},
+  {...base,id:'sort-validation-near-new',dataPrevEnvioValidacaoObras:'2099-01-02',dataPrevistaEntrega:'2099-12-31',createdAt:'2026-09-12T09:00:00Z'},
+  {...base,id:'sort-validation-near-old',dataPrevEnvioValidacaoObras:'2099-01-02',dataPrevistaEntrega:'2099-12-31',createdAt:'2026-09-10T09:00:00Z'},
+  {...base,id:'sort-overdue-validation',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-01-01',createdAt:'2026-09-09T09:00:00Z'},
+  {...base,id:'sort-completed-old',coluna:'concluido',dataEntregaReal:'2026-09-10',createdAt:'2026-08-01T09:00:00Z'},
+  {...base,id:'sort-completed-new',coluna:'concluido',dataEntregaReal:'2026-09-14',createdAt:'2026-08-02T09:00:00Z'},
  ];
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- const expected=['delivery-overdue','delivery-near','delivery-far','delivery-no-date'];
- expect(await page.locator('.kanban-column[data-column="fazer"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expected);
- await page.getByRole('button',{name:'Lista',exact:true}).click();
- expect(await page.locator('.operational-list-table tbody tr').evaluateAll(rows=>rows.map(row=>row.dataset.id))).toEqual(expected);
+ const fazer=page.locator('.kanban-column[data-column="fazer"]');
+ const concluded=page.locator('.kanban-column[data-column="concluido"]');
+ const expectedOpen=['sort-overdue-validation','sort-validation-near-old','sort-validation-near-new','sort-validation-far','sort-no-date'];
+ const expectedCompleted=['sort-completed-new','sort-completed-old'];
+ await expect(page.locator('.operational-board-panel .kanban-sort-button')).toHaveCount(8);
+ expect(await fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedOpen);
+ expect(await concluded.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedCompleted);
+ await fazer.locator('.demand-list').evaluate((list)=>{
+  const cards=[...list.querySelectorAll('article')];
+  cards.reverse().forEach(card=>list.append(card));
+ });
+ expect(await fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual([...expectedOpen].reverse());
+ await page.locator('[data-action="reorder-kanban-column"][data-column="fazer"]').click();
+ expect(await page.locator('.kanban-column[data-column="fazer"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedOpen);
+ await page.locator('[data-action="reorder-kanban-column"][data-column="concluido"]').click();
+ expect(await page.locator('.kanban-column[data-column="concluido"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedCompleted);
  expect(b.errors).toEqual([]);
 });
 
