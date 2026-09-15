@@ -5962,10 +5962,12 @@ function demandCardDateInfo(demand) {
     || demand.dataValidacaoObras
     || ["validacaoObras", "aprovacaoDiretoria", "concluido"].includes(demand.coluna),
   );
-  if (!validationSent && demand.dataPrevEnvioValidacaoObras) {
+  const validationDate = dateOnly(demand.dataPrevEnvioValidacaoObras);
+  const validationDeadlineStillActive = Boolean(validationDate && validationDate >= todayISO());
+  if (!validationSent && validationDeadlineStillActive) {
     return {
-      date: demand.dataPrevEnvioValidacaoObras,
-      dateLabel: `Envio p/ validação: ${dateText(demand.dataPrevEnvioValidacaoObras)}`,
+      date: validationDate,
+      dateLabel: `Envio p/ validação: ${dateText(validationDate)}`,
       isValidation: true,
     };
   }
@@ -5984,7 +5986,7 @@ function demandTimingInfo(demand) {
     return {
       tone: "green",
       label: demandDeliveryDelay(demand) > 0 ? `Concluída com ${demandDeliveryDelay(demand)} d de atraso` : "Entregue no prazo",
-      dateLabel: demand.dataEntregaReal ? `Concluída em ${dateText(demand.dataEntregaReal)}` : "Concluída",
+      dateLabel: demand.dataEntregaReal ? `Entrega real: ${dateText(demand.dataEntregaReal)}` : "Concluída",
     };
   }
   const activeDate = demandCardDateInfo(demand);
@@ -17946,7 +17948,18 @@ async function handleDemandDetailSubmit(form) {
   ].forEach((field) => {
     demand[field] = formData.get(field) || "";
   });
-  const requestedColumn = formData.get("coluna") || demand.coluna;
+  const selectedColumn = formData.get("coluna") || demand.coluna;
+  const validationWasJustSent = !demandSnapshot.dataEnvioRealValidacaoObras && Boolean(demand.dataEnvioRealValidacaoObras);
+  const validationColumnIndex = columns.findIndex((item) => item.id === "validacaoObras");
+  const selectedColumnIndex = columns.findIndex((item) => item.id === selectedColumn);
+  const shouldAutoAdvanceToWorksValidation = Boolean(
+    validationWasJustSent
+    && !demand.naoEnviarValidacaoObras
+    && selectedColumnIndex >= 0
+    && validationColumnIndex >= 0
+    && selectedColumnIndex < validationColumnIndex
+  );
+  const requestedColumn = shouldAutoAdvanceToWorksValidation ? "validacaoObras" : selectedColumn;
   const nextTypeIsSic = demandTypeKey(demand.tipo) === "SIC";
   const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovacaoDiretoria");
   const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false });

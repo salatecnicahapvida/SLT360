@@ -194,6 +194,8 @@ test('operational cards prioritize the validation date until validation is sent'
   {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2026-10-01',dataPrevistaEntrega:'2026-10-20'},
   {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataPrevistaEntrega:'2026-10-21'},
   {...base,id:'validation-date-missing',coluna:'fazer',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'2026-10-22'},
+  {...base,id:'validation-overdue',coluna:'fazendo',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-10-23'},
+  {...base,id:'validation-completed',coluna:'concluido',dataPrevEnvioValidacaoObras:'2026-10-03',dataPrevistaEntrega:'2026-10-23',dataEntregaReal:'2026-09-15'},
  ];
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -201,7 +203,30 @@ test('operational cards prioritize the validation date until validation is sent'
  await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2026');
  await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText('Entrega prevista: 21/10/2026');
  await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
+ await expect(board.locator('article[data-id="validation-overdue"] .demand-card-date')).toHaveText('Entrega prevista: 23/10/2099');
+ await expect(board.locator('article[data-id="validation-completed"] .demand-card-date')).toHaveText('Entrega real: 15/09/2026');
  await expect(board.getByRole('button',{name:'Aprovação'})).toHaveCount(0);
+ expect(b.errors).toEqual([]);
+});
+
+test('real validation send date automatically moves the card to Obras validation',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[1]),
+  id:'auto-validation-move',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',
+  dataEnvioRealValidacaoObras:'',dataValidacaoObras:'',dataPrevistaEntrega:'2099-10-20',sicIds:[],
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-action="open-demand-detail"][data-id="auto-validation-move"]').click();
+ const form=page.locator('#demandDetailForm');
+ await form.locator('[name="dataEnvioRealValidacaoObras"]').fill('2026-09-15');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(form).toHaveCount(0);
+ await expect(page.locator('.kanban-column[data-column="validacaoObras"] article[data-id="auto-validation-move"]')).toBeVisible();
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='auto-validation-move');
+  return changes.at(-1)?.document?.coluna;
+ }).toBe('validacaoObras');
  expect(b.errors).toEqual([]);
 });
 
