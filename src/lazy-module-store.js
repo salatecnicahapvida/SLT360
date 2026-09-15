@@ -36,6 +36,17 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
     await Promise.all([...queues.values()].map(queue => queue.flush()));
   }
 
+  async function preview(module, response) {
+    if (loaded.has(module)) return null;
+    if (!receivePayload) throw new Error('O aplicativo ainda não está pronto para receber dados do banco.');
+    if (!response || response.schema_version !== 2 || !Array.isArray(response.records)) {
+      throw new Error('A resposta de prévia do banco para este módulo é inválida.');
+    }
+    const previewRecords = new Map(records);
+    response.records.forEach(row => previewRecords.set(recordKey(row), row));
+    return receivePayload(hydrateRecords([...previewRecords.values()]), module);
+  }
+
   async function loadOne(module) {
     if (!receivePayload) throw new Error('O aplicativo ainda não está pronto para receber dados do banco.');
     await flush();
@@ -88,6 +99,7 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
 
   const store = {
     registerReceiver(receiver) { receivePayload = receiver; },
+    preview,
     ensure,
     hasLoaded: module => loaded.has(module),
     save(module, snapshot) { queueFor(module).save(snapshot); },
