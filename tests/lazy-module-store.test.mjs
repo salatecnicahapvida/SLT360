@@ -30,6 +30,11 @@ test('lazy modules block writes until their database snapshot is loaded',async()
   });
 
   assert.throws(()=>store.save('budget',{}),/carregamento completo do banco/);
+  const budgetPreview={schema_version:2,records:all.filter(row=>['budget_demands','projects_works','core_units','core_sprints'].includes(row.entity))};
+  await store.preview('budget',budgetPreview);
+  assert.equal(store.hasLoaded('budget'),false);
+  assert.equal(currentState.demands[0].titulo,'Demanda');
+  assert.throws(()=>store.save('budget',currentState),/carregamento completo do banco/);
   await store.ensure('budget');
   assert.deepEqual(calls,['budget']);
   assert.equal(store.hasLoaded('budget'),true);

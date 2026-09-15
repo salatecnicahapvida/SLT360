@@ -2454,6 +2454,17 @@ async function setView(view) {
   if (dataModule !== "home" && !globalThis.SLT_CLOUD.isModuleLoaded(dataModule)) {
     renderModuleLoading(view);
     try {
+      const normalizedView = viewAliases[view] || view;
+      if (normalizedView === "worksOperational" && typeof globalThis.SLT_CLOUD.previewModule === "function") {
+        try {
+          await globalThis.SLT_CLOUD.previewModule(dataModule);
+          if (request !== viewNavigationRequest) return;
+          currentView = view;
+          render();
+        } catch (previewError) {
+          console.warn("A prévia rápida de Obras não foi carregada; seguindo com o carregamento completo.", previewError);
+        }
+      }
       await globalThis.SLT_CLOUD.ensureModule(dataModule);
     } catch (error) {
       if (request !== viewNavigationRequest) return;

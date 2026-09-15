@@ -309,6 +309,18 @@ async function startInternal() {
       const module = dataModule(uiModule);
       return Boolean(module && lazyStore.hasLoaded(module));
     },
+    async previewModule(uiModule) {
+      if (uiModule === 'home') return;
+      const module = dataModule(uiModule);
+      if (!module || !moduleAllowed(currentProfile, module)) throw new Error('Seu perfil não possui acesso a este módulo.');
+      if (lazyStore.hasLoaded(module)) return;
+      const [response] = await Promise.all([
+        startupRest(session, 'rpc/slt_module_preview', { method: 'POST', body: { module_key: module } }),
+        ensureAnalystDirectory(),
+      ]);
+      if (response.error) throw new Error(response.error.message || `Não foi possível abrir rapidamente o módulo ${module}.`);
+      if (!lazyStore.hasLoaded(module)) await lazyStore.preview(module, response.data);
+    },
     async ensureModule(uiModule) {
       if (uiModule === 'home') return;
       const module = dataModule(uiModule);

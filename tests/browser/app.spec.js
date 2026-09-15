@@ -70,7 +70,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
    if(analyst)analyst.nome=body.analyst_name;data=analyst;
   }
   else if(p.endsWith('/slt_home_summary'))data={schema_version:2,works:{totalWorks:5,historicalEVCount:3,activeCount:2,pendingEVCount:1,contracted:0},maintenance:{totalCount:0,activeCount:0,overdueCount:0},clinical:{equipmentCount:0,unitCount:0,totalCount:0,activeCount:0},finance:{fundCount:0,availableBalance:0}};
-  else if(p.endsWith('/slt_module_load')){
+  else if(p.endsWith('/slt_module_load')||p.endsWith('/slt_module_preview')){
    const module=req.postDataJSON()?.module_key;
    const dependencies=new Set([
     ...(['budget','maintenance','clinical','projects'].includes(module)?['core_units','core_sprints','core_source_unit_registry_data']:[]),
@@ -1506,9 +1506,12 @@ test('startup loads only home counters and a module stays read-only until its da
  expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(false);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>window.SLT_CLOUD.isModuleLoaded('works'))).toBe(true);
- expect(await page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
+ const afterPreview=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterPreview.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_preview'))).toHaveLength(1);
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.isModuleLoaded('works'))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const afterModule=await page.evaluate(()=>window.__fetchStarts);
+ expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_preview'))).toHaveLength(1);
  expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_module_load'))).toHaveLength(1);
  expect(afterModule.filter(entry=>new URL(entry.url).pathname.endsWith('/slt_core_analysts'))).toHaveLength(1);
  expect(b.errors).toEqual([]);
