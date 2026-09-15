@@ -418,7 +418,11 @@ async function startInternal() {
       const result = await client.from('slt360_attachments').insert({ id: record.id, nome: record.nome, tipo: record.tipo, tamanho: record.tamanho, module: record.module });
       if (result.error) throw result.error;
       const upload = await client.storage.from('slt360-attachments').upload(record.id, record.blob, { upsert: false, contentType: record.blob.type || 'application/octet-stream' });
-      if (upload.error) throw upload.error;
+      if (upload.error) {
+        const cleanup = await client.from('slt360_attachments').delete().eq('id', record.id);
+        if (cleanup.error) console.warn('Não foi possível remover o metadado do anexo após falha no upload.', cleanup.error);
+        throw upload.error;
+      }
     },
     async readAttachment(id) {
       const info = await client.from('slt360_attachments').select('nome,tipo').eq('id', id).single();

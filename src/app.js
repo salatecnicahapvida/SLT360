@@ -17018,6 +17018,9 @@ async function handleEVSubmit(form, mode = "final") {
     }
   }
   delete form.dataset.evDeviationConfirmed;
+  const workIndex = state.works.findIndex((item) => item.id === work.id);
+  const workSnapshot = clone(work);
+  const historySnapshot = clone(state.history || []);
   const previousTotal = workTotals(work).orcado;
   const previousAreaConstruida = Number(work.areaConstruida || 0);
   const previousAreaEquivalente = Number(work.areaEquivalente || 0);
@@ -17115,7 +17118,14 @@ async function handleEVSubmit(form, mode = "final") {
     });
   }
 
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (workIndex >= 0) state.works[workIndex] = workSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "O EV não foi confirmado pelo banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
   showToast(mode === "draft" ? "Rascunho do EV salvo." : "EV salvo com nova versão.");
 
   if (form.closest(".ev-modal-card")) openEVModal(work.id);
@@ -17625,6 +17635,12 @@ async function postDemandSicToEV(demandId) {
     return;
   }
   const work = workById(demand.obraId);
+  const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+  const workIndex = state.works.findIndex((item) => item.id === work?.id);
+  const demandSnapshot = clone(demand);
+  const workSnapshot = work ? clone(work) : null;
+  const sicsSnapshot = clone(state.sics || []);
+  const historySnapshot = clone(state.history || []);
   const metadata = demand.sicMetadata || {};
   const detailForm = document.querySelector(`#demandDetailForm[data-id="${demand.id}"]`);
   const descriptionFromForm = detailForm?.querySelector('[name="sicDescricao"]')?.value;
@@ -17709,9 +17725,30 @@ async function postDemandSicToEV(demandId) {
     dataAprovacao: demand.sicApprovalApprovedAt || todayISO(),
   };
 
+  const sicDiffs = affected.map((item) => {
+    const line = ensureEVLineForDiscipline(work, item.disciplinaId);
+    const before = Number(line.valorOrcado || 0) + aditivadoByDiscipline(work.id, item.disciplinaId);
+    return {
+      disciplinaId: item.disciplinaId,
+      valorAntes: before,
+      valorDepois: before + item.valorDelta,
+    };
+  });
+
   state.sics.unshift(sic);
   syncSicWithEV(work, sic);
   syncWorkSicSummaryLine(work);
+  work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
+  work.ev.versions = work.ev.versions || [];
+  const updatedValues = workTotals(work);
+  work.ev.versions.push({
+    numero: work.ev.versaoAtual,
+    data: todayISO(),
+    origem: demand.id,
+    valorTotal: updatedValues.orcado + updatedValues.aditivado,
+    custoM2: (updatedValues.orcado + updatedValues.aditivado) / Math.max(work.areaEquivalente || 0, 1),
+    diffPorDisciplina: sicDiffs,
+  });
   demand.sicIds = [sic.id];
   demand.sicPostedAt = todayISO();
   demand.sicApprovalStatus = "Postada";
@@ -17736,9 +17773,18 @@ async function postDemandSicToEV(demandId) {
     valorNovo: `${sic.id} postada no EV`,
   });
 
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
+    state.sics = sicsSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A postagem da SIC não foi confirmada pelo banco. Recarregue os dados antes de tentar novamente.", detailForm);
+    return;
+  }
   selectedWorkId = work.id;
-  showToast("SIC postada no EV: valor lançado na linha 32 (SIC's).");
+  showToast("SIC postada no EV e nova versão confirmada no banco.");
   render();
   openEVModal(work.id);
 }
@@ -17979,7 +18025,7 @@ async function handleDemandDetailSubmit(form) {
   render();
 }
 
-function handleDeleteDemandSubmit(form) {
+async function handleDeleteDemandSubmit(form) {
   if (!canDeleteDemand()) {
     showFormError("Somente Gestores e Admins com permissão de edição podem excluir demandas.", form);
     return;
@@ -17994,6 +18040,9 @@ function handleDeleteDemandSubmit(form) {
   }
 
   const work = workById(demand.obraId);
+  const demandsSnapshot = clone(state.demands || []);
+  const deletedSnapshot = clone(state.deletedDemands || []);
+  const historySnapshot = clone(state.history || []);
   const deletedRecord = {
     ...clone(demand),
     obraNome: work?.nome || "",
@@ -18013,13 +18062,21 @@ function handleDeleteDemandSubmit(form) {
     valorNovo: justificativa,
   });
 
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    state.demands = demandsSnapshot;
+    state.deletedDemands = deletedSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A exclusão não foi confirmada pelo banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
   closeModal();
-  showToast(`${demand.id} excluída do Kanban com justificativa registrada.`);
+  showToast(`${demand.id} excluída do Kanban com justificativa confirmada no banco.`);
   render();
 }
 
-function handleContractSubmit(form) {
+async function handleContractSubmit(form) {
   const formData = new FormData(form);
   const value = parseCurrency(formData.get("valor"));
   if (value <= 0) {
@@ -18027,6 +18084,8 @@ function handleContractSubmit(form) {
     return;
   }
 
+  const contractsSnapshot = clone(state.contracts || []);
+  const historySnapshot = clone(state.history || []);
   const contract = {
     id: nextCode("CTR", state.contracts),
     obraId: formData.get("obraId"),
@@ -18045,19 +18104,29 @@ function handleContractSubmit(form) {
     valorAnterior: "Não existia",
     valorNovo: `${contract.numeroContrato} | ${money(contract.valor)}`,
   });
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    state.contracts = contractsSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A contratação não foi confirmada pelo banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
   closeModal();
-  showToast("Contratação vinculada à disciplina.");
+  showToast("Contratação vinculada à disciplina e confirmada no banco.");
   render();
 }
 
-function approveSicDemand(id) {
+async function approveSicDemand(id) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand || demandTypeKey(demand.tipo) !== "SIC") return;
   if ((demand.sicIds || []).length) {
     showToast("Esta SIC já foi postada no EV.");
     return;
   }
+  const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
   const previous = sicApprovalReading(demand).label;
   demand.sicApprovalStatus = "Aprovado";
   demand.sicApprovalApprovedAt = todayISO();
@@ -18072,19 +18141,30 @@ function approveSicDemand(id) {
     valorNovo: `Aprovada por ${demand.sicApprovalApprovedBy}`,
   });
   const reopenDetail = Boolean(document.querySelector(`#demandDetailForm[data-id="${demand.id}"]`));
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    showToast(error?.message || "A aprovação da SIC não foi confirmada pelo banco. Recarregue os dados.");
+    render();
+    return;
+  }
   showToast(`${demand.id} aprovada para postagem no EV.`);
   render();
   if (reopenDetail) openDemandDetailModal(demand.id);
 }
 
-function rejectSicDemand(id) {
+async function rejectSicDemand(id) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand || demandTypeKey(demand.tipo) !== "SIC") return;
   if ((demand.sicIds || []).length) {
     showToast("SIC já postada no EV. Não é possível reprovar nesta etapa.");
     return;
   }
+  const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
   const previous = sicApprovalReading(demand).label;
   demand.sicApprovalStatus = "Reprovado";
   demand.sicApprovalRejectedAt = todayISO();
@@ -18097,7 +18177,15 @@ function rejectSicDemand(id) {
     valorNovo: `Reprovada por ${demand.sicApprovalRejectedBy}`,
   });
   const reopenDetail = Boolean(document.querySelector(`#demandDetailForm[data-id="${demand.id}"]`));
-  saveState();
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    showToast(error?.message || "A reprovação da SIC não foi confirmada pelo banco. Recarregue os dados.");
+    render();
+    return;
+  }
   showToast(`${demand.id} reprovada para revisão antes do EV.`);
   render();
   if (reopenDetail) openDemandDetailModal(demand.id);
@@ -18708,7 +18796,7 @@ document.addEventListener("click", async (event) => {
     if (!form) return;
     form.dataset.evDeviationConfirmed = "true";
     overlay.remove();
-    handleEVSubmit(form, actionButton.dataset.mode || "final");
+    await handleEVSubmit(form, actionButton.dataset.mode || "final");
     return;
   }
   if (action === "open-investment-detail") openInvestmentDetailModal(actionButton.dataset.id);
@@ -18948,11 +19036,11 @@ document.addEventListener("click", async (event) => {
     if (rows.length > 1) actionButton.closest(".sic-draft-row")?.remove();
   }
   if (action === "approve-sic-demand") {
-    approveSicDemand(actionButton.dataset.id);
+    await approveSicDemand(actionButton.dataset.id);
     return;
   }
   if (action === "reject-sic-demand") {
-    rejectSicDemand(actionButton.dataset.id);
+    await rejectSicDemand(actionButton.dataset.id);
     return;
   }
   if (action === "approve-sic") approveSic(actionButton.dataset.id);
@@ -19374,7 +19462,7 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "deleteDemandForm") {
     event.preventDefault();
-    handleDeleteDemandSubmit(event.target);
+    await handleDeleteDemandSubmit(event.target);
   }
   if (event.target.id === "maintenanceDemandForm") {
     event.preventDefault();
@@ -19386,7 +19474,7 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "contractForm") {
     event.preventDefault();
-    handleContractSubmit(event.target);
+    await handleContractSubmit(event.target);
   }
   if (!event.defaultPrevented && hasDemandSubmitFields(event.target)) {
     event.preventDefault();
