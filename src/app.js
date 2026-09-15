@@ -15347,6 +15347,20 @@ function openDemandDetailModal(id) {
             </label>
           </section>
 
+          ${demand.coluna === "concluido" ? `
+          <section class="modal-section demand-produced-value-section">
+            <div class="section-title with-action">
+              <span>Impacto financeiro da conclusão</span>
+              <button class="secondary-action compact-action" type="button" data-action="edit-completed-demand-value" data-id="${demand.id}">${demandHasRecordedValue(demand) ? "Ajustar valor gerado" : "Informar valor gerado"}</button>
+            </div>
+            <div class="split-list compact">
+              ${splitItem("Valor gerado", demandHasRecordedValue(demand) ? money(demand.valorGerado) : "Não informado")}
+              ${splitItem("Situação no EV", demand.evSemMudanca === true ? "Sem mudança no EV" : demandHasEVUpdateForCompletion(demand) ? "EV atualizado" : "Não informado")}
+            </div>
+            <p class="muted">Demandas concluídas podem ter o valor gerado complementado ou corrigido sem reabrir o card. O ajuste fica registrado no histórico e só é confirmado após gravação no banco.</p>
+          </section>
+          ` : ""}
+
           <section class="modal-section">
             <div class="section-title">
               <span>Detalhes</span>
@@ -19203,6 +19217,12 @@ document.addEventListener("click", async (event) => {
   if (action === "move-demand") {
     await moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));
     if (actionButton.closest(".demand-modal-card")) openDemandDetailModal(actionButton.dataset.id);
+  }
+  if (action === "edit-completed-demand-value") {
+    const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
+    if (!demand || demand.coluna !== "concluido") return;
+    openDemandCompletionModal(demand.id);
+    return;
   }
   if (action === "complete-demand-no-ev-change") {
     openDemandCompletionAmountModal(actionButton.dataset.id, { evNoChange: true });

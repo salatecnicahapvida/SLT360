@@ -1582,3 +1582,30 @@ test('operational completion requires EV decision then generated amount',async({
  await expect(card.locator('.demand-card-value')).toContainText(/R\$\s*0/);
  expect(b.errors).toEqual([]);
 });
+
+
+test('completed demand can register generated amount after legacy completion',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'legacy-completed-demand',obraId:'test-work',tipo:'DemandaExtra',coluna:'concluido',dataEntregaReal:'2026-09-15',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="legacy-completed-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.getByRole('button',{name:'Informar valor gerado'})).toBeVisible();
+ await detail.getByRole('button',{name:'Informar valor gerado'}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await completion.locator('[name="valorGerado"]').fill('1.234,56');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='legacy-completed-demand')?.document?.valorGerado).toBe(1234.56);
+ const saved=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='legacy-completed-demand');
+ expect(saved.document.evSemMudanca).toBe(true);
+ expect(saved.document.coluna).toBe('concluido');
+ await page.locator('article[data-id="legacy-completed-demand"]').click();
+ const savedDetail=page.locator('#demandDetailForm');
+ await expect(savedDetail.getByRole('button',{name:'Ajustar valor gerado'})).toBeVisible();
+ await expect(savedDetail).toContainText('Valor gerado');
+ await expect(savedDetail).toContainText('Sem mudança no EV');
+ expect(b.errors).toEqual([]);
+});
