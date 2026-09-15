@@ -282,7 +282,7 @@ async function startInternal() {
     },
     onStatus(status, error) {
       const node = document.querySelector('#cloudStatus');
-      node.textContent = status === 'saving' ? 'Salvando no banco…' : status === 'saved' ? 'Salvo no banco' : 'Não salvo — recarregue antes de continuar';
+      node.textContent = status === 'saving' ? 'Sincronizando…' : status === 'saved' ? 'Sincronizado' : 'Falha na sincronização';
       node.dataset.state = status;
       if (status === 'failed') blockApp(cloudSaveFailureMessage(error));
     },

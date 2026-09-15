@@ -14,7 +14,7 @@ const payload={state:{
     {id:'evh-test-3',code:'HIST-3',project:'ADM Barro Preto Timbiras - 2° PA',year:2024,date:'2024-04-01',revision:'REV01',typology:'Pronto Atendimento',technician:'Técnico C',area:80,total:400,baseTotal:400,disciplines:{'adequacoes-civis':400},items:[]},
   ],
   demands:[
-    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC - Solicitação de Informação',coluna:'fazer',etiquetas:['Urgente'],sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
+    {id:'test-demand',obraId:'test-work',titulo:'Demanda de teste',tipo:'SIC',coluna:'fazer',etiquetas:['Urgente'],sicApprovalStatus:'Pendente',sicMetadata:{tituloSic:'Teste',obraNome:'Obra de teste',lecomNumber:'TEST-1'},sicDraftDisciplines:[],anexos:[],sicIds:[]},
     {id:'test-budget-demand',obraId:'test-work',titulo:'Orçamento de teste',tipo:'EmissaoInicial',coluna:'validacaoObras',sicIds:[],anexos:[]},
   ],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
@@ -229,7 +229,7 @@ test('operational proximity alert uses only the next 24-hour date window for val
 });
 
 test('validation KPI includes and separates all three validation statuses',async({page})=>{
- const base={...structuredClone(payload.state.demands[1]),tipo:'SIC - Solicitação de Informação'};
+ const base={...structuredClone(payload.state.demands[1]),tipo:'SIC'};
  const demands=[
   {...base,id:'validation-st',coluna:'validacaoST'},
   {...base,id:'validation-works',coluna:'validacaoObras'},
@@ -307,7 +307,7 @@ test('kanban shows column totals and time in the current stage for every demand 
   ['stage-initial','Emissão Inicial'],['stage-revision','Rev. Orç.'],['stage-extra','Dem. Extra'],['stage-sic','SIC'],
  ]);
  const expectedTypeTitles=new Map([
-  ['stage-initial','Emissão Inicial'],['stage-revision','Revisão completa do EV'],['stage-extra','Demanda Extra'],['stage-sic','SIC - Solicitação de Informação'],
+  ['stage-initial','Emissão Inicial'],['stage-revision','Revisão de Orçamento'],['stage-extra','Demanda Extra'],['stage-sic','SIC'],
  ]);
  for(const demand of demands){
   const card=page.locator(`article[data-id="${demand.id}"]`);
@@ -398,26 +398,30 @@ test('moving a demand resets the current stage timer and preserves every previou
  expect(b.errors).toEqual([]);
 });
 
-test('stage time stops when a demand is completed or canceled',async({page})=>{
+test('completed demand hides current-stage age while canceled demand keeps its stopped counter',async({page})=>{
  const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
  const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();
  const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseEndedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
  const demands=[
-  {...base,id:'stage-completed',tipo:'EmissaoInicial',coluna:'concluido',dataEntregaReal:phaseEndedAt.slice(0,10)},
+  {...base,id:'stage-completed',tipo:'EmissaoInicial',coluna:'concluido',dataEntregaReal:phaseEndedAt.slice(0,10),valorGerado:0},
   {...base,id:'stage-canceled',tipo:'DemandaExtra',coluna:'cancelado'},
  ];
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- for(const demand of demands){
-  const card=page.locator(`article[data-id="${demand.id}"]`);
-  await expect(card.locator('.demand-card-stage-duration')).toHaveText('2 dias');
-  await expect(card.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
-  await card.click();
-  const detail=page.locator('#demandDetailForm');
-  await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
-  await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
-  await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
- }
+ const completed=page.locator('article[data-id="stage-completed"]');
+ await expect(completed.locator('.demand-card-stage-time')).toHaveCount(0);
+ await completed.click();
+ let detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('.demand-stage-summary')).toHaveCount(0);
+ await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
+ await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
+ const canceled=page.locator('article[data-id="stage-canceled"]');
+ await expect(canceled.locator('.demand-card-stage-duration')).toHaveText('2 dias');
+ await expect(canceled.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
+ await canceled.click();
+ detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
+ await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
  expect(b.errors).toEqual([]);
 });
 
@@ -613,9 +617,9 @@ test('management view recalculates every indicator and analyst row from the filt
  const demands=[
   {id:'mgmt-1',obraId:'test-work',tipo:'SIC',coluna:'fazer',analistaResponsavel:'Ana',dataPrevistaEntrega:'2099-01-01',sicIds:[]},
   {id:'mgmt-2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'fazendo',analistaResponsavel:'Bruno',dataPrevistaEntrega:'2000-01-01',sicIds:[]},
-  {id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',sicIds:[]},
+  {id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',valorGerado:100,sicIds:[]},
   {id:'mgmt-4',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',sicIds:[]},
-  {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',sicIds:[]},
+  {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',valorGerado:200,sicIds:[]},
  ];
  const b=await backend(page,'Admin',false,{analystNames:['Somente no diretório'],demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -884,7 +888,7 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await expect(page.locator('#workForm')).toHaveCount(0);
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='projects_works')?.document?.nome).toBe('Obra sem Origem de Verba');
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.document?.tipoVerba===''&&change.document?.ordemInternaSAP===''&&change.document?.valorVerbaAportada===0)).toBe(true);
- await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
  const duplicateWorkForm=page.locator('#workForm');
  await duplicateWorkForm.locator('[name="nome"]').fill('Obra sem origem de verba');
@@ -955,7 +959,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(createdCard.locator('.demand-code')).toHaveCount(0);
  await expect(createdCard.locator('.demand-type-badge')).toHaveText('Emissão Inicial');
  await expect(createdCard.locator('.demand-card-labels')).toHaveText(/Urgente.*Diretoria/);
- await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  const createdChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-022');
  expect(createdChange?.document?.analistaResponsavel).toBe('Técnico A');
  expect(createdChange?.document?.etiquetas).toEqual(['Urgente','Diretoria']);
@@ -1142,7 +1146,7 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
  await page.locator('#evForm').getByRole('button',{name:'Salvar rascunho',exact:true}).click();
- await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
@@ -1175,7 +1179,7 @@ test('work funding is persisted in Works and Finance before confirming the form'
  expect(changes.some(change=>change.entity==='finance_funds'&&change.document?.workId===work.key)).toBe(true);
  expect(changes.some(change=>change.entity==='finance_funds'&&change.key==='seed-fund')).toBe(false);
  expect(changes.some(change=>change.entity==='finance_manual_orders'&&change.document?.workId===work.key)).toBe(true);
- await expect(page.locator('#cloudStatus')).toHaveText('Salvo no banco');
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator(`[data-action="edit-portfolio-work"][data-id="${work.key}"]`).click();
  const editForm=page.locator('#workForm');
  await editForm.locator('[name="valorVerbaAportada"]').fill('1200');
@@ -1203,7 +1207,7 @@ test('work funding failure never reports a fully saved work',async({page})=>{
  await form.locator('[name="ordemInternaSAP"]').fill('OI-FALHA');
  await form.locator('[name="valorVerbaAportada"]').fill('1000');
  await form.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
- await expect(page.locator('#cloudStatus')).toHaveText('Não salvo — recarregue antes de continuar');
+ await expect(page.locator('#cloudStatus')).toHaveText('Falha na sincronização');
  await expect(page.getByRole('heading',{name:'Alterações não confirmadas no banco'})).toBeVisible();
  await expect(form).toBeVisible();
  await expect(form.locator('#formError')).toContainText('A obra foi salva, mas a integração financeira falhou');
@@ -1548,5 +1552,33 @@ test('Excel import stays available inside the native SIC panel and saves to Supa
  await expect.poll(()=>b.requests.length).toBeGreaterThan(0);
  await expect(page.getByText('Obra importada teste',{exact:true}).first()).toBeVisible();
  expect(b.requests.at(-1).changes.some(c=>c.entity==='budget_approval_works'&&c.document.descricao==='Obra importada teste')).toBe(true);
+ expect(b.errors).toEqual([]);
+});
+
+
+test('operational completion requires EV decision then generated amount',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="finish-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[name="tipo"] option')).toHaveText(['Emissão Inicial','Revisão de Orçamento','Demanda Extra','SIC']);
+ await expect(detail.getByText('Saldo',{exact:true})).toHaveCount(0);
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await expect(completion).toBeVisible();
+ await completion.locator('[name="valorGerado"]').fill('0,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido')?.document?.evSemMudanca).toBe(true);
+ const completedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido');
+ expect(completedChange.document.valorGerado).toBe(0);
+ const card=page.locator('article[data-id="finish-demand"]');
+ await expect(card).toBeVisible();
+ await expect(card.locator('.demand-card-stage-time')).toHaveCount(0);
+ await expect(card.locator('.demand-card-value')).toContainText(/R\$\s*0/);
  expect(b.errors).toEqual([]);
 });

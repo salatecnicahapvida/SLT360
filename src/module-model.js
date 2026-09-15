@@ -43,7 +43,7 @@ export const ENTITIES = [
   entity('projects_stage_status','projects','state.projectStatusOverrides',{}, {kind:'map'}),
   entity('projects_commission_readings','projects','datasets.COMMISSION_OBRAS_DATA.records',{id:'id',codigoObra:'work_code',nomeObra:'work_name',mes:'month',status:'status',valorSalaTecnica:money('technical_amount'),valorNegociado:money('negotiated_amount'),aditivos:money('amendments_amount'),areaM2:money('area_m2')},{readonly:true}),
   entity('projects_import_revisions','projects','state.workRevisions',{id:'id',workId:ref('work_id','projects_works'),revision:f('version_number','integer'),reason:'reason',snapshot:f('snapshot','jsonb')},{readonly:true}),
-  entity('budget_demands','budget','state.demands',taskFields),
+  entity('budget_demands','budget','state.demands',{...taskFields,valorGerado:money('generated_amount'),evSemMudanca:f('ev_no_change','boolean')}),
   entity('budget_estimates','budget',null,{id:'id',status:'status',versaoAtual:f('version_number','integer')},{parent:'projects_works',child:'ev',kind:'one'}),
   entity('budget_estimate_lines','budget',null,{id:'id',disciplinaId:'discipline_id',status:'status',valorOrcado:money('budgeted_amount'),valorContratado:money('contracted_amount'),quantidade:money('quantity'),valorUnitario:money('unit_amount')},{parent:'budget_estimates',child:'lines',key:'disciplinaId'}),
   entity('budget_estimate_versions','budget',null,{numero:f('version_number','integer'),data:date('recorded_on'),origem:'origin',valorTotal:money('total_amount'),custoM2:money('cost_m2')},{parent:'budget_estimates',child:'versions'}),

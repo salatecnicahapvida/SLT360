@@ -2190,13 +2190,8 @@ const workDemandTypeDefinitions = [
 ];
 
 function demandTypeLabel(value) {
-  const map = {
-    EmissaoInicial: "Emissão Inicial",
-    SIC: "SIC - Solicitação de Informação",
-    ReemissaoCompleta: "Revisão completa do EV",
-    DemandaExtra: "Demanda Extra",
-  };
-  return map[demandTypeKey(value)] || value;
+  const key = demandTypeKey(value);
+  return workDemandTypeDefinitions.find((type) => type.id === key)?.label || value;
 }
 
 function demandTypeCardLabel(value) {
@@ -2287,13 +2282,13 @@ function exportWorksOperationalReport() {
       isDemandLate(demand) ? "Atrasado" : "Em dia",
       sicInfo.lecomNumber || "",
       sicInfo.tituloSic || "",
-      work ? money(workBudgetValue(work)) : "",
+      demandHasRecordedValue(demand) ? money(demandProducedValue(demand)) : "",
       demand.observacao || "",
     ];
   });
   downloadCsv(
     `SLT360-obras-kanban-${todayISO()}.csv`,
-    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analista", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor EV", "Observação"],
+    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analista", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor da demanda", "Observação"],
     rows
   );
   showToast(`Relatório de Obras exportado com ${rows.length} card(s).`);
@@ -5324,7 +5319,7 @@ function operationalKpiDetailData(key) {
       { label: item.metric, value: String(item.demands.length) },
       { label: "Analistas", value: String(new Set(item.demands.map((demand) => demand.analistaResponsavel).filter(Boolean)).size) },
       { label: "Atrasadas", value: String(item.demands.filter(isDemandLate).length) },
-      { label: "Valor estimado", value: money(item.demands.reduce((sum, demand) => sum + demandProducedValue(demand), 0)) },
+      { label: "Sem analista", value: String(item.demands.filter((demand) => !demand.analistaResponsavel).length) },
     ],
     columns: ["Código", "Obra", "Tipo", "Analista", "Sprint", "Status", "Prazo"],
     rows: demandRows(item.demands),
@@ -5673,7 +5668,7 @@ function renderOperationalListRow(demand) {
   const sprint = sprintById(demand.sprintId);
   const isSic = demandTypeKey(demand.tipo) === "SIC";
   const approval = isSic ? sicApprovalReading(demand) : null;
-  const value = demandProducedValue(demand) || (approval ? sicApprovalValue(demand) : 0);
+  const value = demandProducedValue(demand);
   return `
     <tr data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <td><strong>${demand.id}</strong></td>
@@ -5692,7 +5687,7 @@ function renderOperationalListRow(demand) {
       <td>${sprint?.nome || "—"}</td>
       <td><span class="status-dot" data-status="${demand.coluna}"></span>${demandStatusLabel(demand)}</td>
       <td><span class="tag">${demand.prioridade}</span></td>
-      <td class="numeric">${value ? money(value) : "—"}</td>
+      <td class="numeric">${demandHasRecordedValue(demand) ? money(value) : "—"}</td>
       <td>${isDemandLate(demand) ? `<span class="status-pill" data-status="Atrasada">Atrasada</span>` : dateText(demand.dataPrevistaEntrega)}</td>
     </tr>
   `;
@@ -5713,7 +5708,7 @@ function renderDemandCard(demand) {
   const sicTitle = String(sicInfo?.tituloSic || "").trim();
   const lecomNumber = sicInfo?.lecomNumber || "";
   const approval = isSic ? sicApprovalReading(demand) : null;
-  const value = demandProducedValue(demand) || (approval ? sicApprovalValue(demand) : 0);
+  const value = demandProducedValue(demand);
   return `
     <article class="demand-card ${isSic ? "is-sic" : ""}" data-status="${demand.coluna}" data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <div class="demand-card-top">
@@ -5742,17 +5737,19 @@ function renderDemandCard(demand) {
         <span>${demand.analistaResponsavel || "Analista a definir"}</span>
         ${complementCount ? `<b>+${complementCount}</b>` : ""}
       </div>
+      ${demand.coluna === "concluido" ? "" : `
       <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
         <span>Tempo na etapa:</span>
         <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
       </div>
+      `}
       <span class="demand-card-date">${timing.dateLabel}</span>
       <div class="demand-card-alert" data-tone="${timing.tone}">
         <i></i>
         <strong>${timing.label}</strong>
       </div>
       ${
-        demand.coluna === "concluido" && value
+        demand.coluna === "concluido" && demandHasRecordedValue(demand)
           ? `<div class="demand-card-value"><span>Valor da demanda</span><strong>${money(value)}</strong></div>`
           : ""
       }
@@ -6781,23 +6778,12 @@ function demandDeliveryDelay(demand) {
   return Math.max(daysBetween(demand.dataPrevistaEntrega, demand.dataEntregaReal), 0);
 }
 
+function demandHasRecordedValue(demand) {
+  return demand?.valorGerado !== undefined && demand?.valorGerado !== null && String(demand.valorGerado).trim() !== "";
+}
+
 function demandProducedValue(demand) {
-  const work = workById(demand.obraId);
-  if (!work) return 0;
-  if (demandTypeKey(demand.tipo) === "SIC") {
-    return (demand.sicIds || [])
-      .map((id) => state.sics.find((sic) => sic.id === id))
-      .filter(Boolean)
-      .reduce((sum, sic) => sum + Math.abs(sicTotal(sic)), 0);
-  }
-  if (demandTypeKey(demand.tipo) === "ReemissaoCompleta" && demand.valorAlteracaoEV != null) {
-    return Math.abs(Number(demand.valorAlteracaoEV) || 0);
-  }
-  const version = work.ev.versions.find((item) => item.origem === demand.id);
-  if (version?.diffPorDisciplina?.length) {
-    return version.diffPorDisciplina.reduce((sum, diff) => sum + Math.abs(diff.valorDepois - diff.valorAntes), 0);
-  }
-  return version?.valorTotal || workTotals(work).orcado;
+  return demandHasRecordedValue(demand) ? Math.abs(Number(demand.valorGerado) || 0) : 0;
 }
 
 function productionByAnalyst(demands = completedDemands()) {
@@ -15169,7 +15155,6 @@ function renderDemandSicMetadata(demand) {
       </label>
       ${renderSicDraftDisciplineEditor(demand)}
       ${renderSicApprovalSyncPanel(demand)}
-      ${renderDemandSicRiskAlert(demand)}
       <div class="sic-attachments-list">
         <span>Arquivos anexados</span>
         ${renderAttachmentList(info.anexos)}
@@ -15278,7 +15263,6 @@ function openDemandDetailModal(id) {
   const work = workById(demand.obraId);
   const sprint = sprintById(demand.sprintId);
   const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
-  const values = work ? workTotals(work) : { orcado: 0, aditivado: 0, contratado: 0, saldo: 0 };
   const stageTime = demandStageTimeInfo(demand);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
@@ -15318,7 +15302,7 @@ function openDemandDetailModal(id) {
               <label class="field">
                 <span>Tipo de atividade</span>
                 <select name="tipo">
-                  ${demandTypeOptions(demand.tipo)}
+                  ${workDemandTypeDefinitions.map((type) => `<option value="${type.id}" ${type.id === demandTypeKey(demand.tipo) ? "selected" : ""}>${type.label}</option>`).join("")}
                 </select>
               </label>
               <label class="field">
@@ -15366,11 +15350,13 @@ function openDemandDetailModal(id) {
                 </select>
               </label>
               ${renderDemandLabelsField(demand.etiquetas)}
+              ${demand.coluna === "concluido" ? "" : `
               <div class="detail-card demand-stage-summary">
                 <span>Tempo na etapa atual</span>
                 <strong>${stageTime.durationLabel}</strong>
                 <small>${demandStatusLabel(demand)} · ${stageTime.closed ? `contagem encerrada em ${stageTime.endedLabel}` : `desde ${stageTime.startedLabel}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}</small>
               </div>
+              `}
               <div class="demand-stage-history-block full-span">
                 <strong>Histórico de permanência por etapa</strong>
                 <p class="muted">O contador reinicia a cada mudança de status; os períodos anteriores permanecem registrados.</p>
@@ -15428,8 +15414,7 @@ function openDemandDetailModal(id) {
             </div>
             <p class="muted">Esta demanda alimenta diretamente o EV da obra vinculada. Para a emissão inicial, o EV nasce gerado para preencher os custos.</p>
             <div class="split-list compact">
-              ${splitItem("EV atual", work ? `REV${String(work.ev.versaoAtual).padStart(2, "0")} | ${money(values.orcado + values.aditivado)}` : "—")}
-              ${splitItem("Saldo", money(values.saldo))}
+              ${splitItem("EV atual", work ? `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")} · ${work.ev?.status || "Rascunho"}` : "—")}
             </div>
             ${work ? `<button class="primary-action full-width" type="button" data-action="open-work-ev" data-id="${work.id}">Abrir EV da obra vinculada</button>` : ""}
           </section>
@@ -17009,6 +16994,8 @@ function showEVHaptecConfirmation(form, mode, readings) {
 async function handleEVSubmit(form, mode = "final") {
   const work = workById(form.dataset.workId);
   if (!work) return;
+  const completionDemandId = String(form.dataset.completionDemandId || "");
+  const completionDemand = state.demands.find((item) => item.id === completionDemandId && item.obraId === work.id) || null;
   if (mode === "final" && form.dataset.evDeviationConfirmed !== "true") {
     const { values, baseTotal } = evFormDeviationData(form);
     const readings = evHistoricalDeviationReadings(work, values, baseTotal);
@@ -17083,7 +17070,7 @@ async function handleEVSubmit(form, mode = "final") {
     work.ev.versions.push({
       numero: work.ev.versaoAtual,
       data: todayISO(),
-      origem: "Edição manual SLT 360",
+      origem: mode === "final" && completionDemand ? completionDemand.id : "Edição manual SLT 360",
       valorTotal: totalValue,
       custoM2: totalValue / Math.max(work.areaEquivalente || 0, 1),
       diffPorDisciplina: [],
@@ -17128,6 +17115,10 @@ async function handleEVSubmit(form, mode = "final") {
   }
   showToast(mode === "draft" ? "Rascunho do EV salvo." : "EV salvo com nova versão.");
 
+  if (mode === "final" && completionDemand) {
+    openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
+    return;
+  }
   if (form.closest(".ev-modal-card")) openEVModal(work.id);
   else render();
 }
@@ -17932,7 +17923,10 @@ async function handleDemandDetailSubmit(form) {
   ].forEach((field) => {
     demand[field] = formData.get(field) || "";
   });
-  const statusUpdate = updateDemandColumn(demand.id, formData.get("coluna") || demand.coluna, { persist: false });
+  const requestedColumn = formData.get("coluna") || demand.coluna;
+  const nextTypeIsSic = demandTypeKey(demand.tipo) === "SIC";
+  const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovacaoDiretoria");
+  const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false });
   if (statusUpdate === false) {
     state.demands[demandIndex] = demandSnapshot;
     if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
@@ -18021,6 +18015,10 @@ async function handleDemandDetailSubmit(form) {
     return;
   }
   closeModal();
+  if (completionRequested) {
+    openDemandCompletionModal(demand.id);
+    return;
+  }
   showToast("Demanda atualizada e Kanban sincronizado.");
   render();
 }
@@ -18241,13 +18239,162 @@ function approveSic(id) {
   render();
 }
 
-function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
+function demandHasEVUpdateForCompletion(demand) {
+  const work = workById(demand?.obraId);
+  if (!work) return false;
+  if (demandTypeKey(demand.tipo) === "SIC") {
+    return (demand.sicIds || []).length > 0 && sicApprovalReading(demand).status === "Postada";
+  }
+  return arrayOrFallback(work.ev?.versions).some((version) => String(version.origem || "") === String(demand.id));
+}
+
+function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) return;
+  const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
+        <header>
+          <div>
+            <span class="eyebrow">Conclusão da demanda</span>
+            <h2 id="demandCompletionTitle">Quanto esta demanda gerou?</h2>
+            <p class="muted">${escapeAttribute(demand.id)} · ${escapeAttribute(work.nome || "Obra vinculada")}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <input type="hidden" name="evSemMudanca" value="${evNoChange ? "true" : "false"}" />
+          <section class="modal-section">
+            <div class="section-title"><span>Impacto financeiro da demanda</span></div>
+            <label class="field">
+              <span>Valor gerado (R$) *</span>
+              <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" autofocus />
+              <small>Informe 0,00 quando a demanda não tiver gerado impacto financeiro.</small>
+            </label>
+          </section>
+          <p class="muted">${evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação deste valor."}</p>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">Concluir demanda</button>
+        </footer>
+      </form>
+    </div>
+  `);
+}
+
+function openDemandCompletionModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) {
+    showToast("Não foi possível localizar a obra vinculada antes da conclusão.");
+    return;
+  }
+  if (demandTypeKey(demand.tipo) === "SIC" && sicApprovalReading(demand).status !== "Postada") {
+    sicViewMode = "approval";
+    sicSearchQuery = demand.id;
+    closeModal();
+    showToast("A SIC precisa ser aprovada e postada no EV antes de concluir o card.");
+    setView("sics");
+    return;
+  }
+  if (demandHasEVUpdateForCompletion(demand)) {
+    openDemandCompletionAmountModal(id, { evNoChange: false });
+    return;
+  }
+  if (demand.evSemMudanca === true) {
+    openDemandCompletionAmountModal(id, { evNoChange: true });
+    return;
+  }
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <section class="modal-card demand-completion-card" aria-labelledby="demandCompletionEvTitle">
+        <header>
+          <div>
+            <span class="eyebrow">Conclusão da demanda</span>
+            <h2 id="demandCompletionEvTitle">Confirme o impacto no EV</h2>
+            <p class="muted">Antes de concluir ${escapeAttribute(demand.id)}, atualize o Estudo de Viabilidade ou informe que esta demanda não gerou mudança no EV.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="demand-completion-options">
+            <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
+              <span class="demand-type-icon">EV</span>
+              <span><strong>Atualizar o EV</strong><small>Abrir o EV da obra, registrar as alterações e salvar uma nova versão.</small></span>
+            </button>
+            <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
+              <span class="demand-type-icon demand-type-icon--green">✓</span>
+              <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
+            </button>
+          </div>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+        </footer>
+      </section>
+    </div>
+  `);
+}
+
+async function handleDemandCompletionSubmit(form) {
+  const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
+  const demand = state.demands[demandIndex];
+  if (!demand) return;
+  const formData = new FormData(form);
+  const rawValue = String(formData.get("valorGerado") || "").trim();
+  if (!rawValue) {
+    showFormError("Informe quanto esta demanda gerou. Use 0,00 quando não houver impacto financeiro.", form);
+    return;
+  }
+  const valorGerado = parseCurrency(rawValue);
+  if (valorGerado < 0) {
+    showFormError("O valor gerado deve ser zero ou positivo.", form);
+    return;
+  }
+  const evSemMudanca = formData.get("evSemMudanca") === "true";
+  if (!evSemMudanca && !demandHasEVUpdateForCompletion(demand)) {
+    showFormError("Atualize e salve o EV ou informe que não houve mudança antes de concluir.", form);
+    return;
+  }
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
+  demand.valorGerado = valorGerado;
+  demand.evSemMudanca = evSemMudanca;
+  const updated = await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
+  if (updated === false) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    return;
+  }
+  addHistory({
+    entidade: "demanda",
+    entidadeId: demand.id,
+    campo: "valor gerado",
+    valorAnterior: demandHasRecordedValue(demandSnapshot) ? money(demandSnapshot.valorGerado) : "Não informado",
+    valorNovo: money(valorGerado),
+  });
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A conclusão não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
+  closeModal();
+  await setView("worksOperational");
+  showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
+}
+
+async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
   if (demand.coluna === nextColumnId) return demand;
-  const previousStageTime = demandStageTimeInfo(demand);
-  const transitionedAt = new Date().toISOString();
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
     nextColumnId = "aprovacaoDiretoria";
@@ -18260,24 +18407,16 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
     }
     if (demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
   }
-  if (nextColumnId === "concluido") {
-    const work = workById(demand.obraId);
-    if (isSicDemand && sicApprovalReading(demand).status !== "Postada") {
-      sicViewMode = "approval";
-      sicSearchQuery = demand.id;
-      closeModal();
-      showToast("A SIC precisa ser aprovada e postada no EV antes de concluir o card.");
-      setView("sics");
-      return false;
-    }
-    if (!isSicDemand && !workHasEVValuesForConclusion(work)) {
-      selectedWorkId = work?.id || demand.obraId || selectedWorkId;
-      closeModal();
-      showToast("Antes de concluir, preencha e salve os valores do EV da obra.");
-      setView("ev");
-      return false;
-    }
+  if (nextColumnId === "concluido" && !skipCompletionGate) {
+    openDemandCompletionModal(demand.id);
+    return false;
   }
+
+  const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
+  const previousStageTime = demandStageTimeInfo(demand);
+  const transitionedAt = new Date().toISOString();
   const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
   demand.phaseHistory = [
@@ -18294,10 +18433,7 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
   demand.phaseStartedAt = transitionedAt;
   demand.phaseEndedAt = ["concluido", "cancelado"].includes(nextColumnId) ? transitionedAt : "";
   demand.phaseStartedAtEstimated = false;
-  if (demand.coluna === "concluido") {
-    if (!demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
-    if (!isSicDemand) syncCompletedDemandWithEV(workById(demand.obraId), demand);
-  }
+  if (demand.coluna === "concluido" && !demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
   addHistory({
     entidade: "demanda",
     entidadeId: demand.id,
@@ -18305,19 +18441,30 @@ function updateDemandColumn(id, nextColumnId, { persist = true } = {}) {
     valorAnterior: previous,
     valorNovo: nextColumn.label,
   });
-  if (persist) saveState();
+  if (persist) {
+    try {
+      await saveStateAndWait();
+    } catch (error) {
+      if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+      state.history = historySnapshot;
+      showToast(error?.message || "A movimentação do card não foi confirmada no banco. Recarregue os dados.");
+      render();
+      return false;
+    }
+  }
   return demand;
 }
 
-function moveDemand(id, direction) {
+async function moveDemand(id, direction) {
   const demand = state.demands.find((item) => item.id === id);
-  if (!demand) return;
+  if (!demand) return false;
   const allowedColumns = columnsForDemand(demand);
   const currentIndex = allowedColumns.findIndex((column) => column.id === demand.coluna);
   const nextIndex = Math.max(0, Math.min(allowedColumns.length - 1, currentIndex + direction));
-  const updated = updateDemandColumn(id, allowedColumns[nextIndex].id);
-  if (updated === false) return;
+  const updated = await updateDemandColumn(id, allowedColumns[nextIndex].id);
+  if (updated === false) return false;
   render();
+  return updated;
 }
 
 function createBudgetDemandFromProject(rowNumber, options = {}) {
@@ -19045,8 +19192,24 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "approve-sic") approveSic(actionButton.dataset.id);
   if (action === "move-demand") {
-    moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));
+    await moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));
     if (actionButton.closest(".demand-modal-card")) openDemandDetailModal(actionButton.dataset.id);
+  }
+  if (action === "complete-demand-no-ev-change") {
+    openDemandCompletionAmountModal(actionButton.dataset.id, { evNoChange: true });
+    return;
+  }
+  if (action === "complete-demand-update-ev") {
+    const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
+    const work = demand && workById(demand.obraId);
+    if (!demand || !work) return;
+    selectedWorkId = work.id;
+    closeModal();
+    await setView("ev");
+    openEVModal(work.id);
+    const evForm = document.querySelector("#evForm");
+    if (evForm) evForm.dataset.completionDemandId = demand.id;
+    return;
   }
   if (action === "open-work-ev") {
     const work = workById(actionButton.dataset.id);
@@ -19168,7 +19331,7 @@ document.addEventListener("pointermove", (event) => {
   if (demandPointerDragState.targetColumnId) column.classList.add("is-drag-over");
 });
 
-document.addEventListener("pointerup", (event) => {
+document.addEventListener("pointerup", async (event) => {
   if (!demandPointerDragState || event.pointerType !== "mouse") return;
   const { demandId, targetColumnId, moved } = demandPointerDragState;
   const demand = state.demands.find((item) => item.id === demandId);
@@ -19178,7 +19341,7 @@ document.addEventListener("pointerup", (event) => {
   demandDragSuppressClickUntil = Date.now() + 350;
   event.preventDefault();
   if (!demand || !targetColumnId || previousColumnId === targetColumnId) return;
-  const updated = updateDemandColumn(demandId, targetColumnId);
+  const updated = await updateDemandColumn(demandId, targetColumnId);
   if (!updated) return;
   render();
   showToast(`Card movido para ${demandStatusLabel(updated)}.`);
@@ -19459,6 +19622,10 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "demandDetailForm") {
     event.preventDefault();
     await handleDemandDetailSubmit(event.target);
+  }
+  if (event.target.id === "demandCompletionForm") {
+    event.preventDefault();
+    await handleDemandCompletionSubmit(event.target);
   }
   if (event.target.id === "deleteDemandForm") {
     event.preventDefault();
