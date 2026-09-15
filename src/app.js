@@ -2344,6 +2344,10 @@ function activeRole() {
   return authenticatedRole();
 }
 
+function canDeleteDemand() {
+  return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
+}
+
 function canAccessView(view) { const module = viewModule(viewAliases[view] || view); return module !== "projects" && canAccessModule(module); }
 
 const demandLifecycleActions = new Set([
@@ -5713,7 +5717,6 @@ function renderDemandCard(demand) {
         <div class="demand-card-actions">
           <span class="sprint-flag" title="${escapeAttribute(sprintName)}">${sprintFlag}</span>
           <span class="priority-pill">${demand.prioridade || "Média"}</span>
-          <button class="card-delete-button" type="button" aria-label="Excluir ${demand.id}" title="Excluir demanda" data-action="open-delete-demand" data-id="${demand.id}">×</button>
         </div>
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
@@ -15425,7 +15428,7 @@ function openDemandDetailModal(id) {
           </section>
         </div>
         <footer class="modal-actions">
-          ${activeRole() === "Analista" ? "" : `<button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>`}
+          ${canDeleteDemand() ? `<button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
           <button class="primary-action" type="submit">Salvar</button>
         </footer>
@@ -15435,6 +15438,10 @@ function openDemandDetailModal(id) {
 }
 
 function openDeleteDemandModal(id) {
+  if (!canDeleteDemand()) {
+    showToast("Somente Gestores e Admins com permissão de edição podem excluir demandas.");
+    return;
+  }
   const demand = state.demands.find((item) => item.id === id);
   if (!demand) return;
   const work = workById(demand.obraId);
@@ -17880,7 +17887,10 @@ async function handleDemandDetailSubmit(form) {
 }
 
 function handleDeleteDemandSubmit(form) {
-  if (!ensureDemandLifecycleAllowed(form)) return;
+  if (!canDeleteDemand()) {
+    showFormError("Somente Gestores e Admins com permissão de edição podem excluir demandas.", form);
+    return;
+  }
   const demand = state.demands.find((item) => item.id === form.dataset.id);
   if (!demand) return;
   const formData = new FormData(form);

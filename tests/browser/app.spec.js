@@ -296,6 +296,7 @@ test('kanban shows column totals and time in the current stage for every demand 
  for(const demand of demands){
   const card=page.locator(`article[data-id="${demand.id}"]`);
   await expect(card.locator('.demand-code')).toHaveCount(0);
+  await expect(card.locator('[data-action="open-delete-demand"]')).toHaveCount(0);
   await expect(card.locator('.demand-type-badge')).toHaveText(expectedTypeBadges.get(demand.id));
   await expect(card.locator('.demand-type-badge')).toHaveAttribute('title',expectedTypeTitles.get(demand.id));
   await expect(card.locator('.demand-card-stage-time span').first()).toHaveText('Tempo na etapa:');
@@ -316,6 +317,16 @@ test('kanban shows column totals and time in the current stage for every demand 
    };
   });
   expect(stageTimeStyles.duration).toEqual(stageTimeStyles.label);
+  if(demand.id==='stage-initial'){
+   await card.evaluate(element=>{element.style.width='180px';});
+   const overflow=await card.evaluate(element=>{
+    const bounds=element.getBoundingClientRect();
+    return [...element.querySelectorAll('.demand-card-top, .demand-card-top *, .demand-card-stage-time, .demand-card-stage-time *')]
+     .filter(child=>child.getBoundingClientRect().right>bounds.right+1).length;
+   });
+   expect(overflow).toBe(0);
+   await card.evaluate(element=>{element.style.width='';});
+  }
   await card.click();
   const stageSummary=page.locator('#demandDetailForm .demand-stage-summary');
   await expect(stageSummary).toContainText('Tempo na etapa atual');
@@ -600,6 +611,7 @@ test('strategic view sums discipline values exactly and recalculates every indic
 test('analyst edits and moves existing demands but cannot create or delete them',async({page})=>{
  const b=await backend(page,'Analista',false,{analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.locator('.operational-board-panel .demand-card [data-action="open-delete-demand"]')).toHaveCount(0);
  await expect(page.locator('[data-action="open-demand"]')).toBeHidden();
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
  const detail=page.locator('#demandDetailForm');
@@ -645,6 +657,19 @@ test('kanban horizontal scrollbar stays above the column names',async({page})=>{
  await page.locator('[data-view="clinicalOperational"]').filter({visible:true}).first().click();
  await expectTopScrollbar();
  await page.screenshot({path:'outputs/clinical-kanban-top-scroll.png',fullPage:false});
+});
+
+test('manager can delete demands only after opening the card',async({page})=>{
+ const b=await backend(page,'Gestor',false,{analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const card=page.locator('.operational-board-panel .demand-card[data-id="test-budget-demand"]').first();
+ await expect(card.locator('[data-action="open-delete-demand"]')).toHaveCount(0);
+ await card.click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[data-action="open-delete-demand"]')).toBeVisible();
+ await detail.locator('[data-action="open-delete-demand"]').click();
+ await expect(page.locator('#deleteDemandForm')).toBeVisible();
+ expect(b.errors).toEqual([]);
 });
 
 test('settings activate an existing sprint and do not expose the work-base restore button',async({page})=>{
