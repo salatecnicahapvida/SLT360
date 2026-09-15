@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flattenPayload, ENTITY_BY_NAME } from '../src/module-model.js';
-import { createLazyModuleStore } from '../src/lazy-module-store.js';
+import { createLazyModuleStore, installPendingWriteUnloadGuard } from '../src/lazy-module-store.js';
 
 test('lazy modules block writes until their database snapshot is loaded',async()=>{
   const all=flattenPayload({state:{
@@ -33,12 +33,15 @@ test('lazy modules block writes until their database snapshot is loaded',async()
   await store.ensure('budget');
   assert.deepEqual(calls,['budget']);
   assert.equal(store.hasLoaded('budget'),true);
+  assert.equal(store.dirty,false);
   assert.equal(currentState.works[0].nome,'Obra');
   assert.equal(currentState.demands[0].titulo,'Demanda');
 
   currentState.demands[0].titulo='Demanda alterada';
   store.save('budget',currentState);
+  assert.equal(store.dirty,true);
   await store.flush();
+  assert.equal(store.dirty,false);
   assert.equal(commits.length,1);
   assert.equal(commits[0].changes.some(change=>change.entity==='budget_demands'&&change.document.titulo==='Demanda alterada'),true);
 
@@ -46,4 +49,31 @@ test('lazy modules block writes until their database snapshot is loaded',async()
   assert.deepEqual(calls,['budget','maintenance']);
   assert.equal(currentState.demands[0].titulo,'Demanda alterada');
   assert.equal(currentState.maintenanceDemands[0].titulo,'Manutenção');
+});
+
+test('pending writes warn before the browser unloads',()=>{
+  const listeners=new Map();
+  const target={
+    addEventListener(type,handler){listeners.set(type,handler);},
+    removeEventListener(type,handler){if(listeners.get(type)===handler)listeners.delete(type);},
+  };
+  let dirty=false;
+  const store={get dirty(){return dirty;}};
+  const cleanup=installPendingWriteUnloadGuard(store,target);
+  const handler=listeners.get('beforeunload');
+  assert.equal(typeof handler,'function');
+
+  const clean={prevented:false,preventDefault(){this.prevented=true;},returnValue:undefined};
+  handler(clean);
+  assert.equal(clean.prevented,false);
+  assert.equal(clean.returnValue,undefined);
+
+  dirty=true;
+  const pending={prevented:false,preventDefault(){this.prevented=true;},returnValue:undefined};
+  handler(pending);
+  assert.equal(pending.prevented,true);
+  assert.equal(pending.returnValue,'');
+
+  cleanup();
+  assert.equal(listeners.has('beforeunload'),false);
 });

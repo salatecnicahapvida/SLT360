@@ -1,6 +1,17 @@
 import { hydrateRecords, recordKey } from './module-model.js';
 import { createModuleStore } from './module-store.js';
 
+export function installPendingWriteUnloadGuard(store, target = globalThis) {
+  if (!target || typeof target.addEventListener !== 'function') return () => {};
+  const handler = event => {
+    if (!store?.dirty) return;
+    event.preventDefault?.();
+    event.returnValue = '';
+  };
+  target.addEventListener('beforeunload', handler);
+  return () => target.removeEventListener?.('beforeunload', handler);
+}
+
 export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus = () => {} }) {
   const records = new Map();
   const queues = new Map();
@@ -75,7 +86,7 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
     return queues.get(module);
   }
 
-  return {
+  const store = {
     registerReceiver(receiver) { receivePayload = receiver; },
     ensure,
     hasLoaded: module => loaded.has(module),
@@ -88,6 +99,9 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
     flush,
     get dirty() { return [...queues.values()].some(queue => queue.dirty); },
   };
+
+  installPendingWriteUnloadGuard(store);
+  return store;
 }
 
 export function dataModuleForUI(uiModule) {
