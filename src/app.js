@@ -1059,10 +1059,19 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function saveState() {
+async function saveState() {
   const module = dataUIModuleForView(currentView);
-  if (!globalThis.SLT_CLOUD.canWrite(module)) { showToast("Aguarde o carregamento completo do banco ou confira sua permissão de edição."); return; }
-  return globalThis.SLT_CLOUD.save(module, persistedStatePayload());
+  if (!globalThis.SLT_CLOUD.canWrite(module)) {
+    showToast("Aguarde o carregamento completo do banco ou confira sua permissão de edição.");
+    return false;
+  }
+  try {
+    await globalThis.SLT_CLOUD.saveAndWait(module, persistedStatePayload());
+    return true;
+  } catch (error) {
+    showToast(error?.message || "A alteração não foi confirmada pelo banco. Recarregue os dados antes de continuar.");
+    return false;
+  }
 }
 
 async function saveStateAndWait() {
@@ -4160,7 +4169,7 @@ function openProjectDemandModal(selectedType = "planoInvestimento") {
   `);
 }
 
-function handleProjectDemandSubmit(form) {
+async function handleProjectDemandSubmit(form) {
   if (!ensureDemandLifecycleAllowed(form)) return;
   const formData = new FormData(form);
   const analystAssignment = analystAssignmentFromForm(form);
@@ -4191,7 +4200,7 @@ function handleProjectDemandSubmit(form) {
       valorAnterior: "Plano de Investimento",
       valorNovo: "Demanda criada no kanban de Projetos",
     });
-    saveState();
+    if (!await saveState()) return false;
     projectOperationalFilters.query = record.obra || "";
     projectOperationalViewMode = "kanban";
     closeModal();
@@ -4246,7 +4255,7 @@ function handleProjectDemandSubmit(form) {
     valorAnterior: "Nova demanda",
     valorNovo: `${type.label}: ${title}`,
   });
-  saveState();
+  if (!await saveState()) return false;
   projectOperationalFilters.query = id;
   projectOperationalViewMode = "kanban";
   closeModal();
@@ -6754,7 +6763,7 @@ function openEVReferenceTargetsModal() {
     </div>`);
 }
 
-function saveEVReferenceTargets() {
+async function saveEVReferenceTargets() {
   const targets = {};
   modalRoot.querySelectorAll("[data-target-id]").forEach((input) => {
     const value = Number(input.value) || 0;
@@ -6767,7 +6776,7 @@ function saveEVReferenceTargets() {
     return;
   }
   state.strategicTargetOverrides = targets;
-  saveState();
+  if (!await saveState()) return false;
   closeModal();
   render();
   showToast("Metas de referência atualizadas. Alertas executivos recalculados.");
@@ -7936,7 +7945,7 @@ function openEVTypologyModal(recordId) {
     </div>`);
 }
 
-function handleEVTypologySubmit(form) {
+async function handleEVTypologySubmit(form) {
   const recordId = form.dataset.recordId;
   const typology = canonicalWorkTypology(new FormData(form).get("typology"));
   const record = evUnifiedRecords().find((item) => item.id === recordId);
@@ -7954,7 +7963,7 @@ function handleEVTypologySubmit(form) {
     }
   }
   if (evHistoricalFilters.typology && evHistoricalFilters.typology !== typology) evHistoricalFilters.typology = "";
-  saveState();
+  if (!await saveState()) return false;
   closeModal();
   render();
   showToast(`Tipologia atualizada para ${typology}.`);
@@ -8106,7 +8115,7 @@ function openDeleteEVRecordModal(recordId) {
     </div>`);
 }
 
-function deleteEVRecordEverywhere(recordId) {
+async function deleteEVRecordEverywhere(recordId) {
   if (!canDeleteEVRecords()) {
     showToast("Somente o perfil Admin pode excluir EVs.");
     return;
@@ -8130,7 +8139,7 @@ function deleteEVRecordEverywhere(recordId) {
   }
   if (state.evTypologyOverrides) delete state.evTypologyOverrides[record.id];
   if (selectedWorkId === workId) selectedWorkId = "all";
-  saveState();
+  if (!await saveState()) return false;
   closeModal();
   render();
   showToast(`EV ${record.code || record.project} excluído de toda a base.`);
@@ -10596,7 +10605,7 @@ function openMaintenanceSliceDetailModal(field, label) {
   `);
 }
 
-function updateMaintenanceDemandPhase(id, nextColumnId) {
+async function updateMaintenanceDemandPhase(id, nextColumnId) {
   const item = maintenanceItems().find((entry) => entry.id === id);
   const next = maintenancePhaseById(nextColumnId);
   if (!item || !next) return false;
@@ -10618,11 +10627,11 @@ function updateMaintenanceDemandPhase(id, nextColumnId) {
     valorAnterior: previous,
     valorNovo: next.label,
   });
-  saveState();
+  if (!await saveState()) return false;
   return item;
 }
 
-function handleMaintenanceDemandSubmit(form) {
+async function handleMaintenanceDemandSubmit(form) {
   if (!ensureDemandLifecycleAllowed(form)) return;
   const labels = maintenanceModuleLabels();
   const formData = new FormData(form);
@@ -10709,7 +10718,7 @@ function handleMaintenanceDemandSubmit(form) {
     valorAnterior: "Não existia",
     valorNovo: `${demand.ordemServico} | ${demand.unidadeNome}`,
   });
-  saveState();
+  if (!await saveState()) return false;
   closeModal();
   if (labels.isClinical) clinicalFilters.phase = "naoIniciado";
   else maintenanceFilters.phase = "naoIniciado";
@@ -10717,7 +10726,7 @@ function handleMaintenanceDemandSubmit(form) {
   showToast(labels.demandToast);
 }
 
-function handleMaintenanceDetailSubmit(form) {
+async function handleMaintenanceDetailSubmit(form) {
   const item = maintenanceItems().find((entry) => entry.id === form.dataset.id);
   if (!item) return;
   const labels = maintenanceModuleLabels();
@@ -10757,9 +10766,9 @@ function handleMaintenanceDetailSubmit(form) {
     modelo: String(formData.get("modelo") || item.modelo || "").trim(),
     updatedAt: todayISO(),
   });
-  const update = updateMaintenanceDemandPhase(item.id, formData.get("coluna") || item.coluna);
+  const update = await updateMaintenanceDemandPhase(item.id, formData.get("coluna") || item.coluna);
   if (update === false) return;
-  if (previousPhase === item.coluna) saveState();
+  if (previousPhase === item.coluna) if (!await saveState()) return false;
   closeModal();
   showToast(`${labels.short} atualizada.`);
   render();
@@ -14894,7 +14903,7 @@ function openConfigurationCatalogModal(type, itemId = "") {
   modalRoot.querySelector(type === "state" ? '[name="code"]' : '[name="label"]')?.focus();
 }
 
-function handleConfigurationCatalogSubmit(form) {
+async function handleConfigurationCatalogSubmit(form) {
   const formData = new FormData(form);
   const type = String(formData.get("type") || "");
   const definition = configurationCatalogDefinitions[type];
@@ -14967,7 +14976,7 @@ function handleConfigurationCatalogSubmit(form) {
     usuario: currentUser()?.nome || "Sistema",
     timestamp: new Date().toISOString(),
   }, ...arrayOrFallback(state.history)];
-  saveState();
+  if (!await saveState()) return false;
   closeModal();
   render();
   showToast(`${definition.label}: cadastro ${existing ? "atualizado" : "criado"}.`);
@@ -17131,7 +17140,7 @@ function deriveEVStatus(work) {
   return "Completo";
 }
 
-function handleSprintSubmit(form) {
+async function handleSprintSubmit(form) {
   const formData = new FormData(form);
   const nome = String(formData.get("nome") || "").trim();
   const dataInicio = formData.get("dataInicio");
@@ -17173,13 +17182,13 @@ function handleSprintSubmit(form) {
     valorAnterior: "Não existia",
     valorNovo: `${sprint.nome} | ${dateText(dataInicio)} a ${dateText(dataFim)}`,
   });
-  saveState();
+  if (!await saveState()) return false;
   if (form.closest(".modal-card")) closeModal();
   showToast("Sprint global cadastrada para todos os módulos.");
   render();
 }
 
-function activateSprint(id) {
+async function activateSprint(id) {
   const sprint = (state.sprints || []).find((item) => String(item.id) === String(id));
   if (!sprint || sprint.status === "Ativa") return;
   const previousActive = currentSprint();
@@ -17194,7 +17203,7 @@ function activateSprint(id) {
     valorAnterior: sprint.status,
     valorNovo: `Ativa${previousActive ? ` | ${previousActive.nome} encerrada` : ""}`,
   });
-  saveState();
+  if (!await saveState()) return false;
   render();
   showToast(`${sprint.nome} agora é a sprint atual.`);
 }
@@ -18189,7 +18198,7 @@ async function rejectSicDemand(id) {
   if (reopenDetail) openDemandDetailModal(demand.id);
 }
 
-function approveSic(id) {
+async function approveSic(id) {
   const sic = state.sics.find((item) => item.id === id);
   const work = sic && workById(sic.obraId);
   if (!sic || !work) return;
@@ -18234,7 +18243,7 @@ function approveSic(id) {
     valorNovo: "Aprovado",
   });
 
-  saveState();
+  if (!await saveState()) return false;
   showToast(`${sic.id} aprovada e refletida no EV por disciplina.`);
   render();
 }
@@ -18568,7 +18577,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
   return demand;
 }
 
-function updateProjectStatus(rowNumber, nextStatus, form = null) {
+async function updateProjectStatus(rowNumber, nextStatus, form = null) {
   const record = projectOperationalRows(false).find((row) => String(row.row) === String(rowNumber));
   const nextColumn = projectColumns.find((column) => column.id === nextStatus);
   if (!record) return;
@@ -18592,7 +18601,7 @@ function updateProjectStatus(rowNumber, nextStatus, form = null) {
       valorAnterior: previousStatus.label,
       valorNovo: nextColumn.label,
     });
-    saveState();
+    if (!await saveState()) return false;
     closeModal();
     render();
     showToast(`Demanda de Projetos movida para ${nextColumn.label}.`);
@@ -18622,7 +18631,7 @@ function updateProjectStatus(rowNumber, nextStatus, form = null) {
     valorNovo: nextColumn.label,
   });
 
-  saveState();
+  if (!await saveState()) return false;
 
   if (nextColumn.id === "salaTecnica") {
     selectedWorkId = budgetDemand.obraId || selectedWorkId;
@@ -18819,12 +18828,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "create-budget-from-project") {
-    updateProjectStatus(actionButton.dataset.row, "salaTecnica", actionButton.closest("[data-project-status-form]"));
+    await updateProjectStatus(actionButton.dataset.row, "salaTecnica", actionButton.closest("[data-project-status-form]"));
     return;
   }
   if (action === "update-project-status") {
     const form = actionButton.closest("[data-project-status-form]");
-    updateProjectStatus(actionButton.dataset.row, form?.elements?.projectStatus?.value, form);
+    await updateProjectStatus(actionButton.dataset.row, form?.elements?.projectStatus?.value, form);
     return;
   }
   if (action === "start-budget-from-plan") startBudgetFromInvestmentPlan(actionButton.dataset.row);
@@ -18869,7 +18878,7 @@ document.addEventListener("click", async (event) => {
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
   if (action === "update-sprint-status") {
-    activateSprint(actionButton.dataset.id);
+    await activateSprint(actionButton.dataset.id);
     return;
   }
   if (action === "open-config-catalog") {
@@ -19190,7 +19199,7 @@ document.addEventListener("click", async (event) => {
     await rejectSicDemand(actionButton.dataset.id);
     return;
   }
-  if (action === "approve-sic") approveSic(actionButton.dataset.id);
+  if (action === "approve-sic") await approveSic(actionButton.dataset.id);
   if (action === "move-demand") {
     await moveDemand(actionButton.dataset.id, Number(actionButton.dataset.direction));
     if (actionButton.closest(".demand-modal-card")) openDemandDetailModal(actionButton.dataset.id);
@@ -19275,7 +19284,7 @@ document.addEventListener("click", async (event) => {
   if (action === "reset-demo") {
     state = clone(baseState);
     selectedWorkId = state.works[0]?.id || "";
-    saveState();
+    if (!await saveState()) return false;
     showToast("Base Obras restaurada.");
     render();
   }
@@ -19370,7 +19379,7 @@ function isTextEditingTarget(target) {
   return Boolean(target.closest?.('[contenteditable="true"], [contenteditable=""]'));
 }
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (event.target.matches("[data-demand-analyst-option]")) {
     updateDemandAnalystSelector(event.target);
     return;
@@ -19410,7 +19419,7 @@ document.addEventListener("change", (event) => {
     render();
   }
   if (event.target.matches('[data-action="update-maintenance-status"]')) {
-    const item = updateMaintenanceDemandPhase(event.target.dataset.id, event.target.value);
+    const item = await updateMaintenanceDemandPhase(event.target.dataset.id, event.target.value);
     if (item === false) return;
     const box = event.target.closest(".demand-status-box");
     if (box && item) box.dataset.status = item.coluna;
@@ -19438,7 +19447,7 @@ document.addEventListener("change", (event) => {
       valorAnterior: previousSprint,
       valorNovo: nextSprintName,
     });
-    saveState();
+    if (!await saveState()) return false;
     render();
     openMaintenanceCardModal(item.id);
     showToast(`Sprint do card atualizada para ${nextSprintName}.`);
@@ -19462,7 +19471,7 @@ document.addEventListener("change", (event) => {
       valorAnterior: previous,
       valorNovo: demand.analistaResponsavel || "A definir",
     });
-    saveState();
+    if (!await saveState()) return false;
     render();
   }
   if (event.target.matches("[data-operational-filter]")) {
@@ -19596,15 +19605,15 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "evTypologyForm") {
     event.preventDefault();
-    handleEVTypologySubmit(event.target);
+    await handleEVTypologySubmit(event.target);
   }
   if (event.target.id === "sprintForm" || event.target.id === "sprintInlineForm") {
     event.preventDefault();
-    handleSprintSubmit(event.target);
+    await handleSprintSubmit(event.target);
   }
   if (event.target.id === "configurationCatalogForm") {
     event.preventDefault();
-    handleConfigurationCatalogSubmit(event.target);
+    await handleConfigurationCatalogSubmit(event.target);
   }
 
   if (event.target.id === "demandWizardStep1") {
@@ -19617,7 +19626,7 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "projectDemandForm") {
     event.preventDefault();
-    handleProjectDemandSubmit(event.target);
+    await handleProjectDemandSubmit(event.target);
   }
   if (event.target.id === "demandDetailForm") {
     event.preventDefault();
@@ -19633,11 +19642,11 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "maintenanceDemandForm") {
     event.preventDefault();
-    handleMaintenanceDemandSubmit(event.target);
+    await handleMaintenanceDemandSubmit(event.target);
   }
   if (event.target.id === "maintenanceDetailForm") {
     event.preventDefault();
-    handleMaintenanceDetailSubmit(event.target);
+    await handleMaintenanceDetailSubmit(event.target);
   }
   if (event.target.id === "contractForm") {
     event.preventDefault();
