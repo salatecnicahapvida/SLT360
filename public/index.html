@@ -9,6 +9,16 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://mgpkgxcenxnqvvujlclh.supabase.co wss://mgpkgxcenxnqvvujlclh.supabase.co; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'" />
     <link rel="stylesheet" href="styles.css?v=20260902-ev-full-width" />
     <link rel="stylesheet" href="cloud.css" />
+    <style>
+      /* Portfólio de Obras: mantém Custo por m² compacto, sem criar um vão excessivo antes de Ações. */
+      .portfolio-works-table th:nth-child(14),
+      .portfolio-works-table td:nth-child(14) {
+        width: 140px;
+        min-width: 140px;
+        max-width: 140px;
+        white-space: nowrap;
+      }
+    </style>
   </head>
   <body>
     <section id="cloudGate" class="cloud-gate">
