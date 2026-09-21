@@ -6636,16 +6636,16 @@ button.alert-item {
   background: var(--red);
 }
 
-.kanban-column[data-column="validacaoST"]::before {
-  background: #b87900;
-}
-
 .kanban-column[data-column="validacaoObras"]::before {
   background: var(--cyan);
 }
 
 .kanban-column[data-column="aprovacaoDiretoria"]::before {
   background: var(--orange);
+}
+
+.kanban-column[data-column="aprovadoDiretoria"]::before {
+  background: #2f855a;
 }
 
 .kanban-column[data-column="concluido"]::before {
@@ -6762,16 +6762,16 @@ button.alert-item {
   background: var(--red);
 }
 
-.kanban-column[data-column="validacaoST"] .kanban-count {
-  background: #b87900;
-}
-
 .kanban-column[data-column="validacaoObras"] .kanban-count {
   background: var(--cyan);
 }
 
 .kanban-column[data-column="aprovacaoDiretoria"] .kanban-count {
   background: var(--orange);
+}
+
+.kanban-column[data-column="aprovadoDiretoria"] .kanban-count {
+  background: #2f855a;
 }
 
 .kanban-column[data-column="concluido"] .kanban-count {
@@ -8421,15 +8421,6 @@ button.analyst-chip {
   color: var(--red);
 }
 
-.demand-status-control[data-status="validacaoST"] {
-  background: #fff6df;
-  border-color: rgba(184, 121, 0, 0.28);
-}
-
-.demand-status-control[data-status="validacaoST"] select {
-  color: #9a6200;
-}
-
 .demand-status-control[data-status="validacaoObras"] {
   background: #e8f8fd;
   border-color: rgba(0, 134, 166, 0.24);
@@ -8446,6 +8437,15 @@ button.analyst-chip {
 
 .demand-status-control[data-status="aprovacaoDiretoria"] select {
   color: var(--orange);
+}
+
+.demand-status-control[data-status="aprovadoDiretoria"] {
+  background: #edf8f2;
+  border-color: rgba(47, 133, 90, 0.28);
+}
+
+.demand-status-control[data-status="aprovadoDiretoria"] select {
+  color: #2f855a;
 }
 
 .demand-status-control[data-status="concluido"] {

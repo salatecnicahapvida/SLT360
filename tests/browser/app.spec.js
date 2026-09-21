@@ -253,22 +253,26 @@ test('operational proximity alert uses only the next 24-hour date window for val
  expect(b.errors).toEqual([]);
 });
 
-test('validation KPI includes and separates all three validation statuses',async({page})=>{
+test('validation KPI removes Sala Técnica stage, preserves legacy cards and excludes approved director stage',async({page})=>{
  const base={...structuredClone(payload.state.demands[1]),tipo:'SIC'};
  const demands=[
-  {...base,id:'validation-st',coluna:'validacaoST'},
+  {...base,id:'validation-st-legacy',coluna:'validacaoST'},
   {...base,id:'validation-works',coluna:'validacaoObras'},
   {...base,id:'validation-director',coluna:'aprovacaoDiretoria'},
+  {...base,id:'validation-director-approved',coluna:'aprovadoDiretoria'},
  ];
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await expect(page.locator('.kanban-column[data-column="validacaoST"]')).toHaveCount(0);
+ await expect(page.locator('.kanban-column[data-column="validacaoObras"] article')).toHaveCount(2);
+ await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article')).toHaveCount(1);
  const validationKpi=page.locator('[data-action="open-kpi-detail"][data-kpi="opValidacao"]');
  await expect(validationKpi).toContainText('3');
- await expect(validationKpi).toContainText('Sala Técnica, Obras e Diretoria');
+ await expect(validationKpi).toContainText('Obras e Diretoria');
  await validationKpi.click();
  const metrics=page.locator('.kpi-modal-card .kpi-detail-grid .split-item');
- await expect(metrics.locator('strong')).toHaveText(['Total em validação','Sala Técnica','Equipe de Obras','Aprovação Diretoria']);
- await expect(metrics.locator('span')).toHaveText(['3','1','1','1']);
+ await expect(metrics.locator('strong')).toHaveText(['Total em validação','Equipe de Obras','Aprovação Diretoria']);
+ await expect(metrics.locator('span')).toHaveText(['3','2','1']);
  await expect(page.locator('.kpi-detail-table tbody tr')).toHaveCount(3);
  expect(b.errors).toEqual([]);
 });
@@ -1456,16 +1460,18 @@ test('operational cards drag between columns and SICs enter director approval di
  await expect(kanbanColumns).toHaveCount(8);
  expect((await kanbanColumns.first().boundingBox()).height).toBeGreaterThanOrEqual(1100);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
-  'Fazer','Fazendo','Pausado','Aguardando Validação Sala Técnica','Aguardando Validação Obras',
-  'Aguardando Aprovação Diretoria','Concluído','Cancelado',
+  'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Aguardando Aprovação Diretoria',
+  'Aprovado Pela Diretoria','Concluído','Cancelado',
  ]);
 
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const nonSicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(nonSicStatus.locator('option[value="aprovacaoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(nonSicStatus.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
+ const directorApprovedColumn=page.locator('.kanban-column[data-column="aprovadoDiretoria"]');
  const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
  const fazendoColumn=page.locator('.kanban-column[data-column="fazendo"]');
  const sicCard=fazerColumn.locator('article[data-id="test-demand"]');
@@ -1493,10 +1499,16 @@ test('operational cards drag between columns and SICs enter director approval di
  const sicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(sicStatus).toHaveValue('fazendo');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await expect(sicStatus.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await sicStatus.selectOption('aprovacaoDiretoria');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await directorColumn.locator('article[data-id="test-demand"]').click();
+ const approvedStatus=page.locator('#demandDetailForm [name="coluna"]');
+ await approvedStatus.selectOption('aprovadoDiretoria');
+ await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(directorApprovedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });

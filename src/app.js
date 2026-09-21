@@ -83,13 +83,13 @@ const columns = [
   { id: "fazer", label: "Fazer" },
   { id: "fazendo", label: "Fazendo" },
   { id: "pausado", label: "Pausado" },
-  { id: "validacaoST", label: "Aguardando Validação Sala Técnica" },
   { id: "validacaoObras", label: "Aguardando Validação Obras" },
   { id: "aprovacaoDiretoria", label: "Aguardando Aprovação Diretoria" },
+  { id: "aprovadoDiretoria", label: "Aprovado Pela Diretoria" },
   { id: "concluido", label: "Concluído" },
   { id: "cancelado", label: "Cancelado" },
 ];
-const demandValidationColumnIds = ["validacaoST", "validacaoObras", "aprovacaoDiretoria"];
+const demandValidationColumnIds = ["validacaoObras", "aprovacaoDiretoria"];
 
 const worksViewIds = [
   "worksOperational",
@@ -864,6 +864,7 @@ function normalizeDemandLabels(labels = []) {
 function normalizeDemandRecord(item = {}, works = []) {
   const demand = normalizeDemandAnalysts({
     ...item,
+    coluna: item.coluna === "validacaoST" ? "validacaoObras" : item.coluna,
     etiquetas: normalizeDemandLabels(item.etiquetas),
     projetosEnvolvidos: arrayOrFallback(item.projetosEnvolvidos),
     projetosEnvolvidosDetalhes: normalizeDemandProjectDetails(item.projetosEnvolvidosDetalhes),
@@ -2981,7 +2982,7 @@ function haptecWorksKanbanAnswer(text) {
   }
 
   if (haptecHasAny(text, ["validacao", "validar"])) {
-    return `${validation.length} card(s) aguardam validação ${scope}: ${items.filter((item) => item.coluna === "validacaoST").length} na Sala Técnica, ${items.filter((item) => item.coluna === "validacaoObras").length} em Obras e ${items.filter((item) => item.coluna === "aprovacaoDiretoria").length} em aprovação da Diretoria.`;
+    return `${validation.length} card(s) aguardam validação ${scope}: ${items.filter((item) => item.coluna === "validacaoObras").length} em Obras e ${items.filter((item) => item.coluna === "aprovacaoDiretoria").length} em aprovação da Diretoria.`;
   }
 
   if (haptecHasAny(text, ["sic"])) {
@@ -5326,7 +5327,6 @@ function operationalKpiDetailData(key) {
   const validationMetrics = key === "opValidacao"
     ? [
         { label: "Total em validação", value: String(item.demands.length) },
-        { label: "Sala Técnica", value: String(item.demands.filter((demand) => demand.coluna === "validacaoST").length) },
         { label: "Equipe de Obras", value: String(item.demands.filter((demand) => demand.coluna === "validacaoObras").length) },
         { label: "Aprovação Diretoria", value: String(item.demands.filter((demand) => demand.coluna === "aprovacaoDiretoria").length) },
       ]
@@ -5498,7 +5498,7 @@ function renderWorksOperational() {
       ${kpi("A iniciar", String(filtered.filter((demand) => demand.coluna === "fazer").length), "Fila Fazer", "orange", "", "opFazer")}
       ${kpi("Em execução", String(inProgress), "Fila Fazendo", "green", "", "opFazendo")}
       ${kpi("Pausado", String(paused), "Aguardando destrava", "orange", "", "opPausado")}
-      ${kpi("Validação", String(awaitingValidation), "Sala Técnica, Obras e Diretoria", "blue", "", "opValidacao")}
+      ${kpi("Validação", String(awaitingValidation), "Obras e Diretoria", "blue", "", "opValidacao")}
       ${kpi("Concluído", String(concluded), "Entregas registradas", "green", "", "opConcluido")}
       ${kpi("Cancelado", String(canceled), "Itens encerrados sem entrega", "red", "", "opCancelado")}
       ${kpi("Atrasadas", String(late), "Prazo previsto vencido", late ? "red" : "green", "", "opAtrasadas")}
@@ -6008,7 +6008,7 @@ function demandCardDateInfo(demand) {
   const validationSent = Boolean(
     demand.dataEnvioRealValidacaoObras
     || demand.dataValidacaoObras
-    || ["validacaoObras", "aprovacaoDiretoria", "concluido"].includes(demand.coluna),
+    || ["validacaoObras", "aprovacaoDiretoria", "aprovadoDiretoria", "concluido"].includes(demand.coluna),
   );
   const validationDate = dateOnly(demand.dataPrevEnvioValidacaoObras);
   const validationDeadlineStillActive = Boolean(validationDate && validationDate >= todayISO());
@@ -6175,7 +6175,7 @@ function operationalActiveFilterText() {
   if (sprints.length) active.push(sprints.map((id) => sprintById(id)?.nome || "sprint selecionada").join(", "));
   if (analysts.length) active.push(`analistas ${analysts.map((analyst) => analyst === unassignedAnalystFilterValue ? "Sem analista" : analyst).join(", ")}`);
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
-  if (operationalFilters.validationGroup) active.push("validação Sala Técnica, Obras e Diretoria");
+  if (operationalFilters.validationGroup) active.push("validação Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
   if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : "no prazo").join(", "));
   return active.length ? `Filtrando por: ${active.join(" | ")}` : "";
@@ -15713,7 +15713,7 @@ function sprintOptions(selected) {
 function columnsForDemand(demand) {
   return columns.map((column) => ({
     ...column,
-    disabled: column.id === "aprovacaoDiretoria" && demandTypeKey(demand?.tipo) !== "SIC",
+    disabled: ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(column.id) && demandTypeKey(demand?.tipo) !== "SIC",
   }));
 }
 
@@ -18009,7 +18009,7 @@ async function handleDemandDetailSubmit(form) {
   );
   const requestedColumn = shouldAutoAdvanceToWorksValidation ? "validacaoObras" : selectedColumn;
   const nextTypeIsSic = demandTypeKey(demand.tipo) === "SIC";
-  const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovacaoDiretoria");
+  const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovadoDiretoria");
   const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false });
   if (statusUpdate === false) {
     state.demands[demandIndex] = demandSnapshot;
@@ -18480,16 +18480,19 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   if (!demand || !nextColumn) return false;
   if (demand.coluna === nextColumnId) return demand;
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
-  if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovacaoDiretoria") {
-    nextColumnId = "aprovacaoDiretoria";
+  if (isSicDemand && nextColumnId === "concluido") {
+    if (demand.coluna === "aprovacaoDiretoria") nextColumnId = "aprovadoDiretoria";
+    else if (demand.coluna !== "aprovadoDiretoria") nextColumnId = "aprovacaoDiretoria";
     nextColumn = columnById(nextColumnId);
   }
-  if (nextColumnId === "aprovacaoDiretoria") {
+  if (["aprovacaoDiretoria", "aprovadoDiretoria"].includes(nextColumnId)) {
     if (!isSicDemand) {
-      showToast("Somente demandas do tipo SIC podem aguardar aprovação da Diretoria.");
+      showToast("Somente demandas do tipo SIC podem usar as etapas de aprovação da Diretoria.");
       return false;
     }
-    if (demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) demand.dataValidacaoObras = todayISO();
+    if (nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
+      demand.dataValidacaoObras = todayISO();
+    }
   }
   if (nextColumnId === "concluido" && !skipCompletionGate) {
     openDemandCompletionModal(demand.id);

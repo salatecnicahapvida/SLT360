@@ -2,6 +2,8 @@
 
 Na visão operacional de Obras, o Kanban controla o ciclo da demanda e não realiza checagem de saldo disponível.
 
+Para demandas do tipo **SIC**, o encerramento passa obrigatoriamente pelas etapas **Aguardando Aprovação Diretoria** → **Aprovado Pela Diretoria** → **Concluído**. A etapa antiga **Aguardando Validação Sala Técnica** foi removida; registros legados nessa fase são tratados como **Aguardando Validação Obras**.
+
 Ao mover uma demanda para **Concluído**, o sistema exige a confirmação do impacto no EV:
 
 - **Atualizar o EV**: abre o EV da obra e, após salvar a nova versão, continua a conclusão da demanda.
