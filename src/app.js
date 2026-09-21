@@ -14149,6 +14149,20 @@ function renderRingChart(items, centerValue, centerLabel) {
   `;
 }
 
+function fieldLabel(field) {
+  const labels = {
+    month: "Mês",
+    sprint: "Sprint",
+    motivo: "Motivo",
+    status: "Status",
+    tipologia: "Tipologia",
+    estado: "Estado",
+    nomeObra: "Obra",
+    analista: "Analista",
+  };
+  return labels[field] || field;
+}
+
 function openSicSliceDetailModal(field, label) {
   const records = filterSicRecords(sicLineRecords()).filter((record) => {
     if (field === "month") {
