@@ -1605,26 +1605,31 @@ test('startup loads only home counters and a module stays read-only until its da
  expect(b.errors).toEqual([]);
 });
 
-test('SIC approval persists to the same cloud queue and survives reload',async({page})=>{
- const b=await backend(page);await login(page);
- await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
+test('SIC study is sourced only from operational SIC demand cards',async({page})=>{
+ const sicDemand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-operational-source',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'fazendo',
+  analistaResponsavel:'Ana',
+  createdAt:'2026-09-20T12:00:00Z',
+  sprintId:'sprint-017',
+  sicMetadata:{tituloSic:'SIC operacional',numeroSic:'SIC-900',lecomNumber:'LECOM-900',motivo:'RevisaoEscopo'},
+ };
+ const nonSic={...structuredClone(payload.state.demands[1]),id:'not-sic-source',tipo:'EmissaoInicial'};
+ const b=await backend(page,'Admin',false,{demandRecords:[sicDemand,nonSic],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- const tabs=page.locator('[data-action="set-sic-view"]');
- if(await tabs.count())await tabs.filter({hasText:/Aprova/}).first().click();
- await expect(page.locator('#sicApprovalDashboard')).toBeVisible();
- await expect(page.locator('iframe')).toHaveCount(0);
- await expect(page.getByText('Obra SIC de teste',{exact:true}).first()).toBeVisible();
- await page.getByText('Obra SIC de teste',{exact:true}).first().click();
- await page.locator('[data-approve][data-sicid="sic-test"]').check();
- await expect.poll(()=>b.requests.length).toBeGreaterThan(0);
- expect(b.requests.at(-1).changes.some(c=>c.entity==='budget_approval_works'&&c.document.sics[0].status==='aprovado')).toBe(true);
- await page.reload();await expect(page.locator('#legacyShell')).toBeVisible();
- await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
- await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await page.locator('[data-action="set-sic-view"][data-view-mode="approval"]').click();
- await page.getByText('Obra SIC de teste',{exact:true}).first().click();
- await expect(page.locator('[data-approve][data-sicid="sic-test"]')).toBeChecked();
- await page.screenshot({path:'outputs/sic-audit.png',fullPage:true,animations:'disabled'});
+ await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance']);
+ await expect(page.getByText('SIC-900',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Revisão de Escopo',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Obra SIC de teste',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('HIST-1',{exact:true})).toHaveCount(0);
+ await expect(page.locator('#sicApprovalDashboard')).toHaveCount(0);
+ await page.getByText('SIC-900',{exact:true}).first().click();
+ await expect(page.getByRole('heading',{name:'SIC-900'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Abrir card operacional'})).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 

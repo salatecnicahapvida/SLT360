@@ -2851,7 +2851,7 @@ function haptecViewHelp() {
     return "No Operacional de Obras você acompanha a esteira em Kanban ou lista. Caminho rápido: filtre a sprint ou analista, clique no card, atualize status e confira EV antes de concluir.";
   }
   if (currentView === "sics") {
-    return "No Estudo de SIC's você acompanha histórico, linha do tempo, visão executiva e diagnóstico. Use os filtros para achar obra, disciplina, sprint ou tipologia.";
+    return "No Estudo de SIC's você acompanha exclusivamente os cards de SIC da Demanda Operacional. Use os filtros para localizar obra, motivo, status, sprint, analista ou tipologia.";
   }
   if (currentView === "maintenanceOperational") {
     return "No Operacional de Manutenção o Kanban segue as fases Pipefy. Use os filtros de sprint, fase, tipo de despesa, centro de custo e tipologia para limpar a fila.";
@@ -13391,67 +13391,41 @@ function flowStep(numberLabel, title, detail) {
 }
 
 function sicLineRecords() {
-  const imported = evUnifiedRecords().flatMap((record) => (record.items || []).flatMap((item, index) => {
-    const description = cleanImportedText(item.description || "");
-    const normalized = normalizeSearchText(description);
-    const normalizedDiscipline = normalizeSearchText(disciplineById(item.disciplineId).nome);
-    if (/\btaxa\b.*\brisco\b|\brisco\b.*\b5\b/.test(normalized) || /\btaxa\b.*\brisco\b/.test(normalizedDiscipline)) return [];
-    if (!/\bsic\b|\bsics\b|\badt\b|\baditivo\b|\baditivos\b/.test(normalized)) return [];
-    const sicNumber = description.match(/\bSIC(?:'S|S)?\s*[-.:º°]?\s*(\d+(?:\s*(?:,|E)\s*\d+)*)/i)?.[1];
-    const adtNumber = description.match(/\b(?:ADT|ADITIVO)\s*[-.:º°]?\s*(\d+)/i)?.[1];
-    const movement = /\bsupress|\bretirad|\breducao\b/.test(normalized) ? "SUPRESSÃO" : "ADITIVO";
-    const rawValue = Number(item.value || 0);
-    const value = movement === "SUPRESSÃO" ? -Math.abs(rawValue) : Math.abs(rawValue);
-    const stateCode = String(record.project || "").match(/\s-\s([A-Z]{2})\s(?:-|$)/)?.[1] || "—";
-    return [{
-      source: "EV unificado",
-      id: sicNumber ? `SIC ${sicNumber}` : adtNumber ? `ADT ${adtNumber}` : `EV-${record.code || record.id}-${index + 1}`,
-      obra: record.code || record.id,
-      nomeObra: cleanImportedText(record.project || "EV não informado"),
-      disciplina: disciplineById(item.disciplineId).nome,
-      valor: value,
-      motivo: description,
-      movimento: movement,
-      sprint: `EV ${record.year}`,
-      estado: stateCode,
-      analista: "Base histórica EV",
-      tipologia: record.typology || "Não informada",
-      grupo: adtNumber ? "Aditivo do EV" : "SIC do EV",
-      dataPostagem: record.date || "",
-      status: record.sourceKind === "historical" ? "Histórico EV" : "Cadastro atual",
-      actionId: record.id,
-      ano: record.year,
-      item: item.item,
-    }];
-  }));
-
-  const created = (state.sics || []).flatMap((sic) => {
-    const work = workById(sic.obraId);
-    return sic.disciplinasAfetadas.map((item) => ({
-      source: "SLT 360",
-      id: sic.id,
-      obra: work?.codigoOriginal || sic.obraId,
-      nomeObra: work?.nome || "Obra não localizada",
-      disciplina: disciplineById(item.disciplinaId).nome,
-      valor: item.valorDelta || 0,
-      motivo: motivationLabel(sic.motivo),
-      movimento: item.valorDelta < 0 ? "SUPRESSÃO" : "ADITIVO",
-      sprint: "—",
-      estado: work?.uf || "—",
-      analista: sic.aprovadoPor || "Gestão ST",
-      tipologia: work?.tipoUnidade || "Não informada",
-      grupo: "SLT 360",
-      dataPostagem: sic.dataAprovacao || sic.dataSolicitacao || "",
-      status: sic.status,
-      actionId: sic.id,
-      ano: String(sic.dataAprovacao || sic.dataSolicitacao || "").slice(0, 4) || "Atual",
-    }));
-  });
-
-  return [...imported, ...created].filter((record) => {
-    const text = normalizeSearchText(`${record.disciplina || ""} ${record.motivo || ""}`);
-    return !/\btaxa\b.*\brisco\b|\brisco\b.*\b5\b/.test(text);
-  });
+  return (state.demands || [])
+    .filter((demand) => demandTypeKey(demand.tipo) === "SIC")
+    .map((demand) => {
+      const work = workById(demand.obraId);
+      const metadata = demand.sicMetadata || {};
+      const sprint = sprintById(demand.sprintId);
+      const recordedValue = demandHasRecordedValue(demand) ? demandProducedValue(demand) : 0;
+      const createdOn = dateOnly(demand.createdAt) || demand.dataPrevistaInicio || demand.dataInicioReal || "";
+      const status = demandStatusLabel(demand);
+      const reference = String(metadata.numeroSic || metadata.lecomNumber || demand.id || "").trim() || demand.id;
+      return {
+        source: "Demanda operacional",
+        id: reference,
+        cardId: demand.id,
+        lecom: metadata.lecomNumber || "",
+        titulo: metadata.tituloSic || demand.titulo || "",
+        obra: work?.codigoOriginal || work?.chaveUnica || demand.obraId || "—",
+        nomeObra: work?.nome || metadata.obraNome || "Obra não localizada",
+        disciplina: "Não se aplica",
+        valor: recordedValue,
+        motivo: motivationLabel(metadata.motivo),
+        movimento: status,
+        sprint: sprint?.nome || demand.sprintId || "Sem sprint",
+        estado: work?.uf || "—",
+        analista: demand.analistaResponsavel || "A definir",
+        tipologia: work?.tipoUnidade || "Não informada",
+        grupo: "Demanda operacional",
+        dataPostagem: createdOn,
+        status,
+        statusId: demand.coluna,
+        prioridade: demand.prioridade || "—",
+        actionId: demand.id,
+        ano: createdOn.slice(0, 4) || "Atual",
+      };
+    });
 }
 
 function sicSummaryRows(records = sicLineRecords()) {
@@ -13576,14 +13550,15 @@ function sicApprovalDashboardData() {
 }
 
 function renderSics() {
-  if (sicViewMode === "timeline") sicViewMode = "report";
+  const views = sicViewMeta();
+  if (!views.some((view) => view.id === sicViewMode)) sicViewMode = "report";
   const data = sicDashboardData();
-  const active = sicViewMeta().find((view) => view.id === sicViewMode) || sicViewMeta()[0];
+  const active = views.find((view) => view.id === sicViewMode) || views[0];
 
   return `
     ${renderWorksToolbar("sics", "Estudo de SIC's", `${active.title} · ${active.subtitle}`)}
     ${renderSicViewTabs()}
-    ${sicViewMode === "approval" ? "" : renderSicFilterBar(data)}
+    ${renderSicFilterBar(data)}
     ${renderSicView(data)}
   `;
 }
@@ -13592,33 +13567,27 @@ function sicViewMeta() {
   return [
     {
       id: "report",
-      label: "Base unificada",
-      title: "SICs e Aditivos dos EVs",
-      subtitle: "Linhas identificadas diretamente nos EVs por SIC, ADT, aditivo ou aditivos",
+      label: "Base operacional",
+      title: "SICs da Demanda Operacional",
+      subtitle: "Fonte única: cards do tipo SIC criados na Demanda Operacional",
     },
     {
       id: "executive",
       label: "Executivo",
       title: "Relatório Executivo",
-      subtitle: "Indicadores estratégicos para suporte à tomada de decisão",
+      subtitle: "Leitura da carteira de SICs cadastradas no fluxo operacional",
     },
     {
       id: "diagnostic",
       label: "Diagnóstico",
       title: "Relatório Diagnóstico",
-      subtitle: "Principais desvios, causas e impactos para direcionar ações corretivas",
+      subtitle: "Motivos, status, analistas e tipologias das SICs operacionais",
     },
     {
       id: "performance",
       label: "Performance",
       title: "Relatório Performance",
-      subtitle: "Monitoramento da evolução, produtividade e eficiência na conclusão das SICs",
-    },
-    {
-      id: "approval",
-      label: "Aprovação",
-      title: "Aprovação de SICs",
-      subtitle: "Fila de validação antes da postagem no EV e consumo da linha 32",
+      subtitle: "Evolução e distribuição dos cards de SIC no Kanban",
     },
   ];
 }
@@ -13643,24 +13612,26 @@ function sicDashboardData(options = {}) {
   const allRecords = sicLineRecords();
   const records = options.ignoreSearch ? allRecords : filterSicRecords(allRecords);
   const rows = sicSummaryRows(records);
-  const additions = records.filter((record) => record.valor > 0);
-  const suppressions = records.filter((record) => record.valor < 0);
-  const additiveValue = additions.reduce((sum, record) => sum + record.valor, 0);
-  const suppressionValue = Math.abs(suppressions.reduce((sum, record) => sum + record.valor, 0));
-  const netImpact = records.reduce((sum, record) => sum + record.valor, 0);
+  const completed = records.filter((record) => record.statusId === "concluido");
+  const canceled = records.filter((record) => record.statusId === "cancelado");
+  const paused = records.filter((record) => record.statusId === "pausado");
+  const director = records.filter((record) => ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(record.statusId));
+  const inFlow = records.filter((record) => !["concluido", "cancelado"].includes(record.statusId));
+  const generatedValue = records.reduce((sum, record) => sum + (Number(record.valor) || 0), 0);
   return {
     allRecords,
     records,
     rows,
-    pending: rows.filter((sic) => sic.status === "Pendente"),
-    additions,
-    suppressions,
-    additiveValue,
-    suppressionValue,
-    netImpact,
-    totalAbs: records.reduce((sum, record) => sum + Math.abs(record.valor), 0),
+    completed,
+    canceled,
+    paused,
+    director,
+    inFlow,
+    generatedValue,
+    netImpact: generatedValue,
+    totalAbs: generatedValue,
     impactedWorks: new Set(records.map((record) => `${record.obra}|${record.nomeObra}`)).size,
-    uniqueSics: new Set(records.map((record) => `${record.obra}|${record.id}`)).size,
+    uniqueSics: new Set(records.map((record) => record.cardId || record.actionId || record.id)).size,
     period: sicPeriodLabel(records),
   };
 }
@@ -13767,21 +13738,20 @@ function renderSicFilterBar(data) {
     `;
   }
   const sprints = new Set(data.records.map((record) => record.sprint).filter(Boolean)).size;
-  const disciplines = new Set(data.records.map((record) => record.disciplina).filter(Boolean)).size;
-  const typologies = new Set(data.records.map((record) => record.tipologia).filter(Boolean)).size;
+  const statuses = new Set(data.records.map((record) => record.status).filter(Boolean)).size;
+  const motives = new Set(data.records.map((record) => record.motivo).filter(Boolean)).size;
   return `
     <section class="sic-filter-bar">
       <label class="field sic-search-field">
         <span>Buscar SIC</span>
-        <input data-sic-search value="${escapeAttribute(sicSearchQuery)}" placeholder="Buscar por SIC, obra, disciplina, motivo, estado, sprint ou analista..." />
+        <input data-sic-search value="${escapeAttribute(sicSearchQuery)}" placeholder="Buscar por SIC, card, obra, motivo, status, sprint ou analista..." />
       </label>
       <div class="sic-filter-summary">
-        <span>${data.records.length} linha(s)</span>
         <span>${data.uniqueSics} SICs</span>
         <span>${data.impactedWorks} obras</span>
-        <span>${disciplines} disciplinas</span>
+        <span>${statuses} status</span>
+        <span>${motives} motivos</span>
         <span>${sprints} sprints</span>
-        <span>${typologies} tipologias</span>
         <span>${data.period}</span>
       </div>
       ${sicSearchQuery ? `<button class="secondary-action" type="button" data-action="clear-sic-search">Limpar busca</button>` : ""}
@@ -13796,7 +13766,6 @@ function renderSicView(data) {
     executive: renderSicExecutiveView,
     diagnostic: renderSicDiagnosticView,
     performance: renderSicPerformanceView,
-    approval: renderSicApprovalView,
   };
   return (views[sicViewMode] || renderSicReportView)(data);
 }
@@ -13894,15 +13863,14 @@ function renderSicApprovalRow(item) {
   `;
 }
 
-function renderSicKpis(data, mode = "default") {
-  const totalLabel = mode === "performance" ? "Impacto" : "Impacto líquido";
+function renderSicKpis(data) {
   return `
     <section class="kpi-grid sic-kpi-grid">
-      ${kpi(totalLabel, moneyCompact(data.netImpact), `${money(data.netImpact)} · aditivos menos supressões`, "blue", "", "sicImpact")}
-      ${kpi("Aditivos", moneyCompact(data.additiveValue), `${money(data.additiveValue)} · ${data.additions.length} linhas positivas`, "orange", "", "sicAdditives")}
-      ${kpi("Supressões", `-${moneyCompact(data.suppressionValue)}`, `-${money(data.suppressionValue)} · ${data.suppressions.length} linhas negativas`, "green", "", "sicSuppressions")}
-      ${kpi("Obras impactadas", number(data.impactedWorks), `${number((data.impactedWorks / Math.max(evUnifiedRecords().length, 1)) * 100, 1)}% dos EVs unificados`, "blue", "", "sicWorks")}
-      ${kpi("SICs e aditivos", number(data.uniqueSics), `${data.records.length} linhas válidas extraídas dos EVs`, "blue", "", "sicTotal")}
+      ${kpi("SICs", number(data.uniqueSics), "Cards do tipo SIC na Demanda Operacional", "blue", "", "sicTotal")}
+      ${kpi("Em fluxo", number(data.inFlow.length), "Cards ainda não concluídos ou cancelados", "orange", "", "sicInFlow")}
+      ${kpi("Diretoria", number(data.director.length), "Aguardando aprovação ou já aprovadas pela Diretoria", "blue", "", "sicDirector")}
+      ${kpi("Concluídas", number(data.completed.length), "Cards concluídos", "green", "", "sicCompleted")}
+      ${kpi("Valor gerado", moneyCompact(data.generatedValue), `${money(data.generatedValue)} registrado nos cards concluídos`, "blue", "", "sicValue")}
     </section>
   `;
 }
@@ -13914,40 +13882,40 @@ function renderSicReportView(data) {
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Custo por disciplina</h2>
-            <p class="panel-subtitle">Participação financeira no impacto total</p>
+            <h2>SICs por motivo</h2>
+            <p class="panel-subtitle">Distribuição dos motivos informados nos cards</p>
           </div>
         </div>
-        ${renderRingChart(sicCostRows("disciplina", 7, data.records), money(Math.abs(data.netImpact)), "impacto")}
+        ${barList(sicCountRows("motivo", 10, data.records), "valor", (value) => String(value))}
       </section>
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Previsão de custo por motivos</h2>
-            <p class="panel-subtitle">Causas mais relevantes em valor</p>
+            <h2>SICs por status</h2>
+            <p class="panel-subtitle">Posição atual dos cards no fluxo operacional</p>
           </div>
         </div>
-        ${barList(sicCostRows("motivo", 10, data.records), "valor", money)}
+        ${barList(sicCountRows("status", 10, data.records), "valor", (value) => String(value))}
       </section>
     </div>
     <div class="content-grid sic-report-grid">
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Previsão de custo e Nº de SICs por analista</h2>
-            <p class="panel-subtitle">Custo total e volume sob responsabilidade</p>
+            <h2>SICs por analista</h2>
+            <p class="panel-subtitle">Volume de cards por responsável</p>
           </div>
         </div>
-        ${barList(sicCostRows("analista", 8, data.records), "valor", money)}
+        ${barList(sicCountRows("analista", 10, data.records), "valor", (value) => String(value))}
       </section>
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>Custo por grupos de motivos</h2>
-            <p class="panel-subtitle">Projetos, Obras, Sala Técnica e outros motivos</p>
+            <h2>SICs por tipologia</h2>
+            <p class="panel-subtitle">Distribuição por tipo de unidade da obra vinculada</p>
           </div>
         </div>
-        ${barList(sicCostRows("grupo", 8, data.records), "valor", money)}
+        ${barList(sicCountRows("tipologia", 10, data.records), "valor", (value) => String(value))}
       </section>
     </div>
     ${renderSicHistoryPanel(data.rows)}
@@ -14048,8 +14016,8 @@ function renderSicExecutiveView(data) {
       <section class="panel sic-compact-summary-panel">
         <div class="panel-header">
           <div>
-            <h2>Previsão de custo por tipologia</h2>
-            <p class="panel-subtitle">Resumo dos maiores impactos financeiros</p>
+            <h2>Valor gerado por tipologia</h2>
+            <p class="panel-subtitle">Valores registrados nos cards concluídos</p>
           </div>
         </div>
         ${barList(sicCostRows("tipologia", 8, data.records), "valor", moneyCompact)}
@@ -14066,118 +14034,81 @@ function renderSicDiagnosticView(data) {
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <span class="panel-eyebrow">CAUSA RAIZ</span>
-            <h2>Motivos com maior impacto financeiro</h2>
-            <p class="panel-subtitle">Ranking por previsão de custo, com acesso ao detalhe</p>
+            <span class="panel-eyebrow">MOTIVOS</span>
+            <h2>Motivos mais recorrentes</h2>
+            <p class="panel-subtitle">Quantidade de SICs por motivo registrado</p>
           </div>
         </div>
-        ${barList(sicCostRows("motivo", 10, data.records), "valor", moneyCompact)}
+        ${barList(sicCountRows("motivo", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
       </section>
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <span class="panel-eyebrow">FREQUÊNCIA</span>
-            <h2>Motivos mais recorrentes</h2>
-            <p class="panel-subtitle">Quantidade de SICs únicas por causa identificada</p>
+            <span class="panel-eyebrow">STATUS</span>
+            <h2>Distribuição do fluxo</h2>
+            <p class="panel-subtitle">Onde os cards estão no Kanban</p>
           </div>
         </div>
-        ${barList(sicCountRows("motivo", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
+        ${barList(sicCountRows("status", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
       </section>
     </div>
     <div class="sic-analysis-grid">
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <span class="panel-eyebrow">DISCIPLINAS</span>
-            <h2>Disciplinas com maior impacto</h2>
-            <p class="panel-subtitle">Custo consolidado das ocorrências vinculadas</p>
+            <span class="panel-eyebrow">ANALISTAS</span>
+            <h2>Carteira por analista</h2>
+            <p class="panel-subtitle">Quantidade de SICs sob responsabilidade</p>
           </div>
         </div>
-        ${barList(sicCostRows("disciplina", 10, data.records), "valor", moneyCompact)}
+        ${barList(sicCountRows("analista", 10, data.records), "valor", (value) => String(value))}
       </section>
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
             <span class="panel-eyebrow">TIPOLOGIAS</span>
-            <h2>Tipologias com maior impacto</h2>
-            <p class="panel-subtitle">Custo consolidado para comparação executiva</p>
+            <h2>Carteira por tipologia</h2>
+            <p class="panel-subtitle">Volume de SICs por tipo de unidade</p>
           </div>
         </div>
-        ${barList(sicCostRows("tipologia", 10, data.records), "valor", moneyCompact)}
+        ${barList(sicCountRows("tipologia", 10, data.records), "valor", (value) => String(value))}
       </section>
     </div>
     <div class="sic-full-table-stack">
-      ${renderSicTablePanel("Resumo por disciplina", "Obras, SICs e custo em uma visão ordenável", sicGroupedRecords(data.records, "disciplina").slice(0, 20), "Disciplina", "disciplina")}
-      ${renderSicTablePanel("Resumo por tipologia", "Comparativo consolidado por tipo de unidade", sicGroupedRecords(data.records, "tipologia").slice(0, 20), "Tipologia", "tipologia")}
+      ${renderSicTablePanel("Resumo por motivo", "Obras e SICs por motivo cadastrado", sicGroupedRecords(data.records, "motivo").slice(0, 20), "Motivo", "motivo")}
+      ${renderSicTablePanel("Resumo por status", "Distribuição atual dos cards", sicGroupedRecords(data.records, "status").slice(0, 20), "Status", "status")}
     </div>
   `;
 }
 
 function renderSicPerformanceView(data) {
-  const groups = sicGroupedRecords(data.records, "grupo");
   return `
-    ${renderSicKpis(data, "performance")}
+    ${renderSicKpis(data)}
     <div class="sic-analysis-grid">
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
             <span class="panel-eyebrow">VOLUME</span>
-            <h2>SICs por grupo</h2>
-            <p class="panel-subtitle">Participação quantitativa das causas macro</p>
+            <h2>SICs por status</h2>
+            <p class="panel-subtitle">Participação de cada etapa do fluxo operacional</p>
           </div>
         </div>
-        ${barList(sicCountRows("grupo", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
+        ${barList(sicCountRows("status", 10, data.records), "valor", (value) => `${value} SIC${value === 1 ? "" : "s"}`)}
       </section>
       <section class="panel sic-ranking-panel">
         <div class="panel-header">
           <div>
-            <span class="panel-eyebrow">IMPACTO FINANCEIRO</span>
-            <h2>Previsão de custo por grupo</h2>
-            <p class="panel-subtitle">Comparação direta entre os grupos da carteira</p>
+            <span class="panel-eyebrow">RESPONSABILIDADE</span>
+            <h2>SICs por analista</h2>
+            <p class="panel-subtitle">Distribuição da carteira operacional</p>
           </div>
         </div>
-        ${barList(sicCostRows("grupo", 10, data.records), "valor", moneyCompact)}
+        ${barList(sicCountRows("analista", 10, data.records), "valor", (value) => String(value))}
       </section>
     </div>
     <div class="sic-full-table-stack">
-      ${renderSicTablePanel("Obras com maior impacto", "Ranking consolidado por custo, com colunas ordenáveis", sicGroupedRecords(data.records, "nomeObra").slice(0, 50), "Obra", "nomeObra")}
-      ${renderSicTablePanel("Performance consolidada por grupo", "Obras, ocorrências e impacto financeiro", groups, "Grupo", "grupo")}
-    </div>
-  `;
-}
-
-function renderRingChart(items, centerValue, centerLabel) {
-  if (!items.length) return `<div class="empty-state">Sem dados para exibir.</div>`;
-  const colors = ["#005ca9", "#2f80ed", "#008f5a", "#f79009", "#0f7c9b", "#9aaaba", "#d92d20", "#b7791f"];
-  const total = items.reduce((sum, item) => sum + Math.abs(item.valor || 0), 0) || 1;
-  let cursor = 0;
-  const stops = items
-    .map((item, index) => {
-      const share = (Math.abs(item.valor || 0) / total) * 100;
-      const start = cursor;
-      cursor += share;
-      return `${colors[index % colors.length]} ${start}% ${cursor}%`;
-    })
-    .join(", ");
-  return `
-    <div class="ring-panel">
-      <div class="ring-chart" style="background: conic-gradient(${stops})">
-        <span>${centerValue}</span>
-        <small>${centerLabel}</small>
-      </div>
-      <div class="ring-legend">
-        ${items
-          .map(
-            (item, index) => `
-              <span>
-                <i style="background:${colors[index % colors.length]}"></i>
-                <strong>${item.label}</strong>
-                <small>${money(Math.abs(item.valor || 0))}</small>
-              </span>
-            `
-          )
-          .join("")}
-      </div>
+      ${renderSicTablePanel("Obras com mais SICs", "Ranking por quantidade de cards", sicGroupedRecords(data.records, "nomeObra").slice(0, 50), "Obra", "nomeObra")}
+      ${renderSicTablePanel("SICs por tipologia", "Distribuição por tipo de unidade", sicGroupedRecords(data.records, "tipologia").slice(0, 30), "Tipologia", "tipologia")}
     </div>
   `;
 }
@@ -14322,22 +14253,21 @@ function renderSicHistoryPanel(rows) {
     <section class="panel">
       <div class="panel-header">
         <div>
-          <h2>SICs e aditivos unificados dos EVs</h2>
-          <p class="panel-subtitle">Linhas extraídas da descrição original dos EVs, sem utilizar a antiga planilha paralela de SICs</p>
+          <h2>Base de SICs da Demanda Operacional</h2>
+          <p class="panel-subtitle">Esta base é formada exclusivamente pelos cards do tipo SIC criados no Kanban operacional</p>
         </div>
       </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
             <tr>
-              <th>SIC / ADT</th>
-              <th>Ano do EV</th>
+              <th>SIC / Card</th>
               <th>Obra</th>
-              <th>Movimento</th>
-              <th>Disciplinas</th>
-              <th class="numeric">Valor</th>
+              <th>Motivo</th>
+              <th>Status</th>
+              <th class="numeric">Valor gerado</th>
               <th>Sprint / Analista</th>
-              <th>Origem</th>
+              <th>Data de criação</th>
             </tr>
           </thead>
           <tbody>
@@ -14348,25 +14278,18 @@ function renderSicHistoryPanel(rows) {
                     .map(
                       (sic) => `
                         <tr data-action="open-sic-detail" data-key="${escapeAttribute(sicSummaryKey(sic))}" role="button" tabindex="0">
-                          <td><strong>${sic.id}</strong><br /><span class="muted">${sic.motivos.slice(0, 2).join(" | ")}</span></td>
-                          <td><strong>${escapeAttribute(String(sic.ano || sic.dataPostagem?.slice(0, 4) || "—"))}</strong></td>
-                          <td><strong>${sic.nomeObra}</strong><br /><span class="muted">${sic.obra} | ${sic.estado}</span></td>
-                          <td><span class="status-pill" data-status="${sic.valor < 0 ? "Completo" : "Pendente"}">${sic.movimento}</span></td>
-                          <td>${sic.disciplinas.slice(0, 4).map((item) => `<span class="tag">${item}</span>`).join(" ")}${sic.disciplinas.length > 4 ? ` <span class="muted">+${sic.disciplinas.length - 4}</span>` : ""}</td>
+                          <td><strong>${escapeAttribute(sic.id)}</strong><br /><span class="muted">${escapeAttribute(sic.cardId || sic.actionId || "")}</span></td>
+                          <td><strong>${escapeAttribute(sic.nomeObra)}</strong><br /><span class="muted">${escapeAttribute(`${sic.obra} | ${sic.estado}`)}</span></td>
+                          <td>${sic.motivos.slice(0, 2).map((item) => `<span class="tag">${escapeAttribute(item)}</span>`).join(" ")}</td>
+                          <td><span class="status-pill">${escapeAttribute(sic.status)}</span></td>
                           <td class="numeric">${money(sic.valor)}</td>
-                          <td>${sic.sprint}<br /><span class="muted">${sic.analista}</span></td>
-                          <td>
-                            ${
-                              sic.status === "Pendente" && sic.actionId
-                                ? `<button class="secondary-action" type="button" data-action="approve-sic" data-id="${sic.id}">Aprovar</button>`
-                                : `<span class="muted">${sic.source}</span>`
-                            }
-                          </td>
+                          <td>${escapeAttribute(sic.sprint)}<br /><span class="muted">${escapeAttribute(sic.analista)}</span></td>
+                          <td>${sic.dataPostagem ? dateText(sic.dataPostagem) : "—"}</td>
                         </tr>
                       `
                     )
                     .join("")
-                : `<tr><td colspan="8"><div class="empty-state">Nenhuma linha com SIC, ADT ou aditivo foi encontrada nos EVs do filtro atual.</div></td></tr>`
+                : `<tr><td colspan="7"><div class="empty-state">Nenhum card de SIC foi criado na Demanda Operacional.</div></td></tr>`
             }
           </tbody>
         </table>
@@ -14382,96 +14305,34 @@ function sicSummaryKey(sic) {
 function openSicDetailModal(key) {
   const row = sicSummaryRows(sicLineRecords()).find((sic) => sicSummaryKey(sic) === key);
   if (!row) return;
-  const related = sicLineRecords().filter((record) => `${record.source}|${record.id}|${record.obra}|${record.nomeObra}|${record.movimento}` === key);
+  const related = sicLineRecords().filter((record) => sicSummaryKey(record) === key);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <section class="modal-card kpi-modal-card" aria-labelledby="sicDetailTitle">
         <header>
           <div>
-            <span class="eyebrow">Histórico de SICs</span>
-            <h2 id="sicDetailTitle">${row.id} | ${row.movimento}</h2>
-            <p class="muted">${row.nomeObra} | ${row.obra} | ${row.estado}</p>
+            <span class="eyebrow">SIC da Demanda Operacional</span>
+            <h2 id="sicDetailTitle">${escapeAttribute(row.id)}</h2>
+            <p class="muted">${escapeAttribute(row.nomeObra)} | ${escapeAttribute(row.obra)} | ${escapeAttribute(row.estado)}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
         <div class="modal-body">
           <div class="kpi-detail-grid">
-            ${splitItem("Impacto", money(row.valor))}
-            ${splitItem("Disciplinas", String(row.disciplinas.length))}
-            ${splitItem("Tipologia", row.tipologias.join(", ") || "—")}
-            ${splitItem("Origem", row.source)}
+            ${splitItem("Status", row.status || "—")}
+            ${splitItem("Motivo", row.motivos?.join(", ") || row.motivo || "—")}
+            ${splitItem("Analista", row.analista || "—")}
+            ${splitItem("Valor gerado", money(row.valor))}
           </div>
           ${renderSicRecordsTable(related)}
         </div>
         <footer class="modal-actions">
+          ${row.actionId ? `<button class="secondary-action" type="button" data-action="open-demand-detail" data-id="${escapeAttribute(row.actionId)}">Abrir card operacional</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
         </footer>
       </section>
     </div>
   `);
-}
-
-function openSicSliceDetailModal(field, label) {
-  const records = filterSicRecords(sicLineRecords()).filter((record) => {
-    if (field === "month") {
-      const key = record.dataPostagem ? record.dataPostagem.slice(0, 7) : "sem-data";
-      return key === label;
-    }
-    if (field === "sprint") {
-      const rawSprint = cleanImportedText(record.sprint || "—");
-      const sprintLabel = normalizeSearchText(rawSprint).includes("sprint") ? rawSprint : `Sprint ${rawSprint}`;
-      return sprintLabel === label;
-    }
-    return cleanImportedText(record[field]) === label;
-  });
-  const title = field === "month" ? (label === "sem-data" ? "Sem data" : dateText(`${label}-01`)) : label;
-  const rows = sicSummaryRows(records);
-  const total = records.reduce((sum, record) => sum + record.valor, 0);
-  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop" data-action="close-modal">
-      <section class="modal-card kpi-modal-card" aria-labelledby="sicSliceTitle">
-        <header>
-          <div>
-            <span class="eyebrow">Detalhe de SICs</span>
-            <h2 id="sicSliceTitle">${title}</h2>
-            <p class="muted">${fieldLabel(field)} | ${records.length} linha(s) | ${rows.length} SIC(s)</p>
-          </div>
-          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
-        </header>
-        <div class="modal-body">
-          <div class="kpi-detail-grid">
-            ${splitItem("Impacto líquido", money(total))}
-            ${splitItem("Aditivos", money(records.filter((record) => record.valor > 0).reduce((sum, record) => sum + record.valor, 0)))}
-            ${splitItem("Supressões", `-${money(Math.abs(records.filter((record) => record.valor < 0).reduce((sum, record) => sum + record.valor, 0)))}`)}
-            ${splitItem("Obras", String(new Set(records.map((record) => `${record.obra}|${record.nomeObra}`)).size))}
-          </div>
-          ${renderSicRecordsTable(records)}
-        </div>
-        <footer class="modal-actions">
-          <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
-        </footer>
-      </section>
-    </div>
-  `);
-}
-
-function openSicTimelineDetailModal(mode, key) {
-  openSicSliceDetailModal(mode === "month" ? "month" : "sprint", key);
-}
-
-function fieldLabel(field) {
-  const labels = {
-    month: "Mês",
-    sprint: "Sprint",
-    motivo: "Motivo",
-    disciplina: "Disciplina",
-    tipologia: "Tipologia",
-    estado: "Estado",
-    grupo: "Grupo",
-    nomeObra: "Obra",
-    analista: "Analista",
-  };
-  return labels[field] || field;
 }
 
 function renderSicRecordsTable(records) {
@@ -14480,40 +14341,40 @@ function renderSicRecordsTable(records) {
     <section class="panel soft-panel sic-history-detail-panel">
       <div class="panel-header">
         <div>
-          <h3>Histórico de SICs</h3>
-          <p class="panel-subtitle">Dados importados da base histórica para auditoria do recorte selecionado</p>
+          <h3>Dados do card</h3>
+          <p class="panel-subtitle">Informações trazidas diretamente da Demanda Operacional</p>
         </div>
       </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>SIC</th>
-            <th>Obra</th>
-            <th>Motivo</th>
-            <th>Disciplina</th>
-            <th class="numeric">Valor</th>
-            <th>Sprint / Data</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${summaries
-            .map(
-              (sic) => `
-                <tr>
-                  <td><strong>${sic.id}</strong><br /><span class="muted">${sic.source}</span></td>
-                  <td><strong>${sic.nomeObra}</strong><br /><span class="muted">${sic.estado}</span></td>
-                  <td>${sic.motivos.slice(0, 3).join(" | ")}</td>
-                  <td>${sic.disciplinas.slice(0, 4).map((item) => `<span class="tag">${item}</span>`).join(" ")}</td>
-                  <td class="numeric">${money(sic.valor)}</td>
-                  <td>${sic.sprint}<br /><span class="muted">${dateText(sic.dataPostagem)}</span></td>
-                </tr>
-              `
-            )
-            .join("") || `<tr><td colspan="6"><div class="empty-state">Sem registros para este recorte.</div></td></tr>`}
-        </tbody>
-      </table>
-    </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>SIC / LECOM</th>
+              <th>Obra</th>
+              <th>Motivo</th>
+              <th>Status</th>
+              <th>Sprint / Analista</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${summaries
+              .map(
+                (sic) => `
+                  <tr>
+                    <td><strong>${escapeAttribute(sic.cardId || sic.actionId || "—")}</strong></td>
+                    <td><strong>${escapeAttribute(sic.id)}</strong><br /><span class="muted">${escapeAttribute(sic.lecom || "")}</span></td>
+                    <td><strong>${escapeAttribute(sic.nomeObra)}</strong><br /><span class="muted">${escapeAttribute(sic.estado)}</span></td>
+                    <td>${escapeAttribute(sic.motivos.slice(0, 3).join(" | "))}</td>
+                    <td>${escapeAttribute(sic.status)}</td>
+                    <td>${escapeAttribute(sic.sprint)}<br /><span class="muted">${escapeAttribute(sic.analista)}</span></td>
+                  </tr>
+                `
+              )
+              .join("") || `<tr><td colspan="6"><div class="empty-state">Sem registros para este recorte.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </section>
   `;
 }
