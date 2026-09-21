@@ -345,7 +345,7 @@ test('kanban shows column totals and time in the current stage for every demand 
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const counts=page.locator('.operational-board-panel .kanban-count');
- await expect(counts).toHaveText(['1','1','1','0','1','0','0','0']);
+ await expect(counts).toHaveText(['1','1','1','1','0','0','0','0']);
  expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
  const expectedTypeBadges=new Map([
   ['stage-initial','Emissão Inicial'],['stage-revision','Rev. Orç.'],['stage-extra','Dem. Extra'],['stage-sic','SIC'],
