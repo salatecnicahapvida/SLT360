@@ -15196,8 +15196,6 @@ function renderSicApprovalSyncPanel(demand) {
 function renderDemandSicMetadata(demand) {
   const info = demandSicInfo(demand);
   if (!info) return "";
-  const approval = sicApprovalReading(demand);
-  const canPost = approval.status === "Aprovado";
   const fieldValue = (value) => (value === "—" ? "" : escapeAttribute(value));
   return `
     <section class="modal-section sic-detail-section">
@@ -15228,28 +15226,6 @@ function renderDemandSicMetadata(demand) {
         <span>Descrição da SIC</span>
         <textarea name="sicDescricao">${fieldValue(info.descricaoSic)}</textarea>
       </label>
-      ${renderSicDraftDisciplineEditor(demand)}
-      ${renderSicApprovalSyncPanel(demand)}
-      <div class="sic-attachments-list">
-        <span>Arquivos anexados</span>
-        ${renderAttachmentList(info.anexos)}
-        <label class="file-drop attachment-file-drop">
-          <input name="sicDetailFiles" type="file" multiple />
-          <span>Adicionar arquivo(s)</span>
-          <small>Arquivos adicionais da SIC</small>
-        </label>
-      </div>
-      <div class="sic-posting-actions">
-        ${
-          (demand.sicIds || []).length
-            ? `<span class="tag">Postada no EV: ${postedSicDisplaySummary(demand)}</span>`
-            : canPost
-              ? `<button class="primary-action" type="button" data-action="post-sic-to-ev" data-id="${demand.id}">Postar SIC no EV</button>
-                 <small class="muted">Aprovada: a postagem cria a SIC no EV e vincula as disciplinas informadas ao estudo.</small>`
-              : `<button class="secondary-action" type="button" data-action="open-sic-approval" data-id="${demand.id}">Enviar para aprovação</button>
-                 <small class="muted">A SIC precisa ser aprovada na aba SICs > Aprovação antes da postagem no EV.</small>`
-        }
-      </div>
     </section>
   `;
 }
@@ -15495,12 +15471,14 @@ function openDemandDetailModal(id) {
             <textarea name="nota" placeholder="Registre observações relevantes sobre esta demanda...">${demand.nota || ""}</textarea>
           </section>
 
+          ${demandTypeKey(demand.tipo) === "SIC" ? "" : `
           <section class="modal-section">
             <div class="section-title with-action">
               <span>Projetos envolvidos</span>
             </div>
             ${renderDemandProjects(demand)}
           </section>
+          `}
 
           <section class="modal-section demand-ev-section">
             <div class="section-title">
@@ -16614,7 +16592,7 @@ function openSicDemandModal(workId = "") {
             <div data-sic-work-results>
               ${renderSicWorkSearchResults(selectedLabel, selectedWork?.id || "")}
             </div>
-            <p class="muted">Ao salvar, o card entra em A iniciar e fica sincronizado com SICs > Aprovação. A postagem no EV só libera após aprovação.</p>
+            <p class="muted">Ao salvar, o card entra no Kanban de Obras vinculado à obra selecionada.</p>
           </section>
 
           <section class="modal-section sic-fields-panel">
@@ -16668,33 +16646,6 @@ function openSicDemandModal(workId = "") {
             </label>
             ${renderDemandLabelsField()}
           </div>
-
-          <section class="modal-section">
-            <div class="section-title">
-              <span>Projetos envolvidos</span>
-            </div>
-            ${renderDemandProjectsSelector()}
-          </section>
-
-          <div class="field" style="margin-top:14px">
-            <span>Disciplinas afetadas</span>
-            <small class="muted">Opcional para criar a demanda. Obrigatório apenas antes de postar a SIC no EV.</small>
-            <div id="disciplineRows">
-              ${disciplineRowTemplate()}
-            </div>
-            <button class="ghost-button" type="button" data-action="add-discipline-row">Adicionar disciplina</button>
-          </div>
-
-          <section class="modal-section">
-            <div class="section-title">
-              <span>Arquivo em anexo</span>
-            </div>
-            <label class="file-drop">
-              <span>Anexar arquivo da SIC</span>
-              <input name="sicFiles" type="file" multiple />
-              <small>PDF, imagem, planilha ou documento recebido da contratada.</small>
-            </label>
-          </section>
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
@@ -17578,38 +17529,14 @@ async function handleDemandSubmit(form) {
     const descricaoSic = String(formData.get("descricao") || "").trim();
     const analistaSalaTecnica = analystAssignment.analistaResponsavel;
     const motivo = normalizeSicMotivo(formData.get("motivo") || "RevisaoProjeto");
-    let anexos = [];
-    try {
-      anexos = await fileAttachmentMetadata(form.querySelector('[name="sicFiles"]'), { entidade: "demanda", entidadeId: demandId, tipo: "SIC" });
-    } catch (error) {
-      console.warn("Falha ao gravar anexos da SIC.", error);
-      showFormError("Não consegui salvar os anexos da SIC no navegador. Tente anexar novamente ou reduza o tamanho dos arquivos.", form);
-      return;
-    }
+    const anexos = [];
 
     if (!tituloSic || !descricaoSic || !analistaSalaTecnica) {
       showFormError("Preencha título, descrição da SIC e analista da Sala Técnica.", form);
       return;
     }
 
-    const affected = [...form.querySelectorAll(".discipline-row")]
-      .map((row) => ({
-        disciplinaId: row.querySelector('[name="disciplinaId"]').value,
-        valorDelta: parseCurrency(row.querySelector('[name="valorDelta"]').value),
-      }))
-      .filter((item) => item.disciplinaId || item.valorDelta);
-
-    const invalid = affected.find((item) => {
-      const discipline = disciplineById(item.disciplinaId);
-      return !item.disciplinaId || !discipline.selecionavelParaSIC;
-    });
-
-    if (invalid) {
-      showFormError("Cada linha da SIC precisa ter uma disciplina selecionável.", form);
-      return;
-    }
-
-    sicDraftDisciplines = affected;
+    sicDraftDisciplines = [];
     sicMetadata = {
       lecomNumber,
       obraNumber,
@@ -17694,7 +17621,7 @@ async function handleDemandSubmit(form) {
   if (tipo === "SIC") {
     resetOperationalFilters();
     operationalViewMode = "kanban";
-    showToast("Demanda de SIC salva no Kanban em A iniciar e enviada para a fila de aprovação.");
+    showToast("Demanda de SIC salva no Kanban.");
     setView("worksOperational");
     return;
   }
@@ -17956,41 +17883,17 @@ async function handleDemandDetailSubmit(form) {
       sic.analistaSalaTecnica = demand.sicMetadata.analistaSalaTecnica;
       sic.motivo = demand.sicMetadata.motivo;
     });
-    let newAttachments = [];
-    try {
-      newAttachments = await fileAttachmentMetadata(form.querySelector('[name="sicDetailFiles"]'), { entidade: "demanda", entidadeId: demand.id, tipo: "SIC" });
-    } catch (error) {
-      console.warn("Falha ao gravar novos anexos da SIC.", error);
-      showFormError("Não consegui salvar os novos anexos no navegador. Tente anexar novamente ou reduza o tamanho dos arquivos.", form);
-      return;
-    }
-    if (newAttachments.length) {
-      demand.sicMetadata.anexos = uniqueAttachments([...(demand.sicMetadata.anexos || []), ...newAttachments]);
-      demand.anexos = uniqueAttachments([...(demand.anexos || []), ...newAttachments]);
-      (demand.sicIds || []).forEach((sicId) => {
-        const sic = state.sics.find((item) => item.id === sicId);
-        if (!sic) return;
-        sic.anexos = uniqueAttachments([...(sic.anexos || []), ...newAttachments]);
-        sic.documentoUrl = (sic.anexos || []).map((file) => file.nome).join(", ");
-      });
-      addHistory({
-        entidade: "demanda",
-        entidadeId: demand.id,
-        campo: "anexos",
-        valorAnterior: "Sem novos arquivos",
-        valorNovo: `${newAttachments.length} arquivo(s) anexado(s)`,
-      });
-    }
+
   } else {
     demand.observacao = formData.get("descricao") || "";
   }
   demand.nota = formData.get("nota") || "";
   const projectSelection = readDemandProjectsFromForm(form);
-  demand.projetosEnvolvidos = projectSelection.selected;
-  demand.projetosEnvolvidosDetalhes = projectSelection.details;
+  if (!isSicDemand) {
+    demand.projetosEnvolvidos = projectSelection.selected;
+    demand.projetosEnvolvidosDetalhes = projectSelection.details;
+  }
   if (isSicDemand && !(demand.sicIds || []).length) {
-    const draftDisciplines = readSicDraftDisciplinesFromForm(form);
-    if (draftDisciplines.length) demand.sicDraftDisciplines = draftDisciplines;
     const nextSicPayload = JSON.stringify({
       descricao: demand.sicMetadata?.descricaoSic || demand.observacao || "",
       disciplinas: demand.sicDraftDisciplines || [],

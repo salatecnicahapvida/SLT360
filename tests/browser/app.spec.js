@@ -587,7 +587,11 @@ test('SIC card exposes the same editable identification fields used at creation'
  await expect(form.locator('[name="motivo"] option:not([hidden])')).toHaveText(['Revisão de Projeto','Revisão de Escopo','Escopo Complementar','Solicitação de Campo']);
  await expect(form.locator('[name="prioridade"]')).toHaveCount(1);
  await expect(form.locator('[name="dataPrevistaEntrega"]')).toHaveCount(1);
- await expect(form.locator('[name="projetosEnvolvidos"]')).toHaveCount(12);
+ await expect(form.locator('[name="projetosEnvolvidos"]')).toHaveCount(0);
+ await expect(form.getByText('Disciplinas para postagem no EV',{exact:true})).toHaveCount(0);
+ await expect(form.getByText('Arquivos anexados',{exact:true})).toHaveCount(0);
+ await expect(form.getByText('Fluxo de aprovação',{exact:true})).toHaveCount(0);
+ await expect(form.getByRole('button',{name:'Enviar para aprovação',exact:true})).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
 
@@ -1068,6 +1072,10 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(sicForm.locator('[name="obraNome"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="motivo"]')).toHaveValue('RevisaoProjeto');
  await expect(sicForm.locator('[name="motivo"] option')).toHaveText(['Revisão de Projeto','Revisão de Escopo','Escopo Complementar','Solicitação de Campo']);
+ await expect(sicForm.getByText('Projetos envolvidos',{exact:true})).toHaveCount(0);
+ await expect(sicForm.getByText('Disciplinas afetadas',{exact:true})).toHaveCount(0);
+ await expect(sicForm.getByText('Arquivo em anexo',{exact:true})).toHaveCount(0);
+ await expect(sicForm.locator('[name="sicFiles"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="sprintId"] option')).toHaveText(['Sem sprint','Sprint 16','Sprint 17']);
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
