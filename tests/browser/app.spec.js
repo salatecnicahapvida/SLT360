@@ -1006,9 +1006,8 @@ test('configuration catalogs can be created and edited and feed work and EV form
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await expect(page.locator('.demand-type-card')).toBeVisible();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
- await expect(page.locator('#demandForm [name="disciplinaId"] option[value="disciplina-configuravel"]')).toHaveText(/Disciplina Configurável/);
- await expect(page.locator('#demandForm [data-demand-project]')).toHaveCount(12);
- await expect(page.locator('#demandForm [data-demand-project="DC"]')).toHaveCount(0);
+ await expect(page.locator('#demandForm [name="disciplinaId"]')).toHaveCount(0);
+ await expect(page.locator('#demandForm [data-demand-project]')).toHaveCount(0);
  await page.locator('#demandForm [data-action="close-modal"]').first().click();
  await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
  expect(b.errors).toEqual([]);
