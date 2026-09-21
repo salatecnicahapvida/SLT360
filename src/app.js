@@ -14113,6 +14113,91 @@ function renderSicPerformanceView(data) {
   `;
 }
 
+function renderRingChart(items, centerValue, centerLabel) {
+  if (!items.length) return `<div class="empty-state">Sem dados para exibir.</div>`;
+  const colors = ["#005ca9", "#2f80ed", "#008f5a", "#f79009", "#0f7c9b", "#9aaaba", "#d92d20", "#b7791f"];
+  const total = items.reduce((sum, item) => sum + Math.abs(item.valor || 0), 0) || 1;
+  let cursor = 0;
+  const stops = items
+    .map((item, index) => {
+      const share = (Math.abs(item.valor || 0) / total) * 100;
+      const start = cursor;
+      cursor += share;
+      return `${colors[index % colors.length]} ${start}% ${cursor}%`;
+    })
+    .join(", ");
+  return `
+    <div class="ring-panel">
+      <div class="ring-chart" style="background: conic-gradient(${stops})">
+        <span>${centerValue}</span>
+        <small>${centerLabel}</small>
+      </div>
+      <div class="ring-legend">
+        ${items
+          .map(
+            (item, index) => `
+              <span>
+                <i style="background:${colors[index % colors.length]}"></i>
+                <strong>${item.label}</strong>
+                <small>${number(item.valor || 0)} SIC${Number(item.valor || 0) === 1 ? "" : "s"}</small>
+              </span>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function openSicSliceDetailModal(field, label) {
+  const records = filterSicRecords(sicLineRecords()).filter((record) => {
+    if (field === "month") {
+      const key = record.dataPostagem ? record.dataPostagem.slice(0, 7) : "sem-data";
+      return key === label;
+    }
+    if (field === "sprint") {
+      const rawSprint = cleanImportedText(record.sprint || "—");
+      const sprintLabel = normalizeSearchText(rawSprint).includes("sprint") ? rawSprint : `Sprint ${rawSprint}`;
+      return sprintLabel === label;
+    }
+    return cleanImportedText(record[field]) === label;
+  });
+  const title = field === "month" ? (label === "sem-data" ? "Sem data" : dateText(`${label}-01`)) : label;
+  const rows = sicSummaryRows(records);
+  const generatedValue = records.reduce((sum, record) => sum + (Number(record.valor) || 0), 0);
+  const inFlow = records.filter((record) => !["concluido", "cancelado"].includes(record.statusId)).length;
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop" data-action="close-modal">
+      <section class="modal-card kpi-modal-card" aria-labelledby="sicSliceTitle">
+        <header>
+          <div>
+            <span class="eyebrow">Detalhe de SICs operacionais</span>
+            <h2 id="sicSliceTitle">${escapeAttribute(title)}</h2>
+            <p class="muted">${fieldLabel(field)} | ${rows.length} SIC(s)</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="kpi-detail-grid">
+            ${splitItem("SICs", String(rows.length))}
+            ${splitItem("Em fluxo", String(inFlow))}
+            ${splitItem("Obras", String(new Set(records.map((record) => `${record.obra}|${record.nomeObra}`)).size))}
+            ${splitItem("Valor gerado", money(generatedValue))}
+          </div>
+          ${renderSicRecordsTable(records)}
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
+        </footer>
+      </section>
+    </div>
+  `);
+}
+
+function openSicTimelineDetailModal(mode, key) {
+  openSicSliceDetailModal(mode === "month" ? "month" : "sprint", key);
+}
+
 function sicTimelineRows(records, mode) {
   const map = new Map();
   records.forEach((record) => {
