@@ -893,7 +893,7 @@ function normalizeDemandRecord(item = {}, works = []) {
       numeroSic: rawMetadata.numeroSic || demand.numeroSic || rawMetadata.lecomNumber || demand.lecomNumber || "",
       descricaoSic: rawMetadata.descricaoSic || demand.descricaoSic || demand.observacao || "",
       analistaSalaTecnica: rawMetadata.analistaSalaTecnica || demand.analistaSalaTecnica || demand.analistaResponsavel || "",
-      motivo: rawMetadata.motivo || demand.motivo || "InformacaoContratada",
+      motivo: rawMetadata.motivo || demand.motivo || "RevisaoProjeto",
       anexos: attachments,
     },
     sicDraftDisciplines: arrayOrFallback(demand.sicDraftDisciplines),
@@ -2146,10 +2146,36 @@ function categoryLabel(category) {
   return category === "CustosDaObra" ? "Custos da Obra" : "Outras Categorias";
 }
 
+const sicMotivoDefinitions = [
+  { id: "RevisaoProjeto", label: "Revisão de Projeto" },
+  { id: "RevisaoEscopo", label: "Revisão de Escopo" },
+  { id: "EscopoComplementar", label: "Escopo Complementar" },
+  { id: "SolicitacaoCampo", label: "Solicitação de Campo" },
+];
+
+function normalizeSicMotivo(value) {
+  const raw = String(value || "").trim();
+  if (raw === "AlteracaoProjeto") return "RevisaoProjeto";
+  return raw;
+}
+
 function motivationLabel(value) {
-  if (value === "AlteracaoProjeto") return "Alteração de Projeto";
-  if (value === "InformacaoContratada") return "Solicitação de Informação da Contratada";
-  return "Solicitação de Campo";
+  const normalized = normalizeSicMotivo(value);
+  const current = sicMotivoDefinitions.find((item) => item.id === normalized);
+  if (current) return current.label;
+  if (normalized === "InformacaoContratada") return "Solicitação de Informação da Contratada";
+  return normalized || "Não informado";
+}
+
+function sicMotivoOptions(selected = "") {
+  const normalized = normalizeSicMotivo(selected);
+  const isCurrent = sicMotivoDefinitions.some((item) => item.id === normalized);
+  const legacy = normalized && !isCurrent
+    ? `<option value="${escapeAttribute(normalized)}" selected hidden>${escapeAttribute(motivationLabel(normalized))} (legado)</option>`
+    : "";
+  return legacy + sicMotivoDefinitions
+    .map((item) => `<option value="${item.id}" ${item.id === normalized ? "selected" : ""}>${item.label}</option>`)
+    .join("");
 }
 
 function demandTypeKey(value) {
@@ -15142,7 +15168,7 @@ function demandSicInfo(demand) {
     numeroSic: metadata.numeroSic || sic?.numeroSic || sic?.id || "—",
     descricaoSic: metadata.descricaoSic || sic?.descricao || demand.observacao || "—",
     analistaSalaTecnica: metadata.analistaSalaTecnica || sic?.analistaSalaTecnica || demand.analistaResponsavel || "—",
-    motivo: metadata.motivo || sic?.motivo || "InformacaoContratada",
+    motivo: metadata.motivo || sic?.motivo || "RevisaoProjeto",
     anexos: uniqueSicAttachments,
   };
 }
@@ -15184,14 +15210,6 @@ function renderDemandSicMetadata(demand) {
           <input name="lecomNumber" value="${fieldValue(info.lecomNumber)}" placeholder="Ex.: LECOM-2026-0000" />
         </label>
         <label class="field">
-          <span>Nº da obra</span>
-          <input name="obraNumber" value="${fieldValue(info.obraNumber)}" placeholder="Chave, OI ou nº de referência da obra" />
-        </label>
-        <label class="field full-span">
-          <span>Nome da obra</span>
-          <input name="obraNome" value="${fieldValue(info.obraNome)}" placeholder="Nome da obra vinculada à SIC" />
-        </label>
-        <label class="field">
           <span>Título da SIC</span>
           <input name="tituloSic" value="${fieldValue(info.tituloSic)}" />
         </label>
@@ -15202,9 +15220,7 @@ function renderDemandSicMetadata(demand) {
         <label class="field">
           <span>Motivo</span>
           <select name="motivo">
-            <option value="InformacaoContratada" ${info.motivo === "InformacaoContratada" ? "selected" : ""}>Solicitação de Informação da Contratada</option>
-            <option value="AlteracaoProjeto" ${info.motivo === "AlteracaoProjeto" ? "selected" : ""}>Alteração de Projeto</option>
-            <option value="SolicitacaoCampo" ${info.motivo === "SolicitacaoCampo" ? "selected" : ""}>Solicitação de Campo</option>
+            ${sicMotivoOptions(info.motivo)}
           </select>
         </label>
       </div>
@@ -16549,11 +16565,7 @@ function updateSicWorkSearch(input) {
   const form = input.closest("form");
   const hidden = form?.querySelector('[name="obraId"]');
   const results = form?.querySelector("[data-sic-work-results]");
-  const workCode = form?.querySelector("[data-sic-work-code]");
-  const workName = form?.querySelector("[data-sic-work-name]");
   if (hidden) hidden.value = "";
-  if (workCode) workCode.value = "";
-  if (workName) workName.value = "";
   if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value));
 }
 
@@ -16563,8 +16575,6 @@ function openSicDemandModal(workId = "") {
   const suggestedAnalyst = registeredAnalystName(historicalAnalystForWork(selectedWork));
   const selectedSprint = currentSprint();
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
-  const selectedWorkNumber = selectedWork ? selectedWork.chaveUnica || selectedWork.codigoOriginal || "" : "";
-  const selectedWorkName = selectedWork ? selectedWork.nome || "" : "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card sic-demand-card" id="demandForm" aria-labelledby="demandTitle">
@@ -16617,14 +16627,6 @@ function openSicDemandModal(workId = "") {
                 <input name="lecomNumber" placeholder="Ex.: LECOM-2026-0000" />
               </label>
               <label class="field">
-                <span>Nº da obra</span>
-                <input name="obraNumber" data-sic-work-code value="${escapeAttribute(selectedWorkNumber)}" placeholder="Chave, OI ou nº de referência da obra" />
-              </label>
-              <label class="field full-span">
-                <span>Nome da obra</span>
-                <input name="obraNome" data-sic-work-name value="${escapeAttribute(selectedWorkName)}" placeholder="Nome da obra vinculada à SIC" />
-              </label>
-              <label class="field">
                 <span>Título da SIC *</span>
                 <input name="tituloSic" placeholder="Ex.: Ajuste de escopo solicitado pela contratada" required />
               </label>
@@ -16661,9 +16663,7 @@ function openSicDemandModal(workId = "") {
             <label class="field">
               <span>Motivo</span>
               <select name="motivo">
-                <option value="InformacaoContratada">Solicitação de Informação da Contratada</option>
-                <option value="AlteracaoProjeto">Alteração de Projeto</option>
-                <option value="SolicitacaoCampo">Solicitação de Campo</option>
+                ${sicMotivoOptions("RevisaoProjeto")}
               </select>
             </label>
             ${renderDemandLabelsField()}
@@ -17571,12 +17571,13 @@ async function handleDemandSubmit(form) {
 
   if (tipo === "SIC") {
     const lecomNumber = String(formData.get("lecomNumber") || "").trim();
-    const obraNumber = String(formData.get("obraNumber") || linkedWork?.chaveUnica || linkedWork?.codigoOriginal || "").trim();
-    const obraNome = String(formData.get("obraNome") || linkedWork?.nome || "").trim();
+    const obraNumber = String(linkedWork?.chaveUnica || linkedWork?.codigoOriginal || "").trim();
+    const obraNome = String(linkedWork?.nome || "").trim();
     const tituloSic = String(formData.get("tituloSic") || "").trim();
     const numeroSic = String(formData.get("numeroSic") || "").trim();
     const descricaoSic = String(formData.get("descricao") || "").trim();
     const analistaSalaTecnica = analystAssignment.analistaResponsavel;
+    const motivo = normalizeSicMotivo(formData.get("motivo") || "RevisaoProjeto");
     let anexos = [];
     try {
       anexos = await fileAttachmentMetadata(form.querySelector('[name="sicFiles"]'), { entidade: "demanda", entidadeId: demandId, tipo: "SIC" });
@@ -17586,8 +17587,8 @@ async function handleDemandSubmit(form) {
       return;
     }
 
-    if (!obraNumber || !obraNome || !tituloSic || !descricaoSic || !analistaSalaTecnica) {
-      showFormError("Preencha nº da obra, nome da obra, título, descrição da SIC e analista da Sala Técnica.", form);
+    if (!tituloSic || !descricaoSic || !analistaSalaTecnica) {
+      showFormError("Preencha título, descrição da SIC e analista da Sala Técnica.", form);
       return;
     }
 
@@ -17617,7 +17618,7 @@ async function handleDemandSubmit(form) {
       numeroSic,
       descricaoSic,
       analistaSalaTecnica,
-      motivo: formData.get("motivo") || "InformacaoContratada",
+      motivo,
       anexos,
     };
   }
@@ -17760,7 +17761,8 @@ async function postDemandSicToEV(demandId) {
     return;
   }
 
-  const isInformationalSic = (metadata.motivo || info.motivo) === "InformacaoContratada";
+  const sicMotivo = normalizeSicMotivo(metadata.motivo || info.motivo);
+  const isInformationalSic = ["InformacaoContratada", "SolicitacaoCampo"].includes(sicMotivo);
   const invalid = affected.find((item) => {
     const discipline = disciplineById(item.disciplinaId);
     return !item.disciplinaId || !discipline.selecionavelParaSIC || (!isInformationalSic && item.valorDelta === 0);
@@ -17788,7 +17790,7 @@ async function postDemandSicToEV(demandId) {
     titulo: dashToEmpty(info.tituloSic),
     numeroSic: dashToEmpty(info.numeroSic) || sicId,
     disciplinasAfetadas: affected,
-    motivo: metadata.motivo || info.motivo || "InformacaoContratada",
+    motivo: normalizeSicMotivo(metadata.motivo || info.motivo || "RevisaoProjeto"),
     descricao: dashToEmpty(info.descricaoSic),
     documentoUrl: (info.anexos || []).map((file) => file.nome).join(", "),
     anexos: info.anexos || [],
@@ -17935,12 +17937,12 @@ async function handleDemandDetailSubmit(form) {
     demand.sicMetadata = demand.sicMetadata || {};
     demand.sicMetadata.analistaSalaTecnica = demand.analistaResponsavel || "";
     demand.sicMetadata.lecomNumber = String(formData.get("lecomNumber") || "").trim();
-    demand.sicMetadata.obraNumber = String(formData.get("obraNumber") || selectedWork.chaveUnica || selectedWork.codigoOriginal || "").trim();
-    demand.sicMetadata.obraNome = String(formData.get("obraNome") || selectedWork.nome || "").trim();
+    demand.sicMetadata.obraNumber = String(selectedWork.chaveUnica || selectedWork.codigoOriginal || "").trim();
+    demand.sicMetadata.obraNome = String(selectedWork.nome || "").trim();
     demand.sicMetadata.tituloSic = String(formData.get("tituloSic") || "").trim();
     demand.sicMetadata.numeroSic = String(formData.get("numeroSic") || "").trim();
     demand.sicMetadata.descricaoSic = String(formData.get("sicDescricao") || "").trim();
-    demand.sicMetadata.motivo = formData.get("motivo") || "InformacaoContratada";
+    demand.sicMetadata.motivo = normalizeSicMotivo(formData.get("motivo") || demand.sicMetadata.motivo || "RevisaoProjeto");
     demand.observacao = demand.sicMetadata.descricaoSic;
     (demand.sicIds || []).forEach((sicId) => {
       const sic = state.sics.find((item) => item.id === sicId);
@@ -19436,13 +19438,9 @@ document.addEventListener("click", async (event) => {
     const input = form?.querySelector("[data-sic-work-search]");
     const hidden = form?.querySelector('[name="obraId"]');
     const results = form?.querySelector("[data-sic-work-results]");
-    const workCode = form?.querySelector("[data-sic-work-code]");
-    const workName = form?.querySelector("[data-sic-work-name]");
     if (isDemandWorkEligible(work) && input && hidden) {
       input.value = workOptionLabel(work);
       hidden.value = work.id;
-      if (workCode) workCode.value = work.chaveUnica || work.codigoOriginal || "";
-      if (workName) workName.value = work.nome || "";
       if (results) results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(renderSicWorkSearchResults(input.value, work.id));
       suggestHistoricalAnalystInForm(form, work);
       const errorBox = form.querySelector("#formError");

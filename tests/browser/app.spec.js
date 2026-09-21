@@ -578,12 +578,13 @@ test('SIC card exposes the same editable identification fields used at creation'
  await expect(form.locator('[name="sprintId"]')).toHaveCount(1);
  await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
  await expect(form.locator('[name="lecomNumber"]')).toHaveValue('LECOM-2026-001');
- await expect(form.locator('[name="obraNumber"]')).toHaveValue('TEST');
- await expect(form.locator('[name="obraNome"]')).toHaveValue('Obra de teste');
+ await expect(form.locator('[name="obraNumber"]')).toHaveCount(0);
+ await expect(form.locator('[name="obraNome"]')).toHaveCount(0);
  await expect(form.locator('[name="tituloSic"]')).toHaveValue('SIC de teste');
  await expect(form.locator('[name="numeroSic"]')).toHaveValue('SIC-001');
  await expect(form.locator('[name="sicDescricao"]')).toHaveValue('Descrição da SIC');
- await expect(form.locator('[name="motivo"]')).toHaveValue('AlteracaoProjeto');
+ await expect(form.locator('[name="motivo"]')).toHaveValue('RevisaoProjeto');
+ await expect(form.locator('[name="motivo"] option:not([hidden])')).toHaveText(['Revisão de Projeto','Revisão de Escopo','Escopo Complementar','Solicitação de Campo']);
  await expect(form.locator('[name="prioridade"]')).toHaveCount(1);
  await expect(form.locator('[name="dataPrevistaEntrega"]')).toHaveCount(1);
  await expect(form.locator('[name="projetosEnvolvidos"]')).toHaveCount(12);
@@ -648,8 +649,8 @@ test('new work demands list only works from 2025 onward, including SIC',async({p
  await sic.locator('[data-sic-work-search]').fill('Obra de 2024');
  await expect(sic.locator('[data-sic-work-results] [data-action="select-sic-work"]')).toHaveCount(0);
  await sic.locator('[name="obraId"]').evaluate(element=>{element.value='older-work';});
- await sic.locator('[name="obraNumber"]').fill('2024');
- await sic.locator('[name="obraNome"]').fill('Obra de 2024');
+ await expect(sic.locator('[name="obraNumber"]')).toHaveCount(0);
+ await expect(sic.locator('[name="obraNome"]')).toHaveCount(0);
  await sic.locator('[data-action="submit-demand-form"]').click();
  await expect(sic.locator('#formError')).toContainText('2025 em diante');
  expect(b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands')).toHaveLength(0);
@@ -1063,6 +1064,10 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  const sicForm=page.locator('#demandForm');
  await expect(sicForm.locator('[name="sprintId"]')).toHaveValue('sprint-017');
+ await expect(sicForm.locator('[name="obraNumber"]')).toHaveCount(0);
+ await expect(sicForm.locator('[name="obraNome"]')).toHaveCount(0);
+ await expect(sicForm.locator('[name="motivo"]')).toHaveValue('RevisaoProjeto');
+ await expect(sicForm.locator('[name="motivo"] option')).toHaveText(['Revisão de Projeto','Revisão de Escopo','Escopo Complementar','Solicitação de Campo']);
  await expect(sicForm.locator('[name="sprintId"] option')).toHaveText(['Sem sprint','Sprint 16','Sprint 17']);
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
