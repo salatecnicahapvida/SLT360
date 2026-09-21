@@ -448,39 +448,44 @@ test('pausing and canceling a demand require a reason and persist it in the card
  const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
 
- let card=page.locator('article[data-id="reason-required-demand"]');
- await card.click();
- let form=page.locator('#demandDetailForm');
- await form.locator('[name="coluna"]').selectOption('pausado');
- const reasonField=form.locator('[name="statusReason"]');
- await expect(reasonField).toBeVisible();
- await expect(reasonField).toHaveAttribute('required','');
- await form.getByRole('button',{name:'Salvar',exact:true}).click();
- await expect(form).toBeVisible();
- await reasonField.fill('Aguardando definição do escopo pela área solicitante.');
- await form.getByRole('button',{name:'Salvar',exact:true}).click();
- await expect(page.locator('.kanban-column[data-column="pausado"] article[data-id="reason-required-demand"]')).toBeVisible();
- await expect.poll(()=>{
-  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='reason-required-demand');
-  return changes.at(-1)?.document?.motivoPausa;
- }).toBe('Aguardando definição do escopo pela área solicitante.');
-
- card=page.locator('.kanban-column[data-column="pausado"] article[data-id="reason-required-demand"]');
- const canceledColumn=page.locator('.kanban-column[data-column="cancelado"]');
+ const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
+ const pausedColumn=page.locator('.kanban-column[data-column="pausado"]');
+ let card=fazerColumn.locator('article[data-id="reason-required-demand"]');
  await card.scrollIntoViewIfNeeded();
- const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),canceledColumn.locator('.demand-list').boundingBox()]);
+ const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),pausedColumn.locator('.demand-list').boundingBox()]);
  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
  await page.mouse.down();
  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
  await page.mouse.up();
 
- const reasonModal=page.locator('#demandStatusReasonForm');
+ let reasonModal=page.locator('#demandStatusReasonForm');
  await expect(reasonModal).toBeVisible();
- await expect(reasonModal.getByRole('heading',{name:'Informe o motivo do cancelamento'})).toBeVisible();
- await reasonModal.getByRole('button',{name:'Confirmar cancelamento'}).click();
+ await expect(reasonModal.getByRole('heading',{name:'Informe o motivo da pausa'})).toBeVisible();
+ await reasonModal.getByRole('button',{name:'Confirmar pausa'}).click();
  await expect(reasonModal).toBeVisible();
- await reasonModal.locator('[name="movementReason"]').fill('Demanda cancelada pela área solicitante.');
- await reasonModal.getByRole('button',{name:'Confirmar cancelamento'}).click();
+ await reasonModal.locator('[name="movementReason"]').fill('Aguardando definição do escopo pela área solicitante.');
+ await reasonModal.getByRole('button',{name:'Confirmar pausa'}).click();
+ await expect(pausedColumn.locator('article[data-id="reason-required-demand"]')).toBeVisible();
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='reason-required-demand');
+  return changes.at(-1)?.document?.motivoPausa;
+ }).toBe('Aguardando definição do escopo pela área solicitante.');
+
+ card=pausedColumn.locator('article[data-id="reason-required-demand"]');
+ await card.click();
+ const form=page.locator('#demandDetailForm');
+ await expect(form.locator('[name="statusReason"]')).toHaveValue('Aguardando definição do escopo pela área solicitante.');
+ await form.locator('[name="coluna"]').selectOption('cancelado');
+ const cancelReason=form.locator('[name="statusReason"]');
+ await expect(cancelReason).toBeVisible();
+ await expect(cancelReason).toHaveAttribute('required','');
+ await expect(cancelReason).toHaveValue('');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(form).toBeVisible();
+ await cancelReason.fill('Demanda cancelada pela área solicitante.');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+
+ const canceledColumn=page.locator('.kanban-column[data-column="cancelado"]');
  await expect(canceledColumn.locator('article[data-id="reason-required-demand"]')).toBeVisible();
  await expect.poll(()=>{
   const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='reason-required-demand');
