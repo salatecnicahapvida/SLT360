@@ -442,6 +442,53 @@ test('moving a demand resets the current stage timer and preserves every previou
  expect(b.errors).toEqual([]);
 });
 
+
+test('pausing and canceling a demand require a reason and persist it in the card',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'reason-required-demand',obraId:'test-work',coluna:'fazer',phaseHistory:[]};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+
+ let card=page.locator('article[data-id="reason-required-demand"]');
+ await card.click();
+ let form=page.locator('#demandDetailForm');
+ await form.locator('[name="coluna"]').selectOption('pausado');
+ const reasonField=form.locator('[name="statusReason"]');
+ await expect(reasonField).toBeVisible();
+ await expect(reasonField).toHaveAttribute('required','');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(form).toBeVisible();
+ await reasonField.fill('Aguardando definição do escopo pela área solicitante.');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.locator('.kanban-column[data-column="pausado"] article[data-id="reason-required-demand"]')).toBeVisible();
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='reason-required-demand');
+  return changes.at(-1)?.document?.motivoPausa;
+ }).toBe('Aguardando definição do escopo pela área solicitante.');
+
+ card=page.locator('.kanban-column[data-column="pausado"] article[data-id="reason-required-demand"]');
+ const canceledColumn=page.locator('.kanban-column[data-column="cancelado"]');
+ await card.scrollIntoViewIfNeeded();
+ const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),canceledColumn.locator('.demand-list').boundingBox()]);
+ await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
+ await page.mouse.down();
+ await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
+ await page.mouse.up();
+
+ const reasonModal=page.locator('#demandStatusReasonForm');
+ await expect(reasonModal).toBeVisible();
+ await expect(reasonModal.getByRole('heading',{name:'Informe o motivo do cancelamento'})).toBeVisible();
+ await reasonModal.getByRole('button',{name:'Confirmar cancelamento'}).click();
+ await expect(reasonModal).toBeVisible();
+ await reasonModal.locator('[name="movementReason"]').fill('Demanda cancelada pela área solicitante.');
+ await reasonModal.getByRole('button',{name:'Confirmar cancelamento'}).click();
+ await expect(canceledColumn.locator('article[data-id="reason-required-demand"]')).toBeVisible();
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='reason-required-demand');
+  return changes.at(-1)?.document?.motivoCancelamento;
+ }).toBe('Demanda cancelada pela área solicitante.');
+ expect(b.errors).toEqual([]);
+});
+
 test('completed demand hides current-stage age while canceled demand keeps its stopped counter',async({page})=>{
  const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
  const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();

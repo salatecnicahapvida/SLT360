@@ -2,6 +2,8 @@
 
 Na visão operacional de Obras, o Kanban controla o ciclo da demanda e não realiza checagem de saldo disponível.
 
+Ao mover uma demanda para **Pausado** ou **Cancelado**, é obrigatório informar um motivo com pelo menos 5 caracteres. O motivo fica salvo na própria demanda e também no histórico de alterações. A regra vale tanto para movimentação pelo seletor de status quanto pelo arraste do card no Kanban.
+
 Para demandas do tipo **SIC**, o encerramento passa obrigatoriamente pelas etapas **Aguardando Aprovação Diretoria** → **Aprovado Pela Diretoria** → **Concluído**. A etapa antiga **Aguardando Validação Sala Técnica** foi removida; registros legados nessa fase são tratados como **Aguardando Validação Obras**.
 
 Ao mover uma demanda para **Concluído**, o sistema exige a confirmação do impacto no EV:

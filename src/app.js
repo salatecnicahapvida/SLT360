@@ -15395,6 +15395,11 @@ function openDemandDetailModal(id) {
                 ${columnOptions(demand)}
               </select>
             </label>
+            <label class="field full-span" data-demand-status-reason-field ${["pausado", "cancelado"].includes(demand.coluna) ? "" : "hidden"}>
+              <span data-demand-status-reason-label>${demandStatusReasonLabel(demand.coluna)}</span>
+              <textarea name="statusReason" rows="3" minlength="5" ${["pausado", "cancelado"].includes(demand.coluna) ? "required" : ""} placeholder="Explique por que esta demanda está sendo ${demand.coluna === "cancelado" ? "cancelada" : "pausada"}...">${escapeAttribute(demandStatusReason(demand))}</textarea>
+              <small class="muted">Obrigatório ao pausar ou cancelar. O motivo fica salvo no card e no histórico.</small>
+            </label>
           </section>
 
           ${demand.coluna === "concluido" ? `
@@ -15721,6 +15726,16 @@ function columnOptions(demand) {
   return columnsForDemand(demand)
     .map((column) => `<option value="${column.id}" ${column.id === demand.coluna ? "selected" : ""} ${column.disabled ? "disabled" : ""}>${column.label}</option>`)
     .join("");
+}
+
+function demandStatusReason(demand, columnId = demand?.coluna) {
+  if (columnId === "pausado") return String(demand?.motivoPausa || "").trim();
+  if (columnId === "cancelado") return String(demand?.motivoCancelamento || "").trim();
+  return "";
+}
+
+function demandStatusReasonLabel(columnId) {
+  return columnId === "cancelado" ? "Motivo do cancelamento *" : "Motivo da pausa *";
 }
 
 function priorityOptions(selected) {
@@ -17864,6 +17879,16 @@ async function handleDemandDetailSubmit(form) {
   const sicsSnapshot = clone(state.sics || []);
   const historySnapshot = clone(state.history || []);
   const formData = new FormData(form);
+  const selectedColumnFromForm = formData.get("coluna") || demand.coluna;
+  const movementReason = String(formData.get("statusReason") || "").trim();
+  if (["pausado", "cancelado"].includes(selectedColumnFromForm) && movementReason.length < 5) {
+    showFormError(selectedColumnFromForm === "cancelado"
+      ? "Explique o motivo do cancelamento antes de salvar."
+      : "Explique o motivo da pausa antes de salvar.", form);
+    form.querySelector('[name="statusReason"]')?.focus();
+    return;
+  }
+  const previousStatusReason = demandStatusReason(demand, selectedColumnFromForm);
   const previousAnalysts = demandAnalystNames(demand);
   const previousProjects = arrayOrFallback(demand.projetosEnvolvidos).map((value) => String(value));
   const previousProjectDetails = normalizeDemandProjectDetails(demand.projetosEnvolvidosDetalhes);
@@ -17996,7 +18021,7 @@ async function handleDemandDetailSubmit(form) {
   ].forEach((field) => {
     demand[field] = formData.get(field) || "";
   });
-  const selectedColumn = formData.get("coluna") || demand.coluna;
+  const selectedColumn = selectedColumnFromForm;
   const validationWasJustSent = !demandSnapshot.dataEnvioRealValidacaoObras && Boolean(demand.dataEnvioRealValidacaoObras);
   const validationColumnIndex = columns.findIndex((item) => item.id === "validacaoObras");
   const selectedColumnIndex = columns.findIndex((item) => item.id === selectedColumn);
@@ -18010,7 +18035,16 @@ async function handleDemandDetailSubmit(form) {
   const requestedColumn = shouldAutoAdvanceToWorksValidation ? "validacaoObras" : selectedColumn;
   const nextTypeIsSic = demandTypeKey(demand.tipo) === "SIC";
   const completionRequested = demandSnapshot.coluna !== "concluido" && requestedColumn === "concluido" && !(nextTypeIsSic && demandSnapshot.coluna !== "aprovadoDiretoria");
-  const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false });
+  const statusChanged = demandSnapshot.coluna !== requestedColumn;
+  if (!statusChanged && selectedColumn === "pausado" && movementReason !== previousStatusReason) {
+    demand.motivoPausa = movementReason;
+    addHistory({ entidade: "demanda", entidadeId: demand.id, campo: "motivoPausa", valorAnterior: previousStatusReason || "Não informado", valorNovo: movementReason });
+  }
+  if (!statusChanged && selectedColumn === "cancelado" && movementReason !== previousStatusReason) {
+    demand.motivoCancelamento = movementReason;
+    addHistory({ entidade: "demanda", entidadeId: demand.id, campo: "motivoCancelamento", valorAnterior: previousStatusReason || "Não informado", valorNovo: movementReason });
+  }
+  const statusUpdate = completionRequested ? demand : await updateDemandColumn(demand.id, requestedColumn, { persist: false, movementReason });
   if (statusUpdate === false) {
     state.demands[demandIndex] = demandSnapshot;
     if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
@@ -18474,7 +18508,57 @@ async function handleDemandCompletionSubmit(form) {
   showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
 }
 
-async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false } = {}) {
+function openDemandStatusReasonModal(id, nextColumnId) {
+  const demand = state.demands.find((item) => item.id === id);
+  const column = columnById(nextColumnId);
+  if (!demand || !column || !["pausado", "cancelado"].includes(nextColumnId)) return;
+  const isCancel = nextColumnId === "cancelado";
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop">
+      <form class="modal-card kpi-modal-card" id="demandStatusReasonForm" data-id="${escapeAttribute(id)}" data-column="${escapeAttribute(nextColumnId)}" aria-labelledby="demandStatusReasonTitle">
+        <header>
+          <div>
+            <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(column.label)}</span>
+            <h2 id="demandStatusReasonTitle">${isCancel ? "Informe o motivo do cancelamento" : "Informe o motivo da pausa"}</h2>
+            <p class="muted">A movimentação só será concluída depois que o motivo for registrado.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <label class="field">
+            <span>${isCancel ? "Motivo do cancelamento *" : "Motivo da pausa *"}</span>
+            <textarea name="movementReason" rows="5" minlength="5" required autofocus placeholder="Explique o motivo..."></textarea>
+            <small class="muted">O texto ficará vinculado à demanda e registrado no histórico.</small>
+          </label>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Voltar</button>
+          <button class="primary-action" type="submit">${isCancel ? "Confirmar cancelamento" : "Confirmar pausa"}</button>
+        </footer>
+      </form>
+    </div>
+  `);
+  setTimeout(() => modalRoot.querySelector('[name="movementReason"]')?.focus(), 0);
+}
+
+async function handleDemandStatusReasonSubmit(form) {
+  const reason = String(new FormData(form).get("movementReason") || "").trim();
+  const nextColumnId = form.dataset.column || "";
+  if (reason.length < 5) {
+    showFormError(nextColumnId === "cancelado"
+      ? "Explique o motivo do cancelamento."
+      : "Explique o motivo da pausa.", form);
+    return;
+  }
+  const updated = await updateDemandColumn(form.dataset.id, nextColumnId, { movementReason: reason });
+  if (!updated) return;
+  closeModal();
+  render();
+  showToast(`Card movido para ${demandStatusLabel(updated)} com motivo registrado.`);
+}
+
+async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false, movementReason = "" } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
@@ -18493,6 +18577,11 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     if (nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
       demand.dataValidacaoObras = todayISO();
     }
+  }
+  const normalizedMovementReason = String(movementReason || "").trim();
+  if (["pausado", "cancelado"].includes(nextColumnId) && normalizedMovementReason.length < 5) {
+    openDemandStatusReasonModal(demand.id, nextColumnId);
+    return false;
   }
   if (nextColumnId === "concluido" && !skipCompletionGate) {
     openDemandCompletionModal(demand.id);
@@ -18517,6 +18606,8 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     },
   ];
   demand.coluna = nextColumnId;
+  if (nextColumnId === "pausado") demand.motivoPausa = normalizedMovementReason;
+  if (nextColumnId === "cancelado") demand.motivoCancelamento = normalizedMovementReason;
   demand.phaseStartedAt = transitionedAt;
   demand.phaseEndedAt = ["concluido", "cancelado"].includes(nextColumnId) ? transitionedAt : "";
   demand.phaseStartedAtEstimated = false;
@@ -18528,6 +18619,15 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     valorAnterior: previous,
     valorNovo: nextColumn.label,
   });
+  if (["pausado", "cancelado"].includes(nextColumnId)) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: nextColumnId === "cancelado" ? "motivoCancelamento" : "motivoPausa",
+      valorAnterior: "Não informado",
+      valorNovo: normalizedMovementReason,
+    });
+  }
   if (persist) {
     try {
       await saveStateAndWait();
@@ -19472,6 +19572,23 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches('#demandDetailForm [name="coluna"]')) {
+    const form = event.target.closest("#demandDetailForm");
+    const demand = state.demands.find((item) => item.id === form?.dataset.id);
+    const field = form?.querySelector("[data-demand-status-reason-field]");
+    const textarea = field?.querySelector('[name="statusReason"]');
+    const label = field?.querySelector("[data-demand-status-reason-label]");
+    const selected = event.target.value;
+    const required = ["pausado", "cancelado"].includes(selected);
+    if (field) field.hidden = !required;
+    if (textarea) {
+      textarea.required = required;
+      textarea.placeholder = selected === "cancelado" ? "Explique por que esta demanda está sendo cancelada..." : "Explique por que esta demanda está sendo pausada...";
+      textarea.value = required && demand?.coluna === selected ? demandStatusReason(demand, selected) : "";
+    }
+    if (label) label.textContent = demandStatusReasonLabel(selected);
+    return;
+  }
   if (event.target.matches("[data-demand-analyst-option]")) {
     updateDemandAnalystSelector(event.target);
     return;
@@ -19723,6 +19840,10 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "demandDetailForm") {
     event.preventDefault();
     await handleDemandDetailSubmit(event.target);
+  }
+  if (event.target.id === "demandStatusReasonForm") {
+    event.preventDefault();
+    await handleDemandStatusReasonSubmit(event.target);
   }
   if (event.target.id === "demandCompletionForm") {
     event.preventDefault();
