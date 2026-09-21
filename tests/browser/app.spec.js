@@ -1,6 +1,5 @@
 import {test,expect} from '@playwright/test';
 import {flattenPayload,ENTITY_BY_NAME} from '../../src/module-model.js';
-import * as XLSX from 'xlsx';
 
 const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
@@ -1633,16 +1632,16 @@ test('SIC study is sourced only from operational SIC demand cards',async({page})
  expect(b.errors).toEqual([]);
 });
 
-test('database grants allow finance for an analyst while mutations stay blocked',async({page})=>{
+test('database grants allow finance for an analyst while SIC study remains read-only operational data',async({page})=>{
  const b=await backend(page,'Analista');await login(page);
  await page.locator('[data-view="budget"]').filter({visible:true}).first().click();
  await expect(page.locator('#app')).toContainText('Verba');
  await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await page.locator('[data-action="set-sic-view"][data-view-mode="approval"]').click();
- await page.getByText('Obra SIC de teste',{exact:true}).first().click();
- await expect(page.locator('[data-approve][data-sicid="sic-test"]')).toBeDisabled();
- await expect(page.locator('[data-descedit][data-sicid="sic-test"]')).toBeDisabled();
+ await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance']);
+ await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(0);
+ await expect(page.locator('#btnOpenImport')).toHaveCount(0);
+ await expect(page.locator('[data-approve]')).toHaveCount(0);
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
 });
 
@@ -1656,25 +1655,15 @@ test('stored HTML cannot execute scripts and the old public SIC endpoint is gone
  expect(b.errors).toEqual([]);
 });
 
-test('Excel import stays available inside the native SIC panel and saves to Supabase',async({page})=>{
+test('legacy SIC approval import is no longer exposed in the study',async({page})=>{
  const b=await backend(page);await login(page);
  await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await page.locator('[data-action="set-sic-view"][data-view-mode="approval"]').click();
- await page.locator('#btnOpenImport').click();
- const book=XLSX.utils.book_new();
- XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([
-  ['OI','Descrição','Classificação','EV sem aditivos','Aditivos','EV total','Área','LECOM','Descrição SIC','Valor SIC'],
-  ['OI-NEW','Obra importada teste','Teste',100,0,100,10,'NEW-SIC','SIC importada',15],
- ]),'Importação');
- await page.locator('#fileInput').setInputFiles({name:'fixture.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:XLSX.write(book,{type:'buffer',bookType:'xlsx'})});
- await expect(page.locator('#btnConfirmImport')).toBeEnabled();
- await page.locator('#weekLabel').fill('Semana importada');
- await page.locator('#weekStart').fill('2026-09-08');await page.locator('#weekEnd').fill('2026-09-14');
- await page.locator('#btnConfirmImport').click();
- await expect.poll(()=>b.requests.length).toBeGreaterThan(0);
- await expect(page.getByText('Obra importada teste',{exact:true}).first()).toBeVisible();
- expect(b.requests.at(-1).changes.some(c=>c.entity==='budget_approval_works'&&c.document.descricao==='Obra importada teste')).toBe(true);
+ await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(0);
+ await expect(page.locator('#btnOpenImport')).toHaveCount(0);
+ await expect(page.getByText('Obra SIC de teste',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Demanda de teste',{exact:true})).toHaveCount(0);
+ expect(b.requests).toHaveLength(0);
  expect(b.errors).toEqual([]);
 });
 
