@@ -7994,14 +7994,10 @@ async function openHistoricalEVModal(recordId) {
     try { items = await globalThis.SLT_CLOUD.historicalEVItems(recordId); }
     catch { showToast("Não foi possível carregar a composição do EV. Tente novamente."); return; }
   }
-  const risk = Number(record.disciplines?.["taxa-risco"] || 0);
   const additives = evAdditiveSummary(record, items);
   const sicTotal = additives.total;
   const originalTotal = additives.original;
   const sicPercentage = additives.percentage === null ? "—" : `${number(additives.percentage, 2)}%`;
-  const sicThresholdClass = additives.threshold === "alert"
-    ? "mini-metric--alert"
-    : additives.threshold === "warning" ? "mini-metric--warning" : "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
@@ -8375,25 +8371,6 @@ function loadUnifiedEVIntoINCC(recordId) {
   render();
   document.querySelector("#sltCalculator")?.scrollIntoView({ behavior: "smooth", block: "start" });
   showToast(`EV enviado para a Calculadora SLT (${record.year}).`);
-}
-
-function projectMasterItems(work) {
-  const demands = state.demands.filter((demand) => demand.obraId === work.id);
-  const items = [];
-  (work.ev.anexos || []).forEach((file) => {
-    items.push(`Arquivo EV: ${file.nome}`);
-  });
-  demands.forEach((demand) => {
-    Object.entries(demand.projetos || {}).forEach(([disciplina, status]) => {
-      if (status) items.push(`${disciplina}: ${formatMasterStatus(status)}`);
-    });
-    (demand.projetosCustom || []).forEach((item) => {
-      const name = item.nome || item.disciplina || "Projeto complementar";
-      const status = formatMasterStatus(item.status || item.caminho || item);
-      items.push(`${name}: ${status}`);
-    });
-  });
-  return [...new Set(items)].slice(0, 10);
 }
 
 function formatMasterStatus(value) {
