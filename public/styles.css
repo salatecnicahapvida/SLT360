@@ -9321,7 +9321,7 @@ button.analyst-chip {
 }
 
 .portfolio-works-table {
-  min-width: 2100px;
+  min-width: 1420px;
 }
 
 .portfolio-works-table th:nth-child(2),
@@ -9331,22 +9331,18 @@ button.analyst-chip {
 }
 
 .portfolio-works-table th:nth-child(8),
-.portfolio-works-table td:nth-child(8) { min-width: 180px; }
-
+.portfolio-works-table td:nth-child(8),
 .portfolio-works-table th:nth-child(9),
-.portfolio-works-table td:nth-child(9) {
-  min-width: 260px;
-  white-space: normal;
+.portfolio-works-table td:nth-child(9),
+.portfolio-works-table th:nth-child(10),
+.portfolio-works-table td:nth-child(10) {
+  min-width: 140px;
 }
 
-.portfolio-works-table th:nth-child(10),
-.portfolio-works-table td:nth-child(10),
 .portfolio-works-table th:nth-child(11),
-.portfolio-works-table td:nth-child(11),
-.portfolio-works-table th:nth-child(12),
-.portfolio-works-table td:nth-child(12),
-.portfolio-works-table th:nth-child(13),
-.portfolio-works-table td:nth-child(13) { min-width: 150px; }
+.portfolio-works-table td:nth-child(11) {
+  min-width: 190px;
+}
 
 .portfolio-plan-table {
   min-width: 1780px;
@@ -9491,13 +9487,43 @@ button.analyst-chip {
   min-width: 180px;
 }
 
-.portfolio-works-table th:nth-child(14),
-.portfolio-works-table td:nth-child(14) {
-  min-width: 410px;
+.portfolio-works-table th:nth-child(10),
+.portfolio-works-table td:nth-child(10) {
+  min-width: 140px;
+  white-space: nowrap;
+}
+
+.portfolio-works-table th:nth-child(11),
+.portfolio-works-table td:nth-child(11) {
+  min-width: 190px;
 }
 
 .portfolio-actions {
   flex-wrap: nowrap;
+}
+
+.portfolio-work-detail-grid {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.portfolio-work-address {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.portfolio-work-address strong {
+  color: var(--navy);
+}
+
+.portfolio-work-address p {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .portfolio-actions .compact-action {
