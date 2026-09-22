@@ -8510,6 +8510,11 @@ function renderEVStandardStructure(work, completionDemandId = "") {
       <section class="ev-deviation-panel" data-ev-deviation-panel>
         ${evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotalNoRisk)}
       </section>
+      <div class="ev-editor-toolbar">
+        <button class="secondary-action compact-action" type="button" data-action="toggle-ev-zero-lines" data-hidden="false" aria-pressed="false">
+          Ocultar vazios
+        </button>
+      </div>
       <div class="table-wrap ev-editor-table">
         <table class="data-table">
           <thead>
@@ -19299,6 +19304,21 @@ document.addEventListener("click", async (event) => {
     const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
     if (!demand || demand.coluna !== "concluido") return;
     openDemandCompletionModal(demand.id);
+    return;
+  }
+  if (action === "toggle-ev-zero-lines") {
+    const form = actionButton.closest("#evForm");
+    if (!form) return;
+    const shouldHide = actionButton.dataset.hidden !== "true";
+    const rows = [...form.querySelectorAll(".ev-line-row")];
+    rows.forEach((row) => {
+      const input = row.querySelector(".ev-value-input");
+      const value = parseCurrency(input?.value || "");
+      row.hidden = shouldHide && Math.abs(value) < 0.000001;
+    });
+    actionButton.dataset.hidden = shouldHide ? "true" : "false";
+    actionButton.setAttribute("aria-pressed", shouldHide ? "true" : "false");
+    actionButton.textContent = shouldHide ? "Exibir vazios" : "Ocultar vazios";
     return;
   }
   if (action === "toggle-ev-completeness") {
