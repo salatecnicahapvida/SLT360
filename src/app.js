@@ -754,18 +754,14 @@ function canonicalStoredEVStatus(status) {
 }
 
 function effectiveEVStatus(work) {
-  if (!work?.ev || work.ev._virtualEmptyEV) return "Sem EV";
-  if (canonicalStoredEVStatus(work.ev.status) === "Completo") return "Completo";
+  if (!work?.ev || work.ev._virtualEmptyEV || !evHasBudgetData(work.ev)) return "Sem EV";
   return deriveEVStatus(work);
 }
 
 function normalizeWorkEVLifecycle(work) {
-  if (!work?.ev) return { ...work, ev: virtualEmptyEV(work) };
-  if (!evHasBudgetData(work.ev) && canonicalStoredEVStatus(work.ev.status) !== "Completo") {
-    return { ...work, ev: virtualEmptyEV(work) };
-  }
+  if (!work?.ev || !evHasBudgetData(work.ev)) return { ...work, ev: virtualEmptyEV(work) };
   const normalized = { ...work, ev: { ...work.ev } };
-  normalized.ev.status = effectiveEVStatus(normalized);
+  normalized.ev.status = deriveEVStatus(normalized);
   delete normalized.ev._virtualEmptyEV;
   return normalized;
 }
@@ -8070,7 +8066,7 @@ function ensureEditableHistoricalEV(recordId) {
       versaoAtual: revisionNumber,
       status: "Completo",
       anexos: [],
-      lines: Object.entries(record.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({ disciplinaId, valorOrcado: Number(valorOrcado || 0), status: "Estimado" })),
+      lines: Object.entries(record.disciplines || {}).map(([disciplinaId, valorOrcado]) => ({ disciplinaId, valorOrcado: Number(valorOrcado || 0), status: "Orçado" })),
       versions: [{ numero: revisionNumber, data: String(record.date || "").slice(0, 10), origem: `Importado de ${window.EV_HISTORICAL_DATA.source}`, valorTotal: Number(record.total || 0), diffs: [] }],
     },
   };
@@ -8611,7 +8607,7 @@ function renderEVStandardStructure(work) {
       </section>
 
       <footer class="ev-editor-actions">
-        <button class="secondary-action" type="submit" data-save-mode="draft">Salvar sem gerar versão</button>
+        <button class="secondary-action" type="submit" data-save-mode="draft">Salvar preenchimento</button>
         <button class="primary-action" type="submit" data-save-mode="final">Salvar EV</button>
       </footer>
     </form>
@@ -14685,6 +14681,27 @@ function renderWorksSettings() {
       <section class="panel">
         <div class="panel-header">
           <div>
+            <h2>Status do EV</h2>
+            <p class="panel-subtitle">Classificação automática pelo conteúdo do Estudo de Viabilidade</p>
+          </div>
+        </div>
+        <div class="configuration-catalog-list">
+          <div class="configuration-catalog-item">
+            <div><strong>Sem EV</strong><small>A obra ainda não possui preenchimento de EV.</small></div>
+          </div>
+          <div class="configuration-catalog-item">
+            <div><strong>Incompleto</strong><small>Existe preenchimento, mas o EV ainda não atende aos critérios de conclusão.</small></div>
+          </div>
+          <div class="configuration-catalog-item">
+            <div><strong>Completo</strong><small>O preenchimento atende aos critérios definidos para conclusão do EV.</small></div>
+          </div>
+        </div>
+        <p class="settings-help-text">Estes status são fixos e calculados automaticamente. Não existe etapa de Rascunho e o status não é editável manualmente.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <h2>Usuários e capacidade</h2>
             <p class="panel-subtitle">Analistas mobilizados no fluxo de Obras</p>
           </div>
@@ -17145,7 +17162,7 @@ async function handleEVSubmit(form, mode = "final") {
   addHistory({
     entidade: "ev",
     entidadeId: work.ev.id || work.id,
-    campo: mode === "draft" ? "salvamento sem versão" : "salvamento",
+    campo: mode === "draft" ? "salvamento do preenchimento" : "salvamento",
     valorAnterior: money(previousTotal),
     valorNovo: money(totalValue),
   });
@@ -17179,8 +17196,8 @@ async function handleEVSubmit(form, mode = "final") {
     return;
   }
   showToast(mode === "draft"
-    ? `EV salvo sem gerar versão · ${work.ev.status}.`
-    : `EV ${work.ev.status.toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
+    ? `EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo sem gerar nova versão.`
+    : `EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
 
   if (mode === "final" && completionDemand) {
     openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
