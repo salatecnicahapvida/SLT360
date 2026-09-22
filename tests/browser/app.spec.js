@@ -1638,10 +1638,16 @@ test('operational cards drag between columns and SICs enter director approval di
  expect(leconAlignment).toBeLessThanOrEqual(1);
  await sicCard.scrollIntoViewIfNeeded();
  const [sourceBox,targetBox]=await Promise.all([sicCard.boundingBox(),fazendoColumn.locator('.demand-list').boundingBox()]);
+ await expect(sicCard.locator('[data-demand-drag-handle]')).toBeVisible();
  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
  await page.mouse.down();
+ await page.mouse.move(sourceBox.x+sourceBox.width/2+24,sourceBox.y+sourceBox.height/2,{steps:2});
+ await expect(page.locator('.demand-drag-ghost')).toHaveCount(1);
+ await expect(page.locator('.operational-board-panel .kanban-column.is-drop-eligible')).not.toHaveCount(0);
  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
+ await expect(fazendoColumn).toHaveClass(/is-drag-over/);
  await page.mouse.up();
+ await expect(page.locator('.demand-drag-ghost')).toHaveCount(0);
  await expect(fazendoColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await expect(fazendoColumn.locator('article[data-id="test-demand"] .demand-card-stage-duration')).toHaveText('menos de 1 dia');
  await expect(directorColumn.locator('article[data-id="test-budget-demand"]')).toHaveCount(0);
@@ -1863,6 +1869,43 @@ test('operational completion requires real delivery date, EV decision and genera
  expect(b.errors).toEqual([]);
 });
 
+
+test('saving the EV from the completion flow resumes the final required fields',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'finish-after-ev',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="finish-after-ev"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Atualizar o EV/}).click();
+
+ const evForm=page.locator('#evForm');
+ await expect(evForm).toBeVisible();
+ await expect(evForm).toHaveAttribute('data-completion-demand-id','finish-after-ev');
+ await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
+ const deviation=page.locator('[data-ev-haptec-confirm]');
+ if(await deviation.isVisible().catch(()=>false)){
+  await deviation.locator('[data-ev-haptec-check]').check();
+  await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
+ }
+
+ const completion=page.locator('#demandCompletionForm');
+ await expect(completion).toBeVisible();
+ await expect(completion.locator('.completion-resume-notice')).toContainText('EV salvo');
+ await expect(completion.locator('.completion-resume-notice')).toContainText('dados finais');
+ await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
+ await expect(completion.locator('[name="valorGerado"]')).toBeVisible();
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-09-22');
+ await completion.locator('[name="valorGerado"]').fill('123,45');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-after-ev'&&change.document?.coluna==='concluido')?.document?.valorGerado).toBe(123.45);
+ const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-after-ev'&&change.document?.coluna==='concluido');
+ expect(completed.document.evSemMudanca).toBe(false);
+ expect(completed.document.dataEntregaReal).toBe('2026-09-22');
+ expect(b.errors).toEqual([]);
+});
 
 test('SIC approved by director also requires real delivery date before conclusion',async({page})=>{
  const demand={
