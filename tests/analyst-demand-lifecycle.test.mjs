@@ -78,12 +78,14 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await commit([
       change('budget_demands', 'sic-approval', { ...payload.state.demands[1], coluna: 'aprovadoDiretoria' }),
     ]);
+
+    // Depois da aprovação da Diretoria, qualquer Analista com escrita em Obras
+    // pode concluir a demanda; não existe trava por analista responsável.
+    await as('authenticated', analyst);
     await commit([
       change('budget_demands', 'sic-approval', { ...payload.state.demands[1], coluna: 'concluido', dataEntregaReal: '2026-09-22' }, 2),
     ]);
     assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-approval'")).rows[0].phase, 'concluido');
-
-    await as('authenticated', analyst);
 
     await assert.rejects(commit([change('projects_demands', 'project-1', {}, 2, 'delete')]), { code: '42501' });
     await assert.rejects(commit([
