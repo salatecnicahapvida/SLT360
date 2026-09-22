@@ -1292,6 +1292,15 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(currentKpis.nth(1)).toContainText('/m²');
  await expect(currentKpis.nth(3)).toContainText('/m²');
  await expect(currentKpis.nth(5)).toContainText('0,00%');
+
+ const groupHeaders=page.locator('#evForm .ev-section-row');
+ await expect(groupHeaders).toHaveCount(3);
+ await expect(groupHeaders.nth(0)).toContainText('Obra');
+ await expect(groupHeaders.nth(1)).toContainText('Outras categorias');
+ await expect(groupHeaders.nth(2)).toContainText("SIC's");
+ await expect(groupHeaders.locator('[data-ev-group-total]')).toHaveCount(3);
+ await expect(page.locator('#evForm [data-discipline-id="sics"]')).toHaveCount(0);
+
  const evRows=page.locator('#evForm .ev-line-row');
  const evInputs=evRows.locator('.ev-value-input');
  const initialValues=await evInputs.evaluateAll(inputs=>inputs.map(input=>input.value));
@@ -1300,16 +1309,32 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  const firstZeroIndex=initialValues.findIndex(value=>Math.abs(parseInput(value))<0.000001);
  expect(await evRows.count()).toBeGreaterThan(4);
  expect(firstZeroIndex).toBeGreaterThanOrEqual(0);
- await evInputs.nth(firstZeroIndex).fill('25,00');
+
  const hideEmpty=page.locator('#evForm [data-action="toggle-ev-zero-lines"]');
+ await expect(hideEmpty).toHaveText('Exibir vazios');
+ await expect(page.locator('#evForm .ev-line-row:visible')).toHaveCount(initialNonZeroCount);
+ await hideEmpty.click();
  await expect(hideEmpty).toHaveText('Ocultar vazios');
+ await expect(page.locator('#evForm .ev-line-row:visible')).toHaveCount(initialValues.length);
+ await evInputs.nth(firstZeroIndex).fill('25,00');
  await hideEmpty.click();
  await expect(hideEmpty).toHaveText('Exibir vazios');
  await expect(page.locator('#evForm .ev-line-row:visible')).toHaveCount(initialNonZeroCount+1);
  await hideEmpty.click();
  await expect(hideEmpty).toHaveText('Ocultar vazios');
- await expect(page.locator('#evForm .ev-line-row:visible')).toHaveCount(initialValues.length);
  await evInputs.nth(firstZeroIndex).fill('0,00');
+
+ const obraGroup=page.locator('#evForm [data-ev-group-body="CustosDaObra"]');
+ const localBefore=await obraGroup.locator('.ev-line-row[data-local-line="true"]').count();
+ await obraGroup.getByRole('button',{name:'+ Nova linha',exact:true}).click();
+ const localRows=obraGroup.locator('.ev-line-row[data-local-line="true"]');
+ await expect(localRows).toHaveCount(localBefore+1);
+ const addedLocal=localRows.last();
+ await addedLocal.locator('.ev-local-name-input').fill('Linha exclusiva da obra');
+ await addedLocal.locator('.ev-value-input').fill('33,00');
+ await expect(obraGroup.locator('[data-ev-group-total="CustosDaObra"]')).not.toHaveText('R$ 0');
+ await addedLocal.getByRole('button',{name:'Excluir',exact:true}).click();
+ await expect(localRows).toHaveCount(localBefore);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Ver controle de verba',exact:true})).toHaveCount(0);
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
@@ -1319,6 +1344,9 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await empty.getByRole('button',{name:'Criar EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
+ await expect(page.locator('#evForm [data-action="toggle-ev-zero-lines"]')).toHaveText('Exibir vazios');
+ await expect(page.locator('#evForm .ev-line-row:visible')).toHaveCount(0);
+ await expect(page.locator('#evForm .ev-section-row')).toHaveCount(3);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  const emptyAreas=page.locator('.ev-modal-card .ev-header-area');
  await expect(emptyAreas).toHaveCount(1);
