@@ -5320,7 +5320,7 @@ function strategicKpiDetailData(key) {
       works: budgetWorks().filter(isNewUnit),
     },
     strategicPendingEvs: {
-      title: "EVs pendentes",
+      title: "EVs incompletos",
       subtitle: "Estudos de viabilidade existentes que ainda estão incompletos.",
       works: budgetWorks().filter((work) => effectiveEVStatus(work) === "Incompleto"),
     },
