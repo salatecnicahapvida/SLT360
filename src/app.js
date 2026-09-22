@@ -718,25 +718,62 @@ const sortableTableObserver = typeof MutationObserver !== "undefined" ? new Muta
 let kanbanScrollObservers = [];
 sortableTableObserver?.observe(modalRoot, { childList: true, subtree: true });
 
+const EV_LIFECYCLE_STATUSES = ["Sem EV", "Incompleto", "Completo"];
+
+function virtualEmptyEV(work) {
+  return {
+    id: `EV-${work?.id || ""}`,
+    status: "Sem EV",
+    versaoAtual: 0,
+    lines: [],
+    versions: [],
+    demandaIds: [],
+    sicIds: [],
+    anexos: [],
+    _virtualEmptyEV: true,
+  };
+}
+
+function evHasBudgetData(ev) {
+  if (!ev) return false;
+  return (
+    Number(ev.versaoAtual || 0) > 0
+    || arrayOrFallback(ev.lines).length > 0
+    || arrayOrFallback(ev.versions).length > 0
+    || arrayOrFallback(ev.demandaIds).length > 0
+    || arrayOrFallback(ev.sicIds).length > 0
+    || arrayOrFallback(ev.anexos).length > 0
+  );
+}
+
+function canonicalStoredEVStatus(status) {
+  const value = normalizeSearchText(status);
+  if (value === "completo") return "Completo";
+  if (value === "sem ev") return "Sem EV";
+  return "Incompleto";
+}
+
+function effectiveEVStatus(work) {
+  if (!work?.ev || work.ev._virtualEmptyEV) return "Sem EV";
+  if (canonicalStoredEVStatus(work.ev.status) === "Completo") return "Completo";
+  return deriveEVStatus(work);
+}
+
+function normalizeWorkEVLifecycle(work) {
+  if (!work?.ev) return { ...work, ev: virtualEmptyEV(work) };
+  if (!evHasBudgetData(work.ev) && canonicalStoredEVStatus(work.ev.status) !== "Completo") {
+    return { ...work, ev: virtualEmptyEV(work) };
+  }
+  const normalized = { ...work, ev: { ...work.ev } };
+  normalized.ev.status = effectiveEVStatus(normalized);
+  delete normalized.ev._virtualEmptyEV;
+  return normalized;
+}
+
 function loadState() {
   const loaded = normalizeState(baseState);
-    loaded.works = arrayOrFallback(loaded.works).map((work) => {
-      if (work?.ev) return work;
-      return {
-        ...work,
-        ev: {
-          id: `EV-${work?.id || ""}`,
-          status: "Sem EV",
-          versaoAtual: 0,
-          lines: [],
-          versions: [],
-          demandaIds: [],
-          sicIds: [],
-          _virtualEmptyEV: true,
-        },
-      };
-    });
-    return loaded;
+  loaded.works = arrayOrFallback(loaded.works).map(normalizeWorkEVLifecycle);
+  return loaded;
 }
 
 function normalizeState(saved) {
@@ -1083,23 +1120,14 @@ async function saveStateAndWait() {
 
 function persistedStatePayload() {
   const works = arrayOrFallback(state.works).map((work) => {
-      if (!work?.ev?._virtualEmptyEV) return work;
-      const ev = work.ev;
-      const hasBudgetData =
-        Number(ev.versaoAtual || 0) > 0 ||
-        (ev.lines || []).length > 0 ||
-        (ev.versions || []).length > 0 ||
-        (ev.demandaIds || []).length > 0 ||
-        (ev.sicIds || []).length > 0 ||
-        (ev.status && !["Sem EV", "Rascunho"].includes(ev.status));
-      const cleanWork = { ...work };
-      if (!hasBudgetData) {
+      const normalized = normalizeWorkEVLifecycle(work);
+      const cleanWork = { ...normalized };
+      if (!normalized.ev || normalized.ev._virtualEmptyEV || !evHasBudgetData(normalized.ev)) {
         delete cleanWork.ev;
         return cleanWork;
       }
-      cleanWork.ev = { ...ev };
+      cleanWork.ev = { ...normalized.ev, status: effectiveEVStatus(normalized) };
       delete cleanWork.ev._virtualEmptyEV;
-      if (cleanWork.ev.status === "Sem EV") cleanWork.ev.status = "Rascunho";
       return cleanWork;
     });
     return {
@@ -2897,13 +2925,14 @@ function haptecTopEVAnswer() {
 function haptecPortfolioDataAnswer() {
   const totals = allTotals();
   const capex = totals.orcado + totals.aditivado;
-  const completed = budgetWorks().filter((work) => work.ev.status === "Completo").length;
-  const pending = budgetWorks().length - completed;
+  const completed = budgetWorks().filter((work) => effectiveEVStatus(work) === "Completo").length;
+  const incomplete = budgetWorks().filter((work) => effectiveEVStatus(work) === "Incompleto").length;
+  const withoutEV = budgetWorks().filter((work) => effectiveEVStatus(work) === "Sem EV").length;
   const top = haptecTopEVWork();
   return [
     `O portfólio tem ${budgetWorks().length} obra(s).`,
     `CAPEX/EV consolidado: ${money(capex)}.`,
-    `${completed} EV(s) completo(s), ${pending} pendente(s).`,
+    `${completed} EV(s) completo(s), ${incomplete} incompleto(s) e ${withoutEV} obra(s) sem EV.`,
     top ? `Maior EV: ${top.work.nome}, com ${money(top.value)}.` : "Ainda sem EV valorizado."
   ].join("\n");
 }
@@ -3020,13 +3049,15 @@ function haptecWorksKanbanAnswer(text) {
 
 function haptecEVDataAnswer(text) {
   const works = budgetWorks() || [];
-  const completed = works.filter((work) => work.ev.status === "Completo");
-  const pending = works.filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo");
+  const completed = works.filter((work) => effectiveEVStatus(work) === "Completo");
+  const incomplete = works.filter((work) => effectiveEVStatus(work) === "Incompleto");
+  const withoutEV = works.filter((work) => effectiveEVStatus(work) === "Sem EV");
   const total = works.reduce((sum, work) => sum + workBudgetValue(work), 0);
   const top = haptecTopEVWork();
 
-  if (haptecHasAny(text, ["pendente", "rascunho"])) return `Hoje temos ${pending.length} EV(s) pendente(s)/rascunho(s) e ${completed.length} completo(s).`;
+  if (haptecHasAny(text, ["pendente", "incompleto", "rascunho"])) return `Hoje temos ${incomplete.length} EV(s) incompleto(s), ${completed.length} completo(s) e ${withoutEV.length} obra(s) sem EV.`;
   if (haptecHasAny(text, ["completo", "cotacao completa", "finalizado"])) return `${completed.length} EV(s) estão completos. Isso representa ${number((completed.length / Math.max(works.length, 1)) * 100, 1)}% do portfólio.`;
+  if (haptecHasAny(text, ["sem ev"])) return `${withoutEV.length} obra(s) ainda não possuem EV.`;
   if (haptecHasAny(text, ["total", "consolidado", "somatorio", "soma"])) return `O valor total de EV consolidado é ${money(total)}. ${top ? `O maior EV é ${top.work.nome}, com ${money(top.value)}.` : ""}`;
   return haptecTopEVAnswer();
 }
@@ -4882,7 +4913,7 @@ function kpiDetailData(key) {
   const active = pendingDemands();
   const completed = completedDemands();
   const overdue = overdueDemands();
-  const pendingEvs = budgetWorks().filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo");
+  const pendingEvs = budgetWorks().filter((work) => effectiveEVStatus(work) === "Incompleto");
   const nearMilestone = rows.filter((row) => row.marcoStatus === "Próximo");
 
   const workDetail = (title, subtitle, works, metrics, view = "portfolio", viewLabel = "Abrir portfólio") => ({
@@ -4898,7 +4929,7 @@ function kpiDetailData(key) {
         `<strong>${item?.nome || work.nome}</strong>`,
         item?.regiao || work.regional || "—",
         item?.tipoUnidade || work.tipoUnidade || "—",
-        item?.ev?.status || work.evStatus || "—",
+        item ? effectiveEVStatus(item) : work.evStatus || "Sem EV",
         money(values.orcado + values.aditivado || work.capex),
       ];
     }),
@@ -5290,8 +5321,8 @@ function strategicKpiDetailData(key) {
     },
     strategicPendingEvs: {
       title: "EVs pendentes",
-      subtitle: "Estudos de viabilidade ainda em rascunho ou cotação.",
-      works: budgetWorks().filter((work) => !work.ev?._virtualEmptyEV && work.ev.status !== "Completo"),
+      subtitle: "Estudos de viabilidade existentes que ainda estão incompletos.",
+      works: budgetWorks().filter((work) => effectiveEVStatus(work) === "Incompleto"),
     },
     strategicCriticalBalance: {
       title: "Saldo crítico",
@@ -5419,7 +5450,7 @@ function renderWorksHome() {
   const activeDemands = pendingDemands();
   const completed = completedDemands();
   const analysts = uniqueAnalysts();
-  const pendingEvs = rows.filter((row) => row.evStatus !== "Completo").length;
+  const pendingEvs = rows.filter((row) => row.evStatus === "Incompleto").length;
   const nearMilestone = rows.filter((row) => row.marcoStatus === "Próximo").length;
 
   return `
@@ -5435,7 +5466,7 @@ function renderWorksHome() {
       ${kpi("Demandas atrasadas", String(overdue.length), "Itens fora do prazo previsto", overdue.length ? "red" : "green", "", "overdueDemands")}
       ${kpi("Total orçado", money(capex), "EVs + SICs aprovadas", "blue", "", "capexConsolidated")}
       ${kpi("Próximas do marco", String(nearMilestone), "Acompanhamento executivo", "green", "", "nearMilestone")}
-      ${kpi("EVs com pendência", String(pendingEvs), "Rascunho ou em cotação", pendingEvs ? "red" : "green", "", "pendingEvs")}
+      ${kpi("EVs incompletos", String(pendingEvs), "EVs existentes ainda com preenchimento incompleto", pendingEvs ? "red" : "green", "", "pendingEvs")}
       ${kpi("Demandas concluídas", String(completed.length), "Entregas registradas", "green", "", "completedDemands")}
       ${kpi("Analistas mobilizados", String(analysts.length), analysts.join(", ") || "Sem analistas", "orange", "", "analysts")}
     </section>
@@ -7134,7 +7165,7 @@ function renderPortfolioFilters(rows) {
       <label class="field"><span>Tipologia</span><select data-portfolio-quick-filter="tipologia">${portfolioFilterOptions(rows, "tipologia", portfolioQuickFilters.tipologia, "Todas", configurationLabels("typology"))}</select></label>
       <label class="field"><span>Região</span><select data-portfolio-quick-filter="regional">${portfolioFilterOptions(rows, "regional", portfolioQuickFilters.regional, "Todas", configurationLabels("region"))}</select></label>
       <label class="field"><span>UF</span><select data-portfolio-quick-filter="uf">${portfolioFilterOptions(rows, "uf", portfolioQuickFilters.uf, "Todas", configurationLabels("state"))}</select></label>
-      <label class="field"><span>Status do EV</span><select data-portfolio-quick-filter="evStatus">${portfolioFilterOptions(rows, "evStatus", portfolioQuickFilters.evStatus, "Todos")}</select></label>
+      <label class="field"><span>Status do EV</span><select data-portfolio-quick-filter="evStatus">${portfolioFilterOptions(rows, "evStatus", portfolioQuickFilters.evStatus, "Todos", EV_LIFECYCLE_STATUSES)}</select></label>
       <button class="secondary-action" type="button" data-action="clear-portfolio-filters">Limpar filtros</button>
     </div>
   `;
@@ -7379,10 +7410,10 @@ function renderPortfolioInvestmentPlanTable(rows) {
                     <td>${escapeAttribute(work?.tipologiaObra || row.tipologiaObra || "—")}</td>
                     <td class="numeric">${work?.areaEquivalente ? number(work.areaEquivalente) : "–"}</td>
                     <td>${escapeAttribute(work?.ordemInternaSAP || "—")}</td>
-                    <td>${work?.ev ? `<span class="status-pill" data-status="${work.ev.status}">${work.ev.status}</span>` : `<span class="muted">Sem EV</span>`}</td>
+                    <td>${work ? `<span class="status-pill" data-status="${effectiveEVStatus(work)}">${effectiveEVStatus(work)}</span>` : `<span class="status-pill" data-status="Sem EV">Sem EV</span>`}</td>
                     <td>
                       <div class="table-actions portfolio-actions">
-                        ${work ? `<button class="secondary-action compact-action" type="button" data-action="open-ev-modal" data-id="${work.id}">Abrir EV</button>` : ""}
+                        ${work ? `<button class="secondary-action compact-action" type="button" data-action="open-ev-modal" data-id="${work.id}">${effectiveEVStatus(work) === "Sem EV" ? "Criar EV" : "Abrir EV"}</button>` : ""}
                         ${canBudget ? `<button class="ghost-button compact-action" type="button" data-action="start-budget-from-plan" data-row="${row.row}">Enviar para Obras</button>` : ""}
                         ${work ? `<button class="ghost-button compact-action" type="button" data-action="edit-work" data-id="${work.id}">Editar</button>` : `<button class="secondary-action compact-action" type="button" data-action="open-work-from-plan" data-row="${row.row}">Cadastrar</button>`}
                       </div>
@@ -7440,14 +7471,14 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
       cnpj: work.cnpj || "",
       endereco: work.endereco || "",
       status: work.status,
-      evStatus: work.ev.status,
+      evStatus: effectiveEVStatus(work),
       capex,
       custoM2: hasAssociatedEV && areaEquivalente > 0 ? capex / areaEquivalente : null,
       contratado: totals.contratado,
       saldo: totals.saldo,
       proximoMarco: milestones[index % milestones.length],
-      marcoStatus: index === 0 || !work.ev?._virtualEmptyEV && work.ev.status !== "Completo" ? "Próximo" : "Planejado",
-      risco: saldoRatio < 0.18 ? "Alto" : !work.ev?._virtualEmptyEV && work.ev.status !== "Completo" ? "Médio" : "Baixo",
+      marcoStatus: index === 0 || effectiveEVStatus(work) === "Incompleto" ? "Próximo" : "Planejado",
+      risco: saldoRatio < 0.18 ? "Alto" : effectiveEVStatus(work) === "Incompleto" ? "Médio" : "Baixo",
     };
   });
   const quickFiltered = applySearch ? rows.filter(portfolioRowMatchesQuickFilters) : rows;
@@ -8399,7 +8430,7 @@ function openEVModal(workId) {
           </div>
           <div class="ev-modal-status">
             <span class="tag">REV${String(work.ev.versaoAtual).padStart(2, "0")}</span>
-            <span class="status-pill" data-status="${work.ev.status}">${work.ev.status}</span>
+            <span class="status-pill" data-status="${effectiveEVStatus(work)}">${effectiveEVStatus(work)}</span>
             <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
           </div>
         </header>
@@ -8579,7 +8610,7 @@ function renderEVStandardStructure(work) {
       </section>
 
       <footer class="ev-editor-actions">
-        <button class="secondary-action" type="submit" data-save-mode="draft">Salvar rascunho</button>
+        <button class="secondary-action" type="submit" data-save-mode="draft">Salvar sem gerar versão</button>
         <button class="primary-action" type="submit" data-save-mode="final">Salvar EV</button>
       </footer>
     </form>
@@ -15470,7 +15501,7 @@ function openDemandDetailModal(id) {
             </div>
             <p class="muted">Esta demanda alimenta diretamente o EV da obra vinculada. Para a emissão inicial, o EV nasce gerado para preencher os custos.</p>
             <div class="split-list compact">
-              ${splitItem("EV atual", work ? `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")} · ${work.ev?.status || "Rascunho"}` : "—")}
+              ${splitItem("EV atual", work ? `${effectiveEVStatus(work) === "Sem EV" ? "Sem versão" : `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")}`} · ${effectiveEVStatus(work)}` : "—")}
             </div>
             ${work ? `<button class="primary-action full-width" type="button" data-action="open-work-ev" data-id="${work.id}">Abrir EV da obra vinculada</button>` : ""}
           </section>
@@ -17095,7 +17126,7 @@ async function handleEVSubmit(form, mode = "final") {
   delete work.ev._virtualEmptyEV;
   const totals = workTotals(work);
   const totalValue = totals.orcado + totals.aditivado;
-  work.ev.status = mode === "draft" ? "Rascunho" : deriveEVStatus(work);
+  work.ev.status = deriveEVStatus(work);
 
   if (mode === "final") {
     work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
@@ -17113,7 +17144,7 @@ async function handleEVSubmit(form, mode = "final") {
   addHistory({
     entidade: "ev",
     entidadeId: work.ev.id || work.id,
-    campo: mode === "draft" ? "rascunho" : "salvamento",
+    campo: mode === "draft" ? "salvamento sem versão" : "salvamento",
     valorAnterior: money(previousTotal),
     valorNovo: money(totalValue),
   });
@@ -17146,7 +17177,9 @@ async function handleEVSubmit(form, mode = "final") {
     showFormError(error?.message || "O EV não foi confirmado pelo banco. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
-  showToast(mode === "draft" ? "Rascunho do EV salvo." : "EV salvo com nova versão.");
+  showToast(mode === "draft"
+    ? `EV salvo sem gerar versão · ${work.ev.status}.`
+    : `EV ${work.ev.status.toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
 
   if (mode === "final" && completionDemand) {
     openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
@@ -17157,10 +17190,10 @@ async function handleEVSubmit(form, mode = "final") {
 }
 
 function deriveEVStatus(work) {
-  const applicable = (work.ev.lines || []).filter((line) => normalizeEVLineStatus(line.status) !== "Não se aplica");
-  if (!applicable.some((line) => Number(line.valorOrcado || 0) > 0)) return "Rascunho";
-  if (applicable.some((line) => normalizeEVLineStatus(line.status) === "Estimado")) return "Rascunho";
-  if (applicable.some((line) => normalizeEVLineStatus(line.status) === "Cotado")) return "Em cotação";
+  const applicable = arrayOrFallback(work?.ev?.lines).filter((line) => normalizeEVLineStatus(line.status) !== "Não se aplica");
+  if (!applicable.length) return "Incompleto";
+  if (!applicable.some((line) => Number(line.valorOrcado || 0) > 0)) return "Incompleto";
+  if (applicable.some((line) => normalizeEVLineStatus(line.status) !== "Orçado")) return "Incompleto";
   return "Completo";
 }
 
@@ -17375,21 +17408,9 @@ async function handleWorkSubmit(form) {
     ...workFields,
     chaveUnica: workFields.chaveUnica || generatedKey,
     status: "Planejada",
-    ev: sourceHistoricalRecordId ? {
+    ev: {
+      ...virtualEmptyEV({ id }),
       id: `ev-${id.toLowerCase()}`,
-      versaoAtual: 0,
-      status: "Sem EV",
-      lines: [],
-      versions: [],
-      anexos: [],
-      _virtualEmptyEV: true,
-    } : {
-      id: `ev-${id.toLowerCase()}`,
-      versaoAtual: 0,
-      status: "Rascunho",
-      lines: [],
-      versions: [],
-      anexos: [],
     },
   };
 
@@ -17441,7 +17462,7 @@ async function handleWorkSubmit(form) {
   closeModal();
   showToast(sourceHistoricalRecordId
     ? "Dados da obra histórica atualizados no portfólio sem duplicar o EV."
-    : `Obra cadastrada no portfólio com EV rascunho${needsFinancialIntegration ? " e verba integrada ao Controle de Verbas" : ""}.`);
+    : `Obra cadastrada no portfólio sem EV${needsFinancialIntegration ? " e com verba integrada ao Controle de Verbas" : ""}.`);
   render();
 }
 
