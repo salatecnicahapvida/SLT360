@@ -1252,7 +1252,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(current.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
  await current.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
- await expect(page.locator('.ev-version-panel')).toContainText('REV01');
+ await expect(page.locator('.ev-version-panel')).toHaveCount(0);
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Ver controle de verba',exact:true})).toHaveCount(0);
@@ -1264,7 +1264,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
- await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-master-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-area-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-attachments')).toHaveCount(0);
@@ -1282,7 +1282,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
  await updatedEmpty.locator('.portfolio-actions button').click();
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
- await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
