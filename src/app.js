@@ -1578,51 +1578,6 @@ function syncWorkSicSummaryLine(work) {
   });
 }
 
-function syncCompletedDemandWithEV(work, demand) {
-  if (!work || !demand) return false;
-  work.ev.lines = work.ev.lines || [];
-  const applicableLines = work.ev.lines.filter((line) => {
-    const status = normalizeEVLineStatus(line.status);
-    return !isRiskLine(line) && status !== "Não se aplica" && Number(line.valorOrcado || 0) > 0;
-  });
-  if (!applicableLines.length) return false;
-
-  work.ev.demandaIds = [...new Set([...(work.ev.demandaIds || []), demand.id])];
-  applicableLines.forEach((line) => {
-    line.demandaIds = [...new Set([...(line.demandaIds || []), demand.id])];
-  });
-
-  const totals = workTotals(work);
-  const totalValue = totals.orcado + totals.aditivado;
-  const existingVersion = (work.ev.versions || []).find((version) => version.origem === demand.id);
-  if (!existingVersion) {
-    work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
-    work.ev.versions = work.ev.versions || [];
-    work.ev.versions.push({
-      numero: work.ev.versaoAtual,
-      data: todayISO(),
-      origem: demand.id,
-      valorTotal: totalValue,
-      custoM2: totalValue / Math.max(work.areaEquivalente || 0, 1),
-      diffPorDisciplina: applicableLines.map((line) => ({
-        disciplinaId: canonicalDisciplineId(line.disciplinaId),
-        valorAntes: 0,
-        valorDepois: Number(line.valorOrcado || 0),
-      })),
-    });
-  }
-
-  work.ev.status = deriveEVStatus(work);
-  addHistory({
-    entidade: "ev",
-    entidadeId: work.ev.id || work.id,
-    campo: "conclusão operacional",
-    valorAnterior: existingVersion ? `EV já vinculado ao card ${demand.id}` : "Sem versão do card",
-    valorNovo: `${demand.id} | ${demandTypeLabel(demand.tipo)} | ${money(totalValue)}`,
-  });
-  return true;
-}
-
 function workTotals(work, options = {}) {
   const includeRisk = options.includeRisk === true || work?._historicalBudgetWork === true;
   const includeInitialBudgetFallback = options.includeInitialBudgetFallback === true;
@@ -17053,6 +17008,54 @@ function showEVHaptecConfirmation(form, mode, readings) {
   haptecSystemNotice(`Encontrei ${readings.length} divergência${readings.length === 1 ? "" : "s"} relevante${readings.length === 1 ? "" : "s"} neste EV. Averigue os valores e confirme antes de salvar.`, "error_alert", true);
 }
 
+function evRevisionComparableState(work) {
+  const lineMap = new Map(
+    arrayOrFallback(work?.ev?.lines).map((line) => [canonicalDisciplineId(line.disciplinaId), line])
+  );
+  return {
+    lifecycleStatus: effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto",
+    lines: configuredDisciplines().map((discipline) => {
+      const line = lineMap.get(discipline.id);
+      const status = normalizeEVLineStatus(line?.status || "Estimado");
+      return {
+        disciplinaId: discipline.id,
+        status,
+        valorOrcado: status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0),
+      };
+    }),
+  };
+}
+
+function evRevisionStateChanged(before, after) {
+  return JSON.stringify(before) !== JSON.stringify(after);
+}
+
+function evRevisionDisciplineDiff(before, after) {
+  const beforeById = new Map(arrayOrFallback(before?.lines).map((line) => [line.disciplinaId, line]));
+  return arrayOrFallback(after?.lines)
+    .map((line) => {
+      const previous = beforeById.get(line.disciplinaId) || { valorOrcado: 0, status: "Estimado" };
+      if (
+        Number(previous.valorOrcado || 0) === Number(line.valorOrcado || 0)
+        && String(previous.status || "") === String(line.status || "")
+      ) return null;
+      return {
+        disciplinaId: line.disciplinaId,
+        valorAntes: Number(previous.valorOrcado || 0),
+        valorDepois: Number(line.valorOrcado || 0),
+        statusAntes: previous.status || "Estimado",
+        statusDepois: line.status || "Estimado",
+      };
+    })
+    .filter(Boolean);
+}
+
+function demandHasPendingEVChangeForCompletion(demand) {
+  if (!demand || demandTypeKey(demand.tipo) !== "SIC") return false;
+  if (!(demand.sicPostedAt || arrayOrFallback(demand.sicIds).length)) return false;
+  return !demandHasEVUpdateForCompletion(demand);
+}
+
 async function handleEVSubmit(form, mode = "final") {
   const work = workById(form.dataset.workId);
   if (!work) return;
@@ -17064,6 +17067,7 @@ async function handleEVSubmit(form, mode = "final") {
   const completionDemand = state.demands.find((item) => item.id === completionDemandId && item.obraId === work.id) || null;
   const nextEVStatus = form.querySelector('[name="evLifecycleStatus"]')?.value === "Completo" ? "Completo" : "Incompleto";
   const previousEVStatus = effectiveEVStatus(work);
+
   if (mode === "final" && form.dataset.evDeviationConfirmed !== "true") {
     const { values, baseTotal } = evFormDeviationData(form);
     const readings = evHistoricalDeviationReadings(work, values, baseTotal);
@@ -17073,9 +17077,11 @@ async function handleEVSubmit(form, mode = "final") {
     }
   }
   delete form.dataset.evDeviationConfirmed;
+
   const workIndex = state.works.findIndex((item) => item.id === work.id);
   const workSnapshot = clone(work);
   const historySnapshot = clone(state.history || []);
+  const previousRevisionState = evRevisionComparableState(workSnapshot);
   const previousTotal = workTotals(work).orcado;
   work.ev.lines = work.ev.lines || [];
 
@@ -17095,11 +17101,31 @@ async function handleEVSubmit(form, mode = "final") {
   });
 
   work.ev.lines.sort((a, b) => disciplineById(a.disciplinaId).posicao - disciplineById(b.disciplinaId).posicao);
+  work.ev.status = nextEVStatus;
+
+  const nextRevisionState = evRevisionComparableState(work);
+  const changedInEditor = evRevisionStateChanged(previousRevisionState, nextRevisionState);
+  const pendingDemandChange = Boolean(completionDemand && demandHasPendingEVChangeForCompletion(completionDemand));
+  const hasEVChange = changedInEditor || pendingDemandChange;
+
+  if (mode === "final" && !hasEVChange) {
+    if (workIndex >= 0) state.works[workIndex] = workSnapshot;
+    state.history = historySnapshot;
+    pendingDemandCompletion = null;
+    showToast("Nenhuma alteração no EV. Nenhuma nova revisão foi criada.");
+    if (completionDemand) {
+      openDemandCompletionModal(completionDemand.id, { forceChecklist: true });
+    } else if (form.closest(".ev-modal-card")) {
+      openEVModal(work.id);
+    } else {
+      render();
+    }
+    return;
+  }
 
   delete work.ev._virtualEmptyEV;
   const totals = workTotals(work);
   const totalValue = totals.orcado + totals.aditivado;
-  work.ev.status = nextEVStatus;
 
   if (mode === "final") {
     work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
@@ -17107,14 +17133,10 @@ async function handleEVSubmit(form, mode = "final") {
     work.ev.versions.push({
       numero: work.ev.versaoAtual,
       data: todayISO(),
-      origem: mode === "final" && completionDemand
-        ? demandTypeKey(completionDemand.tipo) === "SIC"
-          ? `Conclusão ${completionDemand.id}`
-          : completionDemand.id
-        : "Edição manual SLT 360",
+      origem: completionDemand ? `Conclusão ${completionDemand.id}` : "Edição manual SLT 360",
       valorTotal: totalValue,
-      custoM2: totalValue / Math.max(work.areaEquivalente || 0, 1),
-      diffPorDisciplina: [],
+      custoM2: work.areaEquivalente ? totalValue / Number(work.areaEquivalente) : 0,
+      diffPorDisciplina: evRevisionDisciplineDiff(previousRevisionState, nextRevisionState),
     });
   }
 
@@ -17143,7 +17165,8 @@ async function handleEVSubmit(form, mode = "final") {
     showFormError(error?.message || "O EV não foi confirmado pelo banco. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
-  showToast(`EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
+
+  showToast(`EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova revisão.`);
 
   if (mode === "final" && completionDemand) {
     pendingDemandCompletion = null;
@@ -18148,7 +18171,7 @@ async function approveSic(id) {
   const work = sic && workById(sic.obraId);
   if (!sic || !work) return;
 
-  const diffs = sic.disciplinasAfetadas.map((item) => {
+  sic.disciplinasAfetadas.forEach((item) => {
     const line = work.ev.lines.find((entry) => canonicalDisciplineId(entry.disciplinaId) === canonicalDisciplineId(item.disciplinaId));
     if (!line) {
       work.ev.lines.push({
@@ -18157,28 +18180,11 @@ async function approveSic(id) {
         status: "Orçado",
       });
     }
-    const baseLine = work.ev.lines.find((entry) => canonicalDisciplineId(entry.disciplinaId) === canonicalDisciplineId(item.disciplinaId));
-    const before = baseLine.valorOrcado + aditivadoByDiscipline(work.id, item.disciplinaId);
-    return {
-      disciplinaId: item.disciplinaId,
-      valorAntes: before,
-      valorDepois: before + item.valorDelta,
-    };
   });
 
   sic.status = "Aprovado";
   sic.aprovadoPor = "Gestão ST";
   sic.dataAprovacao = todayISO();
-  work.ev.versaoAtual += 1;
-  const updatedValues = workTotals(work);
-  work.ev.versions.push({
-    numero: work.ev.versaoAtual,
-    data: todayISO(),
-    origem: sic.demandaId,
-    valorTotal: updatedValues.orcado + updatedValues.aditivado,
-    custoM2: (updatedValues.orcado + updatedValues.aditivado) / Math.max(work.areaEquivalente, 1),
-    diffPorDisciplina: diffs,
-  });
 
   addHistory({
     entidade: "sic",
@@ -18189,26 +18195,17 @@ async function approveSic(id) {
   });
 
   if (!await saveState()) return false;
-  showToast(`${sic.id} aprovada e refletida no EV por disciplina.`);
+  showToast(`${sic.id} aprovada. O EV só ganhará nova revisão quando houver alteração salva.`);
   render();
 }
 
 function demandHasEVUpdateForCompletion(demand) {
   const work = workById(demand?.obraId);
-  if (!work) return false;
-  const versions = arrayOrFallback(work.ev?.versions);
-  if (demandTypeKey(demand?.tipo) !== "SIC") {
-    return versions.some((version) => String(version.origem || "") === String(demand.id));
-  }
+  if (!work || !demand?.id) return false;
   const completionOrigin = `Conclusão ${demand.id}`;
-  if (versions.some((version) => String(version.origem || "") === completionOrigin)) return true;
-
-  // Compatibilidade com salvamentos feitos antes de existir o marcador específico de conclusão:
-  // uma SIC já postada possui uma versão com origem = demand.id; uma segunda versão indica
-  // que houve novo salvamento do EV durante a conclusão.
-  const sameDemandVersions = versions.filter((version) => String(version.origem || "") === String(demand.id));
-  const wasPreviouslyPosted = Boolean(demand.sicPostedAt || arrayOrFallback(demand.sicIds).length);
-  return wasPreviouslyPosted ? sameDemandVersions.length >= 2 : sameDemandVersions.length >= 1;
+  return arrayOrFallback(work.ev?.versions).some(
+    (version) => String(version.origem || "") === completionOrigin
+  );
 }
 
 function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false } = {}) {
