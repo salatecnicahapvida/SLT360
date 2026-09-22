@@ -1686,9 +1686,14 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  await page.locator('article[data-id="sic-director-analyst"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(status.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovadoDiretoria');
- await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
+ await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem fazer essa aprovação.');
+ await expect(page.locator('#toast')).toHaveClass(/is-visible/);
+ await expect(status).toHaveValue('aprovacaoDiretoria');
+
+ await status.selectOption('concluido');
+ await expect(page.locator('#toast')).toHaveText('A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria.');
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
  await expect(status).toHaveValue('aprovacaoDiretoria');
  expect(b.errors).toEqual([]);
@@ -1709,7 +1714,7 @@ test('Gestor can move SIC from director approval to director approved',async({pa
  await page.locator('article[data-id="sic-director-manager"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(status.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-manager"]')).toBeVisible();

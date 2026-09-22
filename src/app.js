@@ -15682,10 +15682,6 @@ function columnsForDemand(demand) {
       disabled = demand?.coluna !== "aprovacaoDiretoria";
     }
 
-    if (isSicDemand && column.id === "concluido" && !["aprovadoDiretoria", "concluido"].includes(demand?.coluna)) {
-      disabled = true;
-    }
-
     return { ...column, disabled };
   });
 }
@@ -18446,12 +18442,16 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
       return false;
     }
     if (!canApproveSicDirector()) {
-      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
+      showToast("Somente usuários Gestor ou Admin podem fazer essa aprovação.");
       return false;
     }
   }
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovadoDiretoria") {
-    showToast("Uma SIC só pode ser concluída após estar em Aprovado Pela Diretoria.");
+    showToast(
+      demand.coluna === "aprovacaoDiretoria"
+        ? "A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria."
+        : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
+    );
     return false;
   }
   if (isSicDemand && nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
@@ -19463,7 +19463,20 @@ document.addEventListener("change", async (event) => {
       && selected === "aprovadoDiretoria"
       && !canApproveSicDirector()
     ) {
-      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
+      showToast("Somente usuários Gestor ou Admin podem fazer essa aprovação.");
+      event.target.value = demand.coluna;
+      return;
+    }
+    if (
+      demandTypeKey(demand?.tipo) === "SIC"
+      && selected === "concluido"
+      && demand?.coluna !== "aprovadoDiretoria"
+    ) {
+      showToast(
+        demand?.coluna === "aprovacaoDiretoria"
+          ? "A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria."
+          : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
+      );
       event.target.value = demand.coluna;
       return;
     }
