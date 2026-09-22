@@ -659,6 +659,7 @@ function createPortfolioQuickFilters() {
 }
 
 let portfolioQuickFilters = createPortfolioQuickFilters();
+// Ordem inicial da carteira: ano mais recente; em empate, maior código de obra.
 let portfolioSort = { key: "year", direction: "desc" };
 let investmentPlanFilters = {
   query: "",
