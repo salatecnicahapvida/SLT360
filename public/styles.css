@@ -12682,3 +12682,46 @@ button.analyst-chip {
   outline: 2px solid #2f72c4;
   outline-offset: 2px;
 }
+
+
+/* EV: status de completude informado manualmente no próprio estudo. */
+.ev-completeness-toggle {
+  display: inline-flex;
+  min-width: 170px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ev-completeness-toggle strong {
+  min-width: 38px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  text-align: center;
+}
+.ev-completeness-toggle.is-complete {
+  border-color: rgba(0, 143, 90, 0.42);
+  background: rgba(0, 143, 90, 0.08);
+  color: var(--green);
+}
+.ev-completeness-toggle.is-complete strong {
+  background: var(--green);
+  color: #fff;
+}
+.ev-completeness-toggle.is-incomplete {
+  border-color: rgba(247, 144, 9, 0.46);
+  background: rgba(247, 144, 9, 0.09);
+  color: #9a5a00;
+}
+.ev-completeness-toggle.is-incomplete strong {
+  background: var(--orange);
+  color: #fff;
+}
+@media (max-width: 640px) {
+  .ev-editor-actions {
+    align-items: stretch;
+  }
+  .ev-completeness-toggle,
+  .ev-editor-actions .primary-action {
+    width: 100%;
+  }
+}
