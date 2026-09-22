@@ -1790,7 +1790,7 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
  await expect(status).toHaveValue('aprovacaoDiretoria');
 
- await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).click();
+ await page.locator('#demandDetailForm .modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
  await expect(approvalColumn.locator('article[data-id="sic-director-analyst"]')).toBeVisible();
  await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
  await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
