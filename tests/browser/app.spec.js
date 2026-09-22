@@ -1853,6 +1853,40 @@ test('legacy SIC approval import is no longer exposed in the study',async({page}
 });
 
 
+test('posting an approved SIC does not create a new EV revision',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-post-no-revision',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovadoDiretoria',
+  analistaResponsavel:'Ana',
+  sicApprovalStatus:'Aprovado',
+  sicApprovalApprovedAt:'2026-09-22',
+  sicApprovalApprovedBy:'Gestor',
+  sicIds:[],
+  sicDraftDisciplines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorDelta:25}],
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC sem revisão na postagem',numeroSic:'SIC-POST-001',motivo:'RevisaoProjeto'},
+ };
+ const work=structuredClone(payload.state.works[0]);
+ work.ev.versaoAtual=1;
+ work.ev.versions=[];
+ const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-post-no-revision"]').click();
+ await page.locator('#demandDetailForm [data-action="open-sic-approval"]').click();
+ const postButton=page.locator('[data-action="post-sic-to-ev"][data-id="sic-post-no-revision"]');
+ await expect(postButton).toBeVisible();
+ await postButton.click();
+ await expect(page.locator('#evForm')).toBeVisible();
+ await expect(page.locator('#toast')).toHaveText('SIC postada no EV.');
+ const changes=b.requests.flatMap(request=>request.changes);
+ expect(changes.some(change=>change.entity==='budget_estimate_versions')).toBe(false);
+ const estimateChanges=changes.filter(change=>change.entity==='budget_estimates');
+ expect(estimateChanges.some(change=>change.document?.version_number>1)).toBe(false);
+ expect(b.errors).toEqual([]);
+});
+
 test('Analista cannot move SIC from director approval to director approved',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
@@ -1975,6 +2009,7 @@ test('saving the EV from the completion flow resumes the final required fields',
   await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
  }
 
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions'&&change.document?.origin==='Conclusão finish-after-ev').length).toBe(1);
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
  await expect(completion.locator('.completion-resume-notice')).toContainText('EV salvo');
@@ -2077,14 +2112,13 @@ test('SIC completion returns to obligations after EV save before final data',asy
  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
  await expect(page.getByRole('button',{name:/Atualizar o EV/})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Não houve mudança no EV/})).toHaveCount(0);
  await expect(page.getByRole('button',{name:/Continuar para os dados finais/})).toHaveCount(0);
  await page.getByRole('button',{name:/Atualizar o EV/}).click();
 
  const evForm=page.locator('#evForm');
  await expect(evForm).toBeVisible();
  await expect(evForm).toHaveAttribute('data-completion-demand-id','sic-finish-after-ev');
- const firstValue=evForm.locator('.ev-value-input').first();
- await firstValue.fill('125,00');
  await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
  const deviation=page.locator('[data-ev-haptec-confirm]');
  if(await deviation.isVisible().catch(()=>false)){
@@ -2092,6 +2126,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
   await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
  }
 
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions'&&change.document?.origin==='Conclusão sic-finish-after-ev').length).toBe(1);
  await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
  const checklist=page.locator('.demand-completion-card');
  await expect(checklist.locator('.completion-resume-notice')).toContainText('EV salvo');
