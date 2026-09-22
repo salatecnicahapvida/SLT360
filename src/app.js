@@ -748,13 +748,13 @@ function evHasBudgetData(ev) {
 
 function effectiveEVStatus(work) {
   if (!work?.ev || work.ev._virtualEmptyEV || !evHasBudgetData(work.ev)) return "Sem EV";
-  return deriveEVStatus(work);
+  return work.ev.status === "Completo" ? "Completo" : "Incompleto";
 }
 
 function normalizeWorkEVLifecycle(work) {
   if (!work?.ev || !evHasBudgetData(work.ev)) return { ...work, ev: virtualEmptyEV(work) };
   const normalized = { ...work, ev: { ...work.ev } };
-  normalized.ev.status = deriveEVStatus(normalized);
+  normalized.ev.status = normalized.ev.status === "Completo" ? "Completo" : "Incompleto";
   delete normalized.ev._virtualEmptyEV;
   return normalized;
 }
@@ -8011,7 +8011,7 @@ async function openHistoricalEVModal(recordId) {
             </table>
           </div>
         </div>
-        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="ghost-button" type="button" data-action="load-ev-incc" data-id="${record.id}">Reajustar INCC</button><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
+        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
       </article>
     </div>`);
 }
@@ -8478,10 +8478,7 @@ function openEVModal(workId) {
             </div>
           </section>
         </div>
-        <footer class="modal-actions">
-          ${work.ev._virtualEmptyEV ? "" : `<button class="ghost-button" type="button" data-action="load-ev-incc" data-id="current-${escapeAttribute(work.id)}">Reajustar INCC</button>`}
-          <button class="primary-action" type="button" data-view="budget">Ver controle de verba</button>
-        </footer>
+
       </article>
     </div>
   `);
@@ -8521,9 +8518,10 @@ function renderEVStandardStructure(work) {
       .map((row) => renderEVEditableRow(work, row, baseTotal))
       .join("");
   const anexos = work.ev.anexos || [];
+  const lifecycleStatus = effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto";
   return `
     <form class="ev-editor" id="evForm" data-work-id="${work.id}" data-ev-total-no-risk="${baseTotalNoRisk}">
-      <input type="hidden" name="saveMode" value="final" />
+      <input type="hidden" name="evLifecycleStatus" value="${lifecycleStatus}" />
       <div class="error-box" id="formError" role="alert"></div>
       <section class="ev-area-panel">
         <div>
@@ -8600,7 +8598,10 @@ function renderEVStandardStructure(work) {
       </section>
 
       <footer class="ev-editor-actions">
-        <button class="secondary-action" type="submit" data-save-mode="draft">Salvar preenchimento</button>
+        <button class="secondary-action ev-completeness-toggle ${lifecycleStatus === "Completo" ? "is-complete" : "is-incomplete"}" type="button" data-action="toggle-ev-completeness" data-status="${lifecycleStatus}" aria-pressed="${lifecycleStatus === "Completo" ? "true" : "false"}">
+          <span>EV completo?</span>
+          <strong>${lifecycleStatus === "Completo" ? "Sim" : "Não"}</strong>
+        </button>
         <button class="primary-action" type="submit" data-save-mode="final">Salvar EV</button>
       </footer>
     </form>
@@ -14944,7 +14945,7 @@ function renderEVLifecycleConfigurationCard() {
   return `
     <article class="configuration-catalog-card" data-configuration-type="ev-status">
       <header>
-        <div><h3>Status do EV</h3><small>3 estados fixos e automáticos</small></div>
+        <div><h3>Status do EV</h3><small>3 estados fixos</small></div>
         <span class="tag">Não editável</span>
       </header>
       <div class="configuration-catalog-list">
@@ -14955,13 +14956,13 @@ function renderEVLifecycleConfigurationCard() {
               <small>${status === "Sem EV"
                 ? "A obra não possui EV preenchido."
                 : status === "Incompleto"
-                  ? "Existe preenchimento, mas o EV ainda não está completo."
-                  : "O preenchimento atende aos critérios de conclusão do EV."}</small>
+                  ? "O EV foi marcado como incompleto no próprio estudo."
+                  : "O EV foi marcado como completo no próprio estudo."}</small>
             </div>
           </div>
         `).join("")}
       </div>
-      <p class="settings-help-text">O status é calculado pelo conteúdo do EV e não pode ser alterado manualmente.</p>
+      <p class="settings-help-text">“Sem EV” é automático apenas quando não existe estudo. “Incompleto” e “Completo” são definidos manualmente no próprio EV e essa escolha alimenta todas as demais telas.</p>
     </article>
   `;
 }
@@ -17098,6 +17099,8 @@ async function handleEVSubmit(form, mode = "final") {
   if (!work) return;
   const completionDemandId = String(form.dataset.completionDemandId || "");
   const completionDemand = state.demands.find((item) => item.id === completionDemandId && item.obraId === work.id) || null;
+  const nextEVStatus = form.querySelector('[name="evLifecycleStatus"]')?.value === "Completo" ? "Completo" : "Incompleto";
+  const previousEVStatus = effectiveEVStatus(work);
   if (mode === "final" && form.dataset.evDeviationConfirmed !== "true") {
     const { values, baseTotal } = evFormDeviationData(form);
     const readings = evHistoricalDeviationReadings(work, values, baseTotal);
@@ -17164,7 +17167,7 @@ async function handleEVSubmit(form, mode = "final") {
   delete work.ev._virtualEmptyEV;
   const totals = workTotals(work);
   const totalValue = totals.orcado + totals.aditivado;
-  work.ev.status = deriveEVStatus(work);
+  work.ev.status = nextEVStatus;
 
   if (mode === "final") {
     work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
@@ -17182,10 +17185,19 @@ async function handleEVSubmit(form, mode = "final") {
   addHistory({
     entidade: "ev",
     entidadeId: work.ev.id || work.id,
-    campo: mode === "draft" ? "salvamento do preenchimento" : "salvamento",
+    campo: "salvamento",
     valorAnterior: money(previousTotal),
     valorNovo: money(totalValue),
   });
+  if (previousEVStatus !== nextEVStatus) {
+    addHistory({
+      entidade: "ev",
+      entidadeId: work.ev.id || work.id,
+      campo: "status do EV",
+      valorAnterior: previousEVStatus,
+      valorNovo: nextEVStatus,
+    });
+  }
 
   if (previousAreaConstruida !== work.areaConstruida) {
     addHistory({
@@ -17215,9 +17227,7 @@ async function handleEVSubmit(form, mode = "final") {
     showFormError(error?.message || "O EV não foi confirmado pelo banco. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
-  showToast(mode === "draft"
-    ? `EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo sem gerar nova versão.`
-    : `EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
+  showToast(`EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
 
   if (mode === "final" && completionDemand) {
     openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
@@ -17228,11 +17238,8 @@ async function handleEVSubmit(form, mode = "final") {
 }
 
 function deriveEVStatus(work) {
-  const applicable = arrayOrFallback(work?.ev?.lines).filter((line) => normalizeEVLineStatus(line.status) !== "Não se aplica");
-  if (!applicable.length) return "Incompleto";
-  if (!applicable.some((line) => Number(line.valorOrcado || 0) > 0)) return "Incompleto";
-  if (applicable.some((line) => normalizeEVLineStatus(line.status) !== "Orçado")) return "Incompleto";
-  return "Completo";
+  if (!work?.ev || work.ev._virtualEmptyEV || !evHasBudgetData(work.ev)) return "Incompleto";
+  return work.ev.status === "Completo" ? "Completo" : "Incompleto";
 }
 
 async function handleSprintSubmit(form) {
@@ -19363,6 +19370,20 @@ document.addEventListener("click", async (event) => {
     const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
     if (!demand || demand.coluna !== "concluido") return;
     openDemandCompletionModal(demand.id);
+    return;
+  }
+  if (action === "toggle-ev-completeness") {
+    const form = actionButton.closest("#evForm");
+    const input = form?.querySelector('[name="evLifecycleStatus"]');
+    if (!input) return;
+    const nextStatus = input.value === "Completo" ? "Incompleto" : "Completo";
+    input.value = nextStatus;
+    actionButton.dataset.status = nextStatus;
+    actionButton.setAttribute("aria-pressed", nextStatus === "Completo" ? "true" : "false");
+    actionButton.classList.toggle("is-complete", nextStatus === "Completo");
+    actionButton.classList.toggle("is-incomplete", nextStatus !== "Completo");
+    const label = actionButton.querySelector("strong");
+    if (label) label.textContent = nextStatus === "Completo" ? "Sim" : "Não";
     return;
   }
   if (action === "complete-demand-no-ev-change") {
