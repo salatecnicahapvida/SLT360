@@ -2025,6 +2025,56 @@ test('SIC approved by director also requires real delivery date before conclusio
  expect(b.errors).toEqual([]);
 });
 
+test('SIC completion returns to obligations after EV save before final data',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-finish-after-ev',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovadoDiretoria',
+  dataEntregaReal:'',
+  analistaResponsavel:'Ana',
+  sicIds:[],
+  anexos:[],
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC com ajuste no EV'},
+ };
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-finish-after-ev"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await page.getByRole('button',{name:/Atualizar o EV/}).click();
+
+ const evForm=page.locator('#evForm');
+ await expect(evForm).toBeVisible();
+ await expect(evForm).toHaveAttribute('data-completion-demand-id','sic-finish-after-ev');
+ const firstValue=evForm.locator('.ev-value-input').first();
+ await firstValue.fill('125,00');
+ await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
+ const deviation=page.locator('[data-ev-haptec-confirm]');
+ if(await deviation.isVisible().catch(()=>false)){
+  await deviation.locator('[data-ev-haptec-check]').check();
+  await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
+ }
+
+ await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ const checklist=page.locator('.demand-completion-card');
+ await expect(checklist.locator('.completion-resume-notice')).toContainText('EV salvo');
+ await expect(checklist).toContainText('✓ EV atualizado e salvo');
+ await expect(checklist).toContainText('Data entrega real');
+ await expect(checklist).toContainText('Valor da demanda');
+ await checklist.getByRole('button',{name:/Continuar para os dados finais/}).click();
+
+ const completion=page.locator('#demandCompletionForm');
+ await expect(completion).toBeVisible();
+ await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
+ await expect(completion.locator('[name="valorGerado"]')).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+
 
 test('completed demand can register generated amount after legacy completion',async({page})=>{
  const demand={...structuredClone(payload.state.demands[1]),id:'legacy-completed-demand',obraId:'test-work',tipo:'DemandaExtra',coluna:'concluido',dataEntregaReal:'2026-09-15',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
