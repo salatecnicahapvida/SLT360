@@ -8034,9 +8034,9 @@ async function openHistoricalEVModal(recordId) {
           <section class="ev-summary-grid ev-top-kpis">
             ${miniMetric("Área equivalente da obra", historicalArea ? `${number(historicalArea, 2)} m²` : "—")}
             ${miniMetric("Total da obra (sem taxa de risco)", moneyCents(historicalTotalWithoutRisk))}
-            ${miniMetric("Custo da obra por m² (sem taxa de risco)", historicalArea ? `${money(historicalTotalWithoutRisk / historicalArea)}/m²` : "—")}
+            ${miniMetric("Custo da obra por m² (sem taxa de risco)", historicalArea ? `${moneyCents(historicalTotalWithoutRisk / historicalArea)}/m²` : "—")}
             ${miniMetric("Total da obra (com taxa de risco)", moneyCents(historicalTotalWithRisk))}
-            ${miniMetric("Custo da obra por m² (com taxa de risco)", historicalArea ? `${money(historicalTotalWithRisk / historicalArea)}/m²` : "—")}
+            ${miniMetric("Custo da obra por m² (com taxa de risco)", historicalArea ? `${moneyCents(historicalTotalWithRisk / historicalArea)}/m²` : "—")}
             ${miniMetric("Total de SIC's", moneyCents(sicTotal))}
           </section>
           <details class="ev-additive-audit">
@@ -8451,9 +8451,9 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
           <section class="ev-summary-grid ev-top-kpis">
             ${miniMetric("Área equivalente da obra", kpis.area ? `${number(kpis.area, 2)} m²` : "—")}
             ${miniMetric("Total da obra (sem taxa de risco)", money(kpis.totalWithoutRisk))}
-            ${miniMetric("Custo da obra por m² (sem taxa de risco)", kpis.area ? `${money(kpis.costWithoutRisk)}/m²` : "—")}
+            ${miniMetric("Custo da obra por m² (sem taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithoutRisk)}/m²` : "—")}
             ${miniMetric("Total da obra (com taxa de risco)", money(kpis.totalWithRisk))}
-            ${miniMetric("Custo da obra por m² (com taxa de risco)", kpis.area ? `${money(kpis.costWithRisk)}/m²` : "—")}
+            ${miniMetric("Custo da obra por m² (com taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithRisk)}/m²` : "—")}
             ${miniMetric("Total de SIC's", money(kpis.totalSics))}
           </section>
 
