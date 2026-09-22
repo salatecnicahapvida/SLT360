@@ -4,7 +4,7 @@ import {flattenPayload,ENTITY_BY_NAME} from '../../src/module-model.js';
 const id='11111111-1111-4111-8111-111111111111';
 const payload={state:{
   works:[
-    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'São Paulo - Sudeste',cidade:'São Paulo',tipoUnidade:'Clínica',classificacaoObra:'Venda de Serviços',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Rascunho',versaoAtual:1,lines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorOrcado:100},{disciplinaId:'instalacoes-de-spda',valorOrcado:50}],versions:[],sicIds:[],demandaIds:[]}},
+    {id:'test-work',nome:'Obra de teste',codigoOriginal:'TEST',uf:'São Paulo - Sudeste',cidade:'São Paulo',tipoUnidade:'Clínica',classificacaoObra:'Venda de Serviços',tipologiaObra:'Reforma',anoObra:'2026',prazoDias:120,areaConstruida:100,areaEquivalente:100,ev:{id:'test-ev',status:'Incompleto',versaoAtual:1,lines:[{disciplinaId:'instalacoes-eletricas-e-spda',valorOrcado:100},{disciplinaId:'instalacoes-de-spda',valorOrcado:50}],versions:[],sicIds:[],demandaIds:[]}},
     {id:'work-without-ev',nome:'Obra nova sem EV',codigoOriginal:'',uf:'RN',cidade:'Natal',tipoUnidade:'Hospital',classificacaoObra:'Outros',tipologiaObra:'Retrofit',areaConstruida:0,areaEquivalente:0},
   ],
   evs:[
@@ -1253,7 +1253,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
- await page.locator('#evForm').getByRole('button',{name:'Salvar rascunho',exact:true}).click();
+ await page.locator('#evForm').getByRole('button',{name:'Salvar sem gerar versão',exact:true}).click();
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
@@ -1263,6 +1263,8 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(updatedEmpty).not.toContainText('75,00');
  await updatedEmpty.getByRole('button',{name:'Abrir Obra',exact:true}).click();
  await expect(page.locator('#portfolioWorkDetail').locator('.split-item').filter({hasText:'Área construída'})).toContainText('75,00 m²');
+ await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
  expect(b.errors).toEqual([]);
 });
 test('work funding is persisted in Works and Finance before confirming the form',async({page})=>{
@@ -1417,6 +1419,9 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
   'PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
  ]);
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
+ await expect(page.locator('[data-portfolio-quick-filter="evStatus"] option')).toHaveText([
+  'Todos','Sem EV','Incompleto','Completo',
+ ]);
  await expect(page.locator('.portfolio-works-table thead th')).toHaveText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria',
   'Área equivalente (m²)','Total orçado','Custo por m²','Ações',
