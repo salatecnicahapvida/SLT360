@@ -1683,17 +1683,41 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- await page.locator('article[data-id="sic-director-analyst"]').click();
+ const approvalColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
+ const approvedColumn=page.locator('.kanban-column[data-column="aprovadoDiretoria"]');
+ const completedColumn=page.locator('.kanban-column[data-column="concluido"]');
+ const card=approvalColumn.locator('article[data-id="sic-director-analyst"]');
+
+ const dragCardTo=async(targetColumn)=>{
+  await card.scrollIntoViewIfNeeded();
+  const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),targetColumn.locator('.demand-list').boundingBox()]);
+  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
+  await page.mouse.up();
+ };
+
+ await dragCardTo(approvedColumn);
+ await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
+ await expect(card).toBeVisible();
+ await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
+
+ await dragCardTo(completedColumn);
+ await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
+ await expect(card).toBeVisible();
+ await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
+
+ await card.click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovadoDiretoria');
- await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem fazer essa aprovação.');
+ await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
  await expect(status).toHaveValue('aprovacaoDiretoria');
 
  await status.selectOption('concluido');
- await expect(page.locator('#toast')).toHaveText('A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria.');
+ await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
  await expect(status).toHaveValue('aprovacaoDiretoria');
  expect(b.errors).toEqual([]);
