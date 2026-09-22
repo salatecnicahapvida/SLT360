@@ -9461,7 +9461,9 @@ button.analyst-chip {
 
 .portfolio-works-table th:nth-child(11),
 .portfolio-works-table td:nth-child(11) {
-  min-width: 110px;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
 }
 
 .portfolio-plan-table {
@@ -9686,10 +9688,13 @@ button.analyst-chip {
 
 .portfolio-works-table th:nth-child(11),
 .portfolio-works-table td:nth-child(11) {
-  min-width: 190px;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
 }
 
 .portfolio-actions {
+  width: fit-content;
   flex-wrap: nowrap;
 }
 
