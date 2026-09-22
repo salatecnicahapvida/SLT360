@@ -8694,7 +8694,7 @@ function renderEVGroupedEditableRow(work, row, baseTotal, { hideEmpty = true, ex
   const percent = baseTotal && !isNA ? (value / baseTotal) * 100 : 0;
   const unitCost = work.areaEquivalente && !isNA ? value / work.areaEquivalente : 0;
   const hideRow = hideEmpty && Math.abs(value) < 0.000001;
-  const localName = local ? evLineDisplayName(line) : discipline.nome;
+  const localName = local ? String(line?.localName || "") : discipline.nome;
   return `
     <tr class="ev-line-row ev-zero-toggle-row ${isNA ? "is-not-applicable" : ""}" data-discipline-id="${escapeAttribute(discipline.id)}" data-ev-group="${category}" data-local-line="${local ? "true" : "false"}" data-existing-local="${local && existingLocal ? "true" : "false"}" ${hideRow ? "hidden" : ""}>
       <td>${local ? `<span class="ev-local-chip">Local</span>` : discipline.posicao}</td>
@@ -17297,18 +17297,13 @@ function showToast(message) {
 }
 
 function updateEVAreaPreview(form) {
-  const areaEquivalente = parseCurrency(form?.querySelector('[name="evAreaEquivalente"]')?.value);
-  const editableRows = [...(form?.querySelectorAll(".ev-line-row") || [])];
-  const totalNoRisk =
-    editableRows.length
-      ? editableRows.reduce((sum, row) => {
-          const status = normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
-          if (status === "Não se aplica" || isRiskLine({ disciplinaId: row.dataset.disciplineId })) return sum;
-          return sum + parseCurrency(row.querySelector(".ev-value-input")?.value);
-        }, 0)
-      : Number(form?.dataset.evTotalNoRisk || 0);
-  const preview = form?.querySelector("[data-ev-area-preview]");
-  if (preview) preview.textContent = areaEquivalente ? `${money(totalNoRisk / areaEquivalente)}/m²` : "—";
+  if (!form) return;
+  const totals = updateEVGroupTotals(form) || evFormTotals(form);
+  const work = workById(form.dataset.workId);
+  const areaFromField = parseCurrency(form.querySelector('[name="evAreaEquivalente"]')?.value);
+  const areaEquivalente = areaFromField || Number(work?.areaEquivalente || 0) || 0;
+  const preview = form.querySelector("[data-ev-area-preview]");
+  if (preview) preview.textContent = areaEquivalente ? `${money(totals.totalNoRisk / areaEquivalente)}/m²` : "—";
   updateEVHistoricalDeviationAlerts(form);
 }
 
@@ -17344,15 +17339,14 @@ function evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotal) {
 
 function evFormDeviationData(form) {
   const values = {};
-  let baseTotal = 0;
   form?.querySelectorAll(".ev-line-row").forEach((row) => {
     const id = row.dataset.disciplineId;
     const status = normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
     const value = status === "Não se aplica" ? 0 : parseCurrency(row.querySelector(".ev-value-input")?.value);
-    values[id] = value;
-    if (!isRiskLine({ disciplinaId: id })) baseTotal += value;
+    values[id] = (values[id] || 0) + value;
   });
-  return { values, baseTotal };
+  const totals = evFormTotals(form);
+  return { values, baseTotal: totals.totalNoRisk };
 }
 
 function updateEVHistoricalDeviationAlerts(form) {
@@ -17392,20 +17386,46 @@ function showEVHaptecConfirmation(form, mode, readings) {
 }
 
 function evRevisionComparableState(work) {
+  const allLines = arrayOrFallback(work?.ev?.lines);
   const lineMap = new Map(
-    arrayOrFallback(work?.ev?.lines).map((line) => [canonicalDisciplineId(line.disciplinaId), line])
+    allLines
+      .filter((line) => !isLocalEVLine(line))
+      .map((line) => [canonicalDisciplineId(line.disciplinaId), line])
   );
+  const configured = configuredDisciplines().map((discipline) => {
+    const line = lineMap.get(discipline.id);
+    const status = normalizeEVLineStatus(line?.status || "Estimado");
+    return {
+      disciplinaId: discipline.id,
+      status,
+      valorOrcado: status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0),
+      isLocalEVLine: false,
+      localName: "",
+      localCategory: discipline.id === "sics" ? "Sics" : discipline.categoria,
+    };
+  });
+  const local = allLines
+    .filter(isLocalEVLine)
+    .map((line, index) => {
+      const status = normalizeEVLineStatus(line.status || "Estimado");
+      return {
+        disciplinaId: String(line.disciplinaId),
+        status,
+        valorOrcado: status === "Não se aplica" ? 0 : Number(line.valorOrcado || 0),
+        isLocalEVLine: true,
+        localName: evLineDisplayName(line),
+        localCategory: evLineCategory(line),
+        localPosition: Number(line.localPosition || 900 + index),
+      };
+    })
+    .sort((a, b) =>
+      String(a.localCategory).localeCompare(String(b.localCategory), "pt-BR") ||
+      Number(a.localPosition || 999) - Number(b.localPosition || 999) ||
+      String(a.disciplinaId).localeCompare(String(b.disciplinaId), "pt-BR")
+    );
   return {
     lifecycleStatus: effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto",
-    lines: configuredDisciplines().map((discipline) => {
-      const line = lineMap.get(discipline.id);
-      const status = normalizeEVLineStatus(line?.status || "Estimado");
-      return {
-        disciplinaId: discipline.id,
-        status,
-        valorOrcado: status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0),
-      };
-    }),
+    lines: [...configured, ...local],
   };
 }
 
@@ -17417,10 +17437,17 @@ function evRevisionDisciplineDiff(before, after) {
   const beforeById = new Map(arrayOrFallback(before?.lines).map((line) => [line.disciplinaId, line]));
   return arrayOrFallback(after?.lines)
     .map((line) => {
-      const previous = beforeById.get(line.disciplinaId) || { valorOrcado: 0, status: "Estimado" };
+      const previous = beforeById.get(line.disciplinaId) || {
+        valorOrcado: 0,
+        status: "Estimado",
+        localName: "",
+        localCategory: "",
+      };
       if (
         Number(previous.valorOrcado || 0) === Number(line.valorOrcado || 0)
         && String(previous.status || "") === String(line.status || "")
+        && String(previous.localName || "") === String(line.localName || "")
+        && String(previous.localCategory || "") === String(line.localCategory || "")
       ) return null;
       return {
         disciplinaId: line.disciplinaId,
@@ -17428,6 +17455,10 @@ function evRevisionDisciplineDiff(before, after) {
         valorDepois: Number(line.valorOrcado || 0),
         statusAntes: previous.status || "Estimado",
         statusDepois: line.status || "Estimado",
+        nomeAntes: previous.localName || "",
+        nomeDepois: line.localName || "",
+        categoriaAntes: previous.localCategory || "",
+        categoriaDepois: line.localCategory || "",
       };
     })
     .filter(Boolean);
@@ -17467,15 +17498,45 @@ async function handleEVSubmit(form, mode = "final") {
   const previousRevisionState = evRevisionComparableState(workSnapshot);
   const previousTotals = workTotals(work);
   const previousTotal = previousTotals.orcado + previousTotals.aditivado;
+
   const previousRevisionNumber = Number(work.ev.versaoAtual || 0);
   work.ev.lines = work.ev.lines || [];
 
-  form.querySelectorAll(".ev-line-row").forEach((row) => {
+  const editorRows = [...form.querySelectorAll(".ev-line-row")];
+  const invalidLocalRow = editorRows.find(
+    (row) => row.dataset.localLine === "true" && !String(row.querySelector(".ev-local-name-input")?.value || "").trim()
+  );
+  if (invalidLocalRow) {
+    showFormError("Informe o nome da nova linha antes de salvar o EV.", form);
+    invalidLocalRow.hidden = false;
+    invalidLocalRow.querySelector(".ev-local-name-input")?.focus();
+    return;
+  }
+
+  let deletedLocalLineIds = [];
+  try {
+    deletedLocalLineIds = JSON.parse(form.dataset.deletedLocalLineIds || "[]");
+  } catch {
+    deletedLocalLineIds = [];
+  }
+  if (deletedLocalLineIds.length) {
+    const deletedSet = new Set(deletedLocalLineIds.map(String));
+    work.ev.lines = work.ev.lines.filter(
+      (line) => !(isLocalEVLine(line) && deletedSet.has(String(line.disciplinaId)))
+    );
+  }
+
+  editorRows.forEach((row) => {
     const disciplineId = row.dataset.disciplineId;
+    const isLocal = row.dataset.localLine === "true";
     const status = normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
     const input = row.querySelector(".ev-value-input");
     const value = status === "Não se aplica" ? 0 : parseCurrency(input?.value);
-    let line = work.ev.lines.find((item) => canonicalDisciplineId(item.disciplinaId) === disciplineId);
+    let line = work.ev.lines.find((item) =>
+      isLocal
+        ? String(item.disciplinaId) === String(disciplineId)
+        : canonicalDisciplineId(item.disciplinaId) === disciplineId && !isLocalEVLine(item)
+    );
     if (!line) {
       line = { disciplinaId: disciplineId, valorOrcado: 0, status };
       work.ev.lines.push(line);
@@ -17483,9 +17544,23 @@ async function handleEVSubmit(form, mode = "final") {
     line.disciplinaId = disciplineId;
     line.valorOrcado = value;
     line.status = status;
+    if (isLocal) {
+      line.isLocalEVLine = true;
+      line.localName = String(row.querySelector(".ev-local-name-input")?.value || "").trim();
+      line.localCategory = ["CustosDaObra", "OutrasCategorias", "Sics"].includes(row.dataset.evGroup)
+        ? row.dataset.evGroup
+        : "OutrasCategorias";
+      line.localPosition = Number(line.localPosition || Date.now());
+    }
   });
 
-  work.ev.lines.sort((a, b) => disciplineById(a.disciplinaId).posicao - disciplineById(b.disciplinaId).posicao);
+  const groupOrder = { CustosDaObra: 0, OutrasCategorias: 1, Sics: 2 };
+  work.ev.lines.sort((a, b) => {
+    const categoryDifference =
+      Number(groupOrder[evLineCategory(a)] ?? 9) - Number(groupOrder[evLineCategory(b)] ?? 9);
+    if (categoryDifference) return categoryDifference;
+    return evLinePosition(a) - evLinePosition(b);
+  });
   work.ev.status = nextEVStatus;
 
   const nextRevisionState = evRevisionComparableState(work);
@@ -19657,6 +19732,64 @@ document.addEventListener("click", async (event) => {
   if (action === "back-demand-step") {
     openDemandWizardModal(demandWizardDraft.tipo || "EmissaoInicial", 1, demandWizardDraft);
   }
+
+  if (action === "add-ev-local-line") {
+    const form = actionButton.closest("#evForm");
+    const category = actionButton.dataset.category;
+    if (!form || !["CustosDaObra", "OutrasCategorias", "Sics"].includes(category)) return;
+    const work = workById(form.dataset.workId);
+    const body = form.querySelector(`[data-ev-group-body="${category}"]`);
+    if (!work || !body) return;
+    const randomPart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const id = `local-${category.toLowerCase()}-${String(randomPart).replace(/[^a-zA-Z0-9-]/g, "")}`;
+    const line = {
+      disciplinaId: id,
+      valorOrcado: 0,
+      status: category === "Sics" ? "Orçado" : "Estimado",
+      isLocalEVLine: true,
+      localName: "",
+      localCategory: category,
+      localPosition: Date.now(),
+    };
+    const row = {
+      discipline: { id, nome: "", categoria: category, posicao: line.localPosition, local: true },
+      line,
+      status: line.status,
+      value: 0,
+      category,
+      local: true,
+    };
+    body.insertAdjacentHTML(
+      "beforeend",
+      globalThis.SLT_CLOUD.cleanHTML(
+        renderEVGroupedEditableRow(work, row, evFormTotals(form).total, { hideEmpty: false, existingLocal: false })
+      )
+    );
+    const addedRows = [...body.querySelectorAll(".ev-line-row")];
+    const addedRow = addedRows[addedRows.length - 1];
+    addedRow?.querySelector(".ev-local-name-input")?.focus();
+    updateEVAreaPreview(form);
+    return;
+  }
+  if (action === "remove-ev-local-line") {
+    const row = actionButton.closest(".ev-line-row");
+    const form = row?.closest("#evForm");
+    if (!row || !form || row.dataset.localLine !== "true") return;
+    if (row.dataset.existingLocal === "true") {
+      let deleted = [];
+      try {
+        deleted = JSON.parse(form.dataset.deletedLocalLineIds || "[]");
+      } catch {
+        deleted = [];
+      }
+      deleted.push(row.dataset.disciplineId);
+      form.dataset.deletedLocalLineIds = JSON.stringify([...new Set(deleted)]);
+    }
+    row.remove();
+    updateEVAreaPreview(form);
+    return;
+  }
+
   if (action === "set-ev-line-na") {
     const row = actionButton.closest(".ev-line-row");
     const select = row?.querySelector(".ev-status-select");
@@ -19734,10 +19867,11 @@ document.addEventListener("click", async (event) => {
     const form = actionButton.closest("#evForm");
     if (!form) return;
     const shouldHide = actionButton.dataset.hidden !== "true";
-    const rows = [...form.querySelectorAll(".ev-line-row")];
+    const rows = [...form.querySelectorAll(".ev-zero-toggle-row")];
     rows.forEach((row) => {
-      const input = row.querySelector(".ev-value-input");
-      const value = parseCurrency(input?.value || "");
+      const value = row.classList.contains("ev-sic-posted-row")
+        ? Number(row.dataset.evStaticValue || 0)
+        : parseCurrency(row.querySelector(".ev-value-input")?.value || "");
       row.hidden = shouldHide && Math.abs(value) < 0.000001;
     });
     actionButton.dataset.hidden = shouldHide ? "true" : "false";
