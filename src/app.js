@@ -15499,7 +15499,7 @@ function openDemandDetailModal(id) {
             <div class="section-title">
               <span>Estudo de Viabilidade (EV)</span>
             </div>
-            <p class="muted">Esta demanda alimenta diretamente o EV da obra vinculada. Para a emissão inicial, o EV nasce gerado para preencher os custos.</p>
+            <p class="muted">Esta demanda alimenta diretamente o EV da obra vinculada. Se a obra ainda estiver sem EV, o estudo passa a existir quando houver o primeiro preenchimento salvo.</p>
             <div class="split-list compact">
               ${splitItem("EV atual", work ? `${effectiveEVStatus(work) === "Sem EV" ? "Sem versão" : `REV${String(work.ev?.versaoAtual || 0).padStart(2, "0")}`} · ${effectiveEVStatus(work)}` : "—")}
             </div>
