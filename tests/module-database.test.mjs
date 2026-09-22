@@ -7,7 +7,7 @@ import {database,seed,admin} from './helpers/database.mjs';
 test('módulos: dados separados, RLS, concorrência por registro, transação, idempotência e auditoria',async()=>{
  const db=await database();
  try {
-  const payload={state:{works:[{id:'work-1',nome:'Obra teste',ev:{id:'ev-1',status:'Rascunho',lines:[{disciplinaId:'civil',valorOrcado:12.34}],versions:[]}}],demands:[{id:'demand-1',obraId:'work-1',sprintId:'',coluna:'entrada'}],maintenanceDemands:[{id:'order-1',titulo:'Predial',centroCusto:'Manutenção predial',valorProposta:22,historico:[]},{id:'order-2',titulo:'Clínica',centroCusto:'Engenharia clínica',valorProposta:11,historico:[]}]},datasets:{}};
+  const payload={state:{works:[{id:'work-1',nome:'Obra teste',ev:{id:'ev-1',status:'Incompleto',lines:[{disciplinaId:'civil',valorOrcado:12.34}],versions:[]}}],demands:[{id:'demand-1',obraId:'work-1',sprintId:'',coluna:'entrada'}],maintenanceDemands:[{id:'order-1',titulo:'Predial',centroCusto:'Manutenção predial',valorProposta:22,historico:[]},{id:'order-2',titulo:'Clínica',centroCusto:'Engenharia clínica',valorProposta:11,historico:[]}]},datasets:{}};
   await seed(db,payload);
   const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role '+role);};
   const read=async(module=null)=>(await db.query('select slt_module_load($1) result',[module])).rows[0].result;
