@@ -910,8 +910,12 @@ test('configuration catalogs can be created and edited and feed work and EV form
  const b=await backend(page);await login(page);
  await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
  const catalogs=page.locator('.configuration-catalog-card');
- await expect(catalogs).toHaveCount(6);
- await expect(catalogs.locator('h3')).toHaveText(['Disciplinas do EV','Categorias de obra','Tipologias de obra','Anos de obra','Regiões','Estados']);
+ await expect(catalogs).toHaveCount(7);
+ await expect(catalogs.locator('h3')).toHaveText(['Status do EV','Disciplinas do EV','Categorias de obra','Tipologias de obra','Anos de obra','Regiões','Estados']);
+ const evStatusCard=page.locator('[data-configuration-type="ev-status"]');
+ await expect(evStatusCard.locator('.configuration-catalog-item strong')).toHaveText(['Sem EV','Incompleto','Completo']);
+ await expect(evStatusCard).not.toContainText('Rascunho');
+ await expect(evStatusCard.getByRole('button')).toHaveCount(0);
  for(const type of ['discipline','category','typology','year','region','state']){
   await expect(page.locator(`[data-configuration-type="${type}"]`).getByRole('button',{name:'Novo'})).toBeVisible();
  }
