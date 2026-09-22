@@ -1658,6 +1658,27 @@ function workBudgetValue(work, options = {}) {
   return values.orcado + values.aditivado;
 }
 
+function evTopKpiReading(work) {
+  const area = Number(work?.areaEquivalente || 0) || 0;
+  const totalWithoutRisk = workBudgetValue(work);
+  const totalWithRisk = workBudgetValue(work, { includeRisk: true });
+  const totalSics = (work?.ev?.lines || []).reduce((sum, line) => {
+    if (normalizeEVLineStatus(line.status) === "Não se aplica") return sum;
+    const disciplineId = canonicalDisciplineId(line.disciplinaId);
+    if (disciplineId === "taxa-risco") return sum;
+    if (disciplineId === "sics") return sum + Number(line.valorOrcado || 0);
+    return sum + Number(aditivadoByDiscipline(work.id, disciplineId) || 0);
+  }, 0);
+  return {
+    area,
+    totalWithoutRisk,
+    costWithoutRisk: area ? totalWithoutRisk / area : 0,
+    totalWithRisk,
+    costWithRisk: area ? totalWithRisk / area : 0,
+    totalSics,
+  };
+}
+
 function strategicCostTargetForWork(work) {
   const manualTargetId = String(work?.metaCustoM2TargetId || work?.metaCustoM2 || "").trim();
   const manualTarget = strategicTargetById(manualTargetId);
@@ -7998,6 +8019,10 @@ async function openHistoricalEVModal(recordId) {
   const sicTotal = additives.total;
   const originalTotal = additives.original;
   const sicPercentage = additives.percentage === null ? "—" : `${number(additives.percentage, 2)}%`;
+  const historicalRisk = Number(record.disciplines?.["taxa-risco"] || 0) || 0;
+  const historicalArea = Number(record.area || 0) || 0;
+  const historicalTotalWithRisk = Number(record.total || 0) || 0;
+  const historicalTotalWithoutRisk = Number(record.baseTotal || 0) || Math.max(historicalTotalWithRisk - historicalRisk, 0);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
@@ -8006,6 +8031,14 @@ async function openHistoricalEVModal(recordId) {
           <div class="ev-modal-status"><span class="tag">${items.length} filhas</span><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></div>
         </header>
         <div class="modal-body ev-modal-body">
+          <section class="ev-summary-grid ev-top-kpis">
+            ${miniMetric("Área equivalente da obra", historicalArea ? `${number(historicalArea, 2)} m²` : "—")}
+            ${miniMetric("Total da obra (sem taxa de risco)", moneyCents(historicalTotalWithoutRisk))}
+            ${miniMetric("Custo da obra por m² (sem taxa de risco)", historicalArea ? `${money(historicalTotalWithoutRisk / historicalArea)}/m²` : "—")}
+            ${miniMetric("Total da obra (com taxa de risco)", moneyCents(historicalTotalWithRisk))}
+            ${miniMetric("Custo da obra por m² (com taxa de risco)", historicalArea ? `${money(historicalTotalWithRisk / historicalArea)}/m²` : "—")}
+            ${miniMetric("Total de SIC's", moneyCents(sicTotal))}
+          </section>
           <details class="ev-additive-audit">
             <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>
             <p>${additives.detailed ? "Soma das linhas identificadas como SIC, ADT ou aditivo na descrição, ou classificadas como SICs. Cada linha é contada uma vez, preservando seu sinal." : "Composição detalhada indisponível: valor limitado ao agrupamento SICs informado na base."}</p>
@@ -8388,6 +8421,7 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
   selectedWorkId = work.id;
   const totals = workTotals(work);
   const totalValue = totals.orcado + totals.aditivado;
+  const kpis = evTopKpiReading(work);
   const displayVersions = [...(work.ev.versions || [])];
   const currentRevision = Number(work.ev.versaoAtual || 0);
   if (!work.ev._virtualEmptyEV && !displayVersions.some((version) => Number(version.numero) === currentRevision)) {
@@ -8414,6 +8448,15 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
           </div>
         </header>
         <div class="modal-body ev-modal-body">
+          <section class="ev-summary-grid ev-top-kpis">
+            ${miniMetric("Área equivalente da obra", kpis.area ? `${number(kpis.area, 2)} m²` : "—")}
+            ${miniMetric("Total da obra (sem taxa de risco)", money(kpis.totalWithoutRisk))}
+            ${miniMetric("Custo da obra por m² (sem taxa de risco)", kpis.area ? `${money(kpis.costWithoutRisk)}/m²` : "—")}
+            ${miniMetric("Total da obra (com taxa de risco)", money(kpis.totalWithRisk))}
+            ${miniMetric("Custo da obra por m² (com taxa de risco)", kpis.area ? `${money(kpis.costWithRisk)}/m²` : "—")}
+            ${miniMetric("Total de SIC's", money(kpis.totalSics))}
+          </section>
+
           ${renderEVStandardStructure(work, completionDemandId)}
 
           <section class="ev-version-panel">
