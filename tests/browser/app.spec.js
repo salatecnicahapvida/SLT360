@@ -1348,10 +1348,11 @@ test('admin deletes an unlinked work and linked works remain protected',async({p
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
 
  const unlinkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
- await unlinkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
- const workForm=page.locator('#workForm');
- await expect(workForm.getByRole('button',{name:'Excluir obra',exact:true})).toBeVisible();
- await workForm.getByRole('button',{name:'Excluir obra',exact:true}).click();
+ await unlinkedRow.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ const unlinkedDetail=page.locator('#portfolioWorkDetail');
+ await expect(unlinkedDetail.getByRole('button',{name:'Editar obra',exact:true})).toBeVisible();
+ await expect(unlinkedDetail.getByRole('button',{name:'Excluir obra',exact:true})).toBeVisible();
+ await unlinkedDetail.getByRole('button',{name:'Excluir obra',exact:true}).click();
 
  const deleteModal=page.locator('.work-delete-modal');
  await expect(deleteModal.getByRole('heading',{name:'Excluir esta obra?',exact:true})).toBeVisible();
@@ -1368,8 +1369,10 @@ test('admin deletes an unlinked work and linked works remain protected',async({p
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).some(change=>change.entity==='projects_works'&&change.key==='work-without-ev'&&change.operation==='delete')).toBe(true);
 
  const linkedRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
- await linkedRow.getByRole('button',{name:'Editar Obra',exact:true}).click();
- await page.locator('#workForm').getByRole('button',{name:'Excluir obra',exact:true}).click();
+ await linkedRow.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ const linkedDetail=page.locator('#portfolioWorkDetail');
+ await expect(linkedDetail.getByRole('button',{name:'Editar obra',exact:true})).toBeVisible();
+ await linkedDetail.getByRole('button',{name:'Excluir obra',exact:true}).click();
  const blockedModal=page.locator('.work-delete-modal');
  await expect(blockedModal.getByRole('heading',{name:'Esta obra não pode ser excluída',exact:true})).toBeVisible();
  await expect(blockedModal.locator('.split-item').filter({hasText:'EVs vinculados'}).locator('span')).toHaveText('1');
@@ -1378,12 +1381,12 @@ test('admin deletes an unlinked work and linked works remain protected',async({p
  await expect(blockedModal.getByRole('button',{name:'Excluir definitivamente',exact:true})).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
-
-test('portfolio includes works without EV, selectable filters and the single requested KPI',async({page})=>{
+test('portfolio includes works without EV, keeps the table concise and opens full work details',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await expect(page.getByRole('heading',{name:'Portfólio de Obras e EVs',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Fluxo de valor de orçamentação de projetos',exact:true})).toHaveCount(0);
  const kpis=page.locator('.portfolio-kpis');
  await expect(kpis).toContainText('Obras no portfólio');
  await expect(kpis).toContainText('5');
@@ -1409,10 +1412,14 @@ test('portfolio includes works without EV, selectable filters and the single req
   'PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
  ]);
  await expect(page.getByRole('button',{name:'Limpar filtros',exact:true})).toBeVisible();
- await expect(page.locator('.portfolio-works-table thead th')).toContainText([
-  'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria','CNPJ','Endereço',
-  'Área equivalente (m²)','Área construída (m²)','Tempo de obra (dias)','Total orçado','Custo por m²','Ações',
+ await expect(page.locator('.portfolio-works-table thead th')).toHaveText([
+  'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria',
+  'Área equivalente (m²)','Total orçado','Custo por m²','Ações',
  ]);
+ await expect(page.locator('.portfolio-works-table thead')).not.toContainText('CNPJ');
+ await expect(page.locator('.portfolio-works-table thead')).not.toContainText('Endereço');
+ await expect(page.locator('.portfolio-works-table thead')).not.toContainText('Área construída');
+ await expect(page.locator('.portfolio-works-table thead')).not.toContainText('Tempo de obra');
  await expect(page.locator('.portfolio-works-table thead [data-action="sort-generic-table"]')).toHaveCount(0);
  await page.locator('[data-portfolio-quick-filter="year"]').selectOption('2024');
  await expect(kpis).toContainText('2');
@@ -1423,6 +1430,7 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(page.locator('.portfolio-works-table tbody')).toContainText('Obra Histórica Sul');
  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
+
  const historicalRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Norte/i});
  await expect(historicalRow.locator('td').nth(0)).toHaveText('HIST-1');
  await expect(historicalRow.locator('td').nth(1)).toHaveText('HIST-1. Obra Histórica Norte');
@@ -1432,12 +1440,18 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(historicalRow.locator('td').nth(3)).toHaveText('Norte');
  await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
  await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
- await expect(historicalRow.locator('td').nth(9)).toHaveText('200,00');
- await expect(historicalRow.locator('td').nth(10)).toHaveText('200,00');
- await expect(historicalRow.locator('td').nth(12)).toHaveText('R$ 1.000,00');
- await expect(historicalRow.locator('td').nth(13)).toHaveText('R$ 5,00');
- await expect(historicalRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
- await historicalRow.getByRole('button',{name:'Editar Obra'}).click();
+ await expect(historicalRow.locator('td').nth(7)).toHaveText('200,00');
+ await expect(historicalRow.locator('td').nth(8)).toHaveText('R$ 1.000,00');
+ await expect(historicalRow.locator('td').nth(9)).toHaveText('R$ 5,00');
+ await expect(historicalRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
+
+ await historicalRow.getByRole('button',{name:'Abrir Obra'}).click();
+ let workDetail=page.locator('#portfolioWorkDetail');
+ await expect(workDetail.getByRole('heading',{name:'HIST-1. Obra Histórica Norte',exact:true})).toBeVisible();
+ await expect(workDetail.locator('.split-item').filter({hasText:'Área construída'})).toContainText('200,00 m²');
+ await expect(workDetail.getByRole('button',{name:'Editar obra',exact:true})).toBeVisible();
+ await workDetail.getByRole('button',{name:'Editar obra',exact:true}).click();
+
  const historicalWorkForm=page.locator('#workForm');
  await expect(historicalWorkForm.getByRole('heading',{name:'Editar obra'})).toBeVisible();
  await expect(historicalWorkForm.locator('[name="sourceHistoricalRecordId"]')).toHaveValue('evh-test-1');
@@ -1447,12 +1461,19 @@ test('portfolio includes works without EV, selectable filters and the single req
  await historicalWorkForm.locator('[name="endereco"]').fill('Rua histórica, 10');
  await historicalWorkForm.getByRole('button',{name:'Salvar alterações'}).click();
  await expect(page.locator('.portfolio-works-table tbody tr')).toHaveCount(5);
- await expect(historicalRow.locator('td').nth(8)).toHaveText('Rua histórica, 10');
+ await expect(historicalRow).not.toContainText('Rua histórica, 10');
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'&&change.document.sourceHistoricalRecordId==='evh-test-1'&&change.document.endereco==='Rua histórica, 10'))).toBe(true);
+
+ await historicalRow.getByRole('button',{name:'Abrir Obra'}).click();
+ workDetail=page.locator('#portfolioWorkDetail');
+ await expect(workDetail.locator('.portfolio-work-address')).toContainText('Rua histórica, 10');
+ await workDetail.getByRole('button',{name:'Fechar',exact:true}).click();
+
  await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
  await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC'})).toBeVisible();
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
+
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
  await expect(currentRow.locator('td').nth(1)).toHaveText('TEST. Obra de Teste');
  await expect(currentRow.locator('td').nth(2)).toHaveText('SP');
@@ -1460,28 +1481,42 @@ test('portfolio includes works without EV, selectable filters and the single req
  await expect(currentRow.locator('td').nth(4)).toHaveText('2026');
  await expect(currentRow.locator('td').nth(5)).toBeEmpty();
  await expect(currentRow.locator('td').nth(6)).toHaveText('Venda de Serviço');
- await expect(currentRow.locator('td').nth(9)).toHaveText('100,00');
- await expect(currentRow.locator('td').nth(10)).toHaveText('100,00');
- await expect(currentRow.locator('td').nth(11)).toHaveText('120');
- await expect(currentRow.locator('td').nth(12)).toHaveText('R$ 150,00');
- await expect(currentRow.locator('td').nth(13)).toHaveText('R$ 1,50');
- await expect(currentRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
- await currentRow.getByRole('button',{name:'Editar Obra'}).click();
+ await expect(currentRow.locator('td').nth(7)).toHaveText('100,00');
+ await expect(currentRow.locator('td').nth(8)).toHaveText('R$ 150,00');
+ await expect(currentRow.locator('td').nth(9)).toHaveText('R$ 1,50');
+ await expect(currentRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
+
+ await currentRow.getByRole('button',{name:'Abrir Obra'}).click();
+ workDetail=page.locator('#portfolioWorkDetail');
+ await expect(workDetail.locator('.split-item').filter({hasText:'Tempo de obra'})).toContainText('120 dias');
+ await expect(workDetail.locator('.split-item').filter({hasText:'Área construída'})).toContainText('100,00 m²');
+ await expect(workDetail.locator('.split-item').filter({hasText:'CNPJ'})).toBeVisible();
+ await expect(workDetail.locator('.portfolio-work-address')).toBeVisible();
+ await expect(workDetail.getByRole('button',{name:'Editar obra',exact:true})).toBeVisible();
+ await expect(workDetail.getByRole('button',{name:'Excluir obra',exact:true})).toBeVisible();
+ await workDetail.getByRole('button',{name:'Editar obra',exact:true}).click();
+
  const currentWorkForm=page.locator('#workForm');
  await expect(currentWorkForm.getByRole('heading',{name:'Editar obra'})).toBeVisible();
  await currentWorkForm.locator('[name="endereco"]').fill('Rua editada, 100');
  await currentWorkForm.getByRole('button',{name:'Salvar alterações'}).click();
- await expect(currentRow.locator('td').nth(8)).toHaveText('Rua editada, 100');
+ await expect(currentRow).not.toContainText('Rua editada, 100');
  await expect.poll(()=>b.requests.some(request=>request.changes.some(change=>change.entity==='projects_works'&&change.document.endereco==='Rua editada, 100'))).toBe(true);
+ await currentRow.getByRole('button',{name:'Abrir Obra'}).click();
+ workDetail=page.locator('#portfolioWorkDetail');
+ await expect(workDetail.locator('.portfolio-work-address')).toContainText('Rua editada, 100');
+ await workDetail.getByRole('button',{name:'Fechar',exact:true}).click();
+
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(noEvRow.locator('td').nth(0)).toHaveText('0000');
  await expect(noEvRow.locator('td').nth(1)).toHaveText('0000. Obra Nova sem EV');
  await expect(noEvRow.locator('td').nth(5)).toHaveText('Retrofit Unidade Existente');
  await expect(noEvRow.locator('td').nth(6)).toBeEmpty();
- await expect(noEvRow.locator('td').nth(10)).toBeEmpty();
- await expect(noEvRow.locator('td').nth(12)).toBeEmpty();
- await expect(noEvRow.locator('td').nth(13)).toBeEmpty();
- await expect(noEvRow.locator('.portfolio-actions button')).toHaveText(['Criar EV','Editar Obra']);
+ await expect(noEvRow.locator('td').nth(7)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(8)).toBeEmpty();
+ await expect(noEvRow.locator('td').nth(9)).toBeEmpty();
+ await expect(noEvRow.locator('.portfolio-actions button')).toHaveText(['Criar EV','Abrir Obra']);
+
  const ambiguousPaRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:'ADM Barro Preto Timbiras'});
  await expect(ambiguousPaRow.locator('td').nth(1)).toHaveText('HIST-3. ADM Barro Preto Timbiras - 2° PA');
  await expect(ambiguousPaRow.locator('td').nth(2)).toBeEmpty();
@@ -1500,7 +1535,6 @@ test('portfolio includes works without EV, selectable filters and the single req
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
-
 test('operational cards drag between columns and SICs enter director approval directly with Lecon visible',async({page})=>{
  const legacySic={
   ...structuredClone(payload.state.demands[0]),
