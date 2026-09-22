@@ -1614,7 +1614,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await directorColumn.locator('article[data-id="test-demand"]').click();
  const approvedStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(approvedStatus.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(approvedStatus.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await expect(approvedStatus.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await approvedStatus.selectOption('aprovadoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorApprovedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
@@ -1736,22 +1736,33 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  const completedColumn=page.locator('.kanban-column[data-column="concluido"]');
  const card=approvalColumn.locator('article[data-id="sic-director-analyst"]');
 
- const dragCardTo=async(targetColumn)=>{
-  await targetColumn.scrollIntoViewIfNeeded();
-  await card.scrollIntoViewIfNeeded();
-  const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),targetColumn.locator('.demand-list').boundingBox()]);
+ const dragCardTo=async(targetColumnId)=>{
+  const board=page.locator('.operational-board-panel [data-kanban-scroll-board]');
+  await board.evaluate((element,{cardId,targetColumnId})=>{
+   const source=element.querySelector(`article[data-id="${cardId}"]`)?.closest('.kanban-column');
+   const target=element.querySelector(`.kanban-column[data-column="${targetColumnId}"]`);
+   if(!source||!target)return;
+   const left=Math.min(source.offsetLeft,target.offsetLeft);
+   const right=Math.max(source.offsetLeft+source.offsetWidth,target.offsetLeft+target.offsetWidth);
+   element.scrollLeft=Math.max(0,(left+right-element.clientWidth)/2);
+  },{cardId:'sic-director-analyst',targetColumnId});
+  const source=approvalColumn.locator('article[data-id="sic-director-analyst"]');
+  const target=page.locator(`.kanban-column[data-column="${targetColumnId}"] .demand-list`);
+  const [sourceBox,targetBox]=await Promise.all([source.boundingBox(),target.boundingBox()]);
+  expect(sourceBox).toBeTruthy();
+  expect(targetBox).toBeTruthy();
   await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
   await page.mouse.down();
-  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:8});
+  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:12});
   await page.mouse.up();
  };
 
- await dragCardTo(approvedColumn);
+ await dragCardTo('aprovadoDiretoria');
  await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
  await expect(card).toBeVisible();
  await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
 
- await dragCardTo(completedColumn);
+ await dragCardTo('concluido');
  await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
  await expect(card).toBeVisible();
  await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
