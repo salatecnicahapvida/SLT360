@@ -4796,7 +4796,7 @@ function moduleSummaries() {
       tone: "blue",
       metrics: [
         { label: "EVs históricos", value: number(historicalEVCount) },
-        { label: "Em andamento", value: String(worksInProgressCount) },
+        { label: "Cards em andamento", value: String(worksInProgressCount) },
         { label: "EVs incompletos", value: String(pendingEvs) },
       ],
     },
