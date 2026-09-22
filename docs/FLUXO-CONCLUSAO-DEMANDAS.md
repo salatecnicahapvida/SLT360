@@ -6,7 +6,9 @@ Ao mover uma demanda para **Pausado** ou **Cancelado**, é obrigatório informar
 
 Para demandas do tipo **SIC**, o encerramento passa obrigatoriamente pelas etapas **Aguardando Aprovação Diretoria** → **Aprovado Pela Diretoria** → **Concluído**. A etapa antiga **Aguardando Validação Sala Técnica** foi removida; registros legados nessa fase são tratados como **Aguardando Validação Obras**.
 
-Ao mover uma demanda para **Concluído**, o sistema exige a confirmação do impacto no EV:
+Ao mover qualquer demanda para **Concluído**, a **Data entrega real** é obrigatória. O sistema não preenche mais essa data automaticamente; ela precisa ser informada pelo usuário no fechamento da demanda.
+
+Na sequência, o sistema exige a confirmação do impacto no EV:
 
 - **Atualizar o EV**: abre o EV da obra e, após salvar a nova versão, continua a conclusão da demanda.
 - **Não houve mudança no EV**: registra explicitamente que a demanda não alterou o estudo.

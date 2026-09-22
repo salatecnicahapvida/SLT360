@@ -18225,9 +18225,6 @@ async function approveSic(id) {
 function demandHasEVUpdateForCompletion(demand) {
   const work = workById(demand?.obraId);
   if (!work) return false;
-  if (demandTypeKey(demand.tipo) === "SIC") {
-    return (demand.sicIds || []).length > 0 && sicApprovalReading(demand).status === "Postada";
-  }
   return arrayOrFallback(work.ev?.versions).some((version) => String(version.origem || "") === String(demand.id));
 }
 
@@ -18236,13 +18233,14 @@ function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
   const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
+  const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
         <header>
           <div>
             <span class="eyebrow">Conclusão da demanda</span>
-            <h2 id="demandCompletionTitle">Quanto esta demanda gerou?</h2>
+            <h2 id="demandCompletionTitle">Confirme a conclusão da demanda</h2>
             <p class="muted">${escapeAttribute(demand.id)} · ${escapeAttribute(work.nome || "Obra vinculada")}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
@@ -18251,14 +18249,21 @@ function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
           <div class="error-box" id="formError"></div>
           <input type="hidden" name="evSemMudanca" value="${evNoChange ? "true" : "false"}" />
           <section class="modal-section">
-            <div class="section-title"><span>Impacto financeiro da demanda</span></div>
-            <label class="field">
-              <span>Valor gerado (R$) *</span>
-              <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" autofocus />
-              <small>Informe 0,00 quando a demanda não tiver gerado impacto financeiro.</small>
-            </label>
+            <div class="section-title"><span>Dados da conclusão</span></div>
+            <div class="form-grid">
+              <label class="field">
+                <span>Data entrega real *</span>
+                <input name="dataEntregaReal" type="date" required value="${escapeAttribute(deliveryDate)}" ${deliveryDate ? "" : "autofocus"} />
+                <small>Obrigatória para concluir qualquer demanda.</small>
+              </label>
+              <label class="field">
+                <span>Valor gerado (R$) *</span>
+                <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" ${deliveryDate ? "autofocus" : ""} />
+                <small>Informe 0,00 quando a demanda não tiver gerado impacto financeiro.</small>
+              </label>
+            </div>
           </section>
-          <p class="muted">${evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação deste valor."}</p>
+          <p class="muted">${evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação dos dados acima."}</p>
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
@@ -18274,14 +18279,6 @@ function openDemandCompletionModal(id) {
   const work = demand && workById(demand.obraId);
   if (!demand || !work) {
     showToast("Não foi possível localizar a obra vinculada antes da conclusão.");
-    return;
-  }
-  if (demandTypeKey(demand.tipo) === "SIC" && sicApprovalReading(demand).status !== "Postada") {
-    sicViewMode = "approval";
-    sicSearchQuery = demand.id;
-    closeModal();
-    showToast("A SIC precisa ser aprovada e postada no EV antes de concluir o card.");
-    setView("sics");
     return;
   }
   if (demandHasEVUpdateForCompletion(demand)) {
@@ -18328,6 +18325,12 @@ async function handleDemandCompletionSubmit(form) {
   const demand = state.demands[demandIndex];
   if (!demand) return;
   const formData = new FormData(form);
+  const dataEntregaReal = String(formData.get("dataEntregaReal") || "").trim();
+  if (!dataEntregaReal) {
+    showFormError("Informe a Data entrega real antes de concluir a demanda.", form);
+    form.querySelector('[name="dataEntregaReal"]')?.focus();
+    return;
+  }
   const rawValue = String(formData.get("valorGerado") || "").trim();
   if (!rawValue) {
     showFormError("Informe quanto esta demanda gerou. Use 0,00 quando não houver impacto financeiro.", form);
@@ -18345,6 +18348,7 @@ async function handleDemandCompletionSubmit(form) {
   }
   const demandSnapshot = clone(demand);
   const historySnapshot = clone(state.history || []);
+  demand.dataEntregaReal = dataEntregaReal;
   demand.valorGerado = valorGerado;
   demand.evSemMudanca = evSemMudanca;
   const updated = await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
@@ -18352,6 +18356,15 @@ async function handleDemandCompletionSubmit(form) {
     if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
     state.history = historySnapshot;
     return;
+  }
+  if (dateOnly(demandSnapshot.dataEntregaReal) !== dataEntregaReal) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "dataEntregaReal",
+      valorAnterior: dateOnly(demandSnapshot.dataEntregaReal) ? dateText(demandSnapshot.dataEntregaReal) : "Não informada",
+      valorNovo: dateText(dataEntregaReal),
+    });
   }
   addHistory({
     entidade: "demanda",
@@ -18452,6 +18465,10 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     openDemandCompletionModal(demand.id);
     return false;
   }
+  if (nextColumnId === "concluido" && skipCompletionGate && !dateOnly(demand.dataEntregaReal)) {
+    showToast("Informe a Data entrega real antes de concluir a demanda.");
+    return false;
+  }
 
   const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
   const demandSnapshot = clone(demand);
@@ -18476,7 +18493,6 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   demand.phaseStartedAt = transitionedAt;
   demand.phaseEndedAt = ["concluido", "cancelado"].includes(nextColumnId) ? transitionedAt : "";
   demand.phaseStartedAtEstimated = false;
-  if (demand.coluna === "concluido" && !demand.dataEntregaReal) demand.dataEntregaReal = todayISO();
   addHistory({
     entidade: "demanda",
     entidadeId: demand.id,

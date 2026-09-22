@@ -1668,8 +1668,8 @@ test('legacy SIC approval import is no longer exposed in the study',async({page}
 });
 
 
-test('operational completion requires EV decision then generated amount',async({page})=>{
- const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+test('operational completion requires real delivery date, EV decision and generated amount',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
  const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -1683,15 +1683,54 @@ test('operational completion requires EV decision then generated amount',async({
  await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
+ await expect(completion.locator('[name="dataEntregaReal"]')).toHaveAttribute('required','');
  await completion.locator('[name="valorGerado"]').fill('0,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect(completion).toBeVisible();
+ await expect(completion.locator('#formError')).toContainText('Data entrega real');
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido')).toBe(false);
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-09-21');
  await completion.getByRole('button',{name:'Concluir demanda'}).click();
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido')?.document?.evSemMudanca).toBe(true);
  const completedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-demand'&&change.document?.coluna==='concluido');
  expect(completedChange.document.valorGerado).toBe(0);
+ expect(completedChange.document.dataEntregaReal).toBe('2026-09-21');
  const card=page.locator('article[data-id="finish-demand"]');
  await expect(card).toBeVisible();
  await expect(card.locator('.demand-card-stage-time')).toHaveCount(0);
  await expect(card.locator('.demand-card-value')).toContainText(/R\$\s*0/);
+ expect(b.errors).toEqual([]);
+});
+
+
+test('SIC approved by director also requires real delivery date before conclusion',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-finish-demand',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovadoDiretoria',
+  dataEntregaReal:'',
+  analistaResponsavel:'Ana',
+  sicIds:[],
+  anexos:[],
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC para concluir'},
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-finish-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await completion.locator('[name="valorGerado"]').fill('0,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect(completion.locator('#formError')).toContainText('Data entrega real');
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-09-21');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-finish-demand'&&change.document?.coluna==='concluido')?.document?.dataEntregaReal).toBe('2026-09-21');
  expect(b.errors).toEqual([]);
 });
 
