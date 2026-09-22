@@ -574,6 +574,7 @@ let searchTerm = "";
 let operationalViewMode = "kanban";
 let demandPointerDragState = null;
 let demandDragSuppressClickUntil = 0;
+let pendingDemandCompletion = null;
 const unassignedAnalystFilterValue = "__sem_analista__";
 let operationalFilters = {
   query: "",
@@ -5836,6 +5837,7 @@ function renderDemandCard(demand) {
         <div class="demand-card-actions">
           <span class="sprint-flag" title="${escapeAttribute(sprintName)}">${sprintFlag}</span>
           <span class="priority-pill">${demand.prioridade || "Média"}</span>
+          <span class="demand-drag-handle" data-demand-drag-handle title="Arrastar card" aria-hidden="true">⠿</span>
         </div>
       </div>
       <h3>${escapeAttribute(workLabel)}</h3>
@@ -8413,7 +8415,7 @@ function formatMasterStatus(value) {
   return String(value);
 }
 
-function openEVModal(workId) {
+function openEVModal(workId, { completionDemandId = "" } = {}) {
   const work = workById(workId);
   if (!work) return;
   selectedWorkId = work.id;
@@ -8477,7 +8479,7 @@ function openEVModal(workId) {
                 <p class="panel-subtitle">Estrutura oficial de disciplinas, valores e status do estudo selecionado.</p>
               </div>
             </div>
-            ${renderEVStandardStructure(work)}
+            ${renderEVStandardStructure(work, completionDemandId)}
           </section>
 
           <section class="ev-version-panel">
@@ -8515,7 +8517,7 @@ function miniMetric(label, value, modifier = "") {
   `;
 }
 
-function renderEVStandardStructure(work) {
+function renderEVStandardStructure(work, completionDemandId = "") {
   const lineMap = new Map();
   (work.ev.lines || []).forEach((line) => {
     lineMap.set(canonicalDisciplineId(line.disciplinaId), line);
@@ -8542,7 +8544,7 @@ function renderEVStandardStructure(work) {
   const anexos = work.ev.anexos || [];
   const lifecycleStatus = effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto";
   return `
-    <form class="ev-editor" id="evForm" data-work-id="${work.id}" data-ev-total-no-risk="${baseTotalNoRisk}">
+    <form class="ev-editor" id="evForm" data-work-id="${work.id}" data-ev-total-no-risk="${baseTotalNoRisk}" data-completion-demand-id="${escapeAttribute(completionDemandId)}">
       <input type="hidden" name="evLifecycleStatus" value="${lifecycleStatus}" />
       <div class="error-box" id="formError" role="alert"></div>
       <section class="ev-area-panel">
@@ -17119,7 +17121,11 @@ function showEVHaptecConfirmation(form, mode, readings) {
 async function handleEVSubmit(form, mode = "final") {
   const work = workById(form.dataset.workId);
   if (!work) return;
-  const completionDemandId = String(form.dataset.completionDemandId || "");
+  const completionDemandId = String(
+    form.dataset.completionDemandId
+    || (pendingDemandCompletion?.workId === work.id ? pendingDemandCompletion.demandId : "")
+    || ""
+  );
   const completionDemand = state.demands.find((item) => item.id === completionDemandId && item.obraId === work.id) || null;
   const nextEVStatus = form.querySelector('[name="evLifecycleStatus"]')?.value === "Completo" ? "Completo" : "Incompleto";
   const previousEVStatus = effectiveEVStatus(work);
@@ -17252,7 +17258,8 @@ async function handleEVSubmit(form, mode = "final") {
   showToast(`EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova versão.`);
 
   if (mode === "final" && completionDemand) {
-    openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false });
+    pendingDemandCompletion = null;
+    openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false, resumedAfterEV: true });
     return;
   }
   if (form.closest(".ev-modal-card")) openEVModal(work.id);
@@ -18321,13 +18328,14 @@ function demandHasEVUpdateForCompletion(demand) {
   return arrayOrFallback(work.ev?.versions).some((version) => String(version.origem || "") === String(demand.id));
 }
 
-function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
+function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
   const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
   const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  if (pendingDemandCompletion?.demandId === demand.id) pendingDemandCompletion = null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
@@ -18342,6 +18350,12 @@ function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
         <div class="modal-body">
           <div class="error-box" id="formError"></div>
           <input type="hidden" name="evSemMudanca" value="${evNoChange ? "true" : "false"}" />
+          ${resumedAfterEV ? `
+            <div class="completion-resume-notice">
+              <span>✓</span>
+              <div><strong>EV salvo</strong><small>Agora só faltam os dados finais para concluir esta demanda.</small></div>
+            </div>
+          ` : ""}
           <section class="modal-section">
             <div class="section-title"><span>Dados da conclusão</span></div>
             <div class="form-grid">
@@ -19357,6 +19371,9 @@ document.addEventListener("click", async (event) => {
     if (actionButton.classList.contains("modal-backdrop") && actionButton.querySelector("form.modal-card")) {
       return;
     }
+    if (actionButton.closest(".ev-modal-card")?.querySelector("#evForm[data-completion-demand-id]")?.dataset.completionDemandId) {
+      pendingDemandCompletion = null;
+    }
     workModalReturnMode = "";
     closeModal();
   }
@@ -19418,10 +19435,9 @@ document.addEventListener("click", async (event) => {
     if (!demand || !work) return;
     selectedWorkId = work.id;
     closeModal();
+    pendingDemandCompletion = { demandId: demand.id, workId: work.id };
     await setView("ev");
-    openEVModal(work.id);
-    const evForm = document.querySelector("#evForm");
-    if (evForm) evForm.dataset.completionDemandId = demand.id;
+    openEVModal(work.id, { completionDemandId: demand.id });
     return;
   }
   if (action === "open-work-ev") {
@@ -19491,77 +19507,179 @@ document.addEventListener("click", async (event) => {
 });
 
 function clearDemandDragState() {
+  const dragState = demandPointerDragState;
+  if (dragState?.scrollFrame) cancelAnimationFrame(dragState.scrollFrame);
+  if (dragState?.ghost?.isConnected) dragState.ghost.remove();
+  if (dragState?.card && dragState.pointerId !== undefined) {
+    try {
+      if (dragState.card.hasPointerCapture?.(dragState.pointerId)) dragState.card.releasePointerCapture(dragState.pointerId);
+    } catch {}
+  }
+  document.body.classList.remove("demand-drag-active");
   document.querySelectorAll(".demand-card.is-dragging").forEach((card) => card.classList.remove("is-dragging"));
-  document.querySelectorAll(".operational-board-panel .kanban-column.is-drag-over").forEach((column) => column.classList.remove("is-drag-over"));
+  document.querySelectorAll(".operational-board-panel .kanban-column").forEach((column) => {
+    column.classList.remove("is-drag-over", "is-drop-eligible", "is-drop-disabled");
+  });
   demandPointerDragState = null;
 }
 
+function demandDragTargetAt(clientX, clientY) {
+  const dragState = demandPointerDragState;
+  if (!dragState) return null;
+  const demand = state.demands.find((item) => item.id === dragState.demandId);
+  if (!demand) return null;
+  const column = document
+    .elementFromPoint(clientX, clientY)
+    ?.closest?.(".operational-board-panel .kanban-column[data-column]");
+  const allowedColumns = columnsForDemand(demand);
+  document.querySelectorAll(".operational-board-panel .kanban-column[data-column]").forEach((candidate) => {
+    const target = allowedColumns.find((item) => item.id === candidate.dataset.column);
+    const eligible = Boolean(target && !target.disabled);
+    candidate.classList.toggle("is-drop-eligible", eligible);
+    candidate.classList.toggle("is-drop-disabled", !eligible);
+    candidate.classList.toggle("is-drag-over", eligible && candidate === column);
+  });
+  const target = allowedColumns.find((item) => item.id === column?.dataset.column);
+  dragState.targetColumnId = !column || !target || target.disabled ? "" : column.dataset.column;
+  return dragState.targetColumnId ? column : null;
+}
+
+function demandDragHorizontalVelocity(clientX, boardRect) {
+  const edge = Math.min(110, Math.max(64, boardRect.width * 0.12));
+  if (clientX < boardRect.left + edge) {
+    const ratio = Math.min(1, Math.max(0, (boardRect.left + edge - clientX) / edge));
+    return -(4 + ratio * 24);
+  }
+  if (clientX > boardRect.right - edge) {
+    const ratio = Math.min(1, Math.max(0, (clientX - (boardRect.right - edge)) / edge));
+    return 4 + ratio * 24;
+  }
+  return 0;
+}
+
+function positionDemandDragGhost(clientX, clientY) {
+  const dragState = demandPointerDragState;
+  if (!dragState?.ghost) return;
+  const left = clientX - dragState.grabOffsetX;
+  const top = clientY - dragState.grabOffsetY;
+  dragState.ghost.style.transform = "translate3d(" + left + "px, " + top + "px, 0)";
+}
+
+function startDemandDragAutoScroll() {
+  const dragState = demandPointerDragState;
+  if (!dragState?.moved || dragState.scrollFrame) return;
+  const tick = () => {
+    const current = demandPointerDragState;
+    if (!current?.moved) return;
+    const board = document.querySelector(".operational-board-panel [data-kanban-scroll-board]");
+    if (board) {
+      const velocity = demandDragHorizontalVelocity(current.lastX, board.getBoundingClientRect());
+      if (velocity) {
+        board.scrollLeft += velocity;
+        demandDragTargetAt(current.lastX, current.lastY);
+      }
+    }
+    current.scrollFrame = requestAnimationFrame(tick);
+  };
+  dragState.scrollFrame = requestAnimationFrame(tick);
+}
+
+function activateDemandPointerDrag(event) {
+  const dragState = demandPointerDragState;
+  if (!dragState || dragState.moved) return;
+  dragState.moved = true;
+  dragState.lastX = event.clientX;
+  dragState.lastY = event.clientY;
+  const rect = dragState.card.getBoundingClientRect();
+  dragState.grabOffsetX = event.clientX - rect.left;
+  dragState.grabOffsetY = event.clientY - rect.top;
+  const ghost = dragState.card.cloneNode(true);
+  ghost.classList.remove("is-dragging");
+  ghost.classList.add("demand-drag-ghost");
+  ghost.removeAttribute("role");
+  ghost.removeAttribute("tabindex");
+  ghost.style.width = rect.width + "px";
+  ghost.style.height = rect.height + "px";
+  document.body.appendChild(ghost);
+  dragState.ghost = ghost;
+  dragState.card.classList.add("is-dragging");
+  document.body.classList.add("demand-drag-active");
+  try { dragState.card.setPointerCapture?.(dragState.pointerId); } catch {}
+  positionDemandDragGhost(event.clientX, event.clientY);
+  demandDragTargetAt(event.clientX, event.clientY);
+  startDemandDragAutoScroll();
+}
+
 document.addEventListener("pointerdown", (event) => {
-  if (event.pointerType !== "mouse" || event.button !== 0) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
   const card = event.target.closest?.(".operational-board-panel .demand-card[data-id]");
   if (!card || event.target.closest?.("button, input, select, textarea, a")) return;
+  const handle = event.target.closest?.("[data-demand-drag-handle]");
+  if (event.pointerType === "touch" && !handle) return;
   if (!canMutateUI("update-demand-status")) {
     showToast("Seu acesso permite apenas consulta.");
     return;
   }
+  const rect = card.getBoundingClientRect();
   demandPointerDragState = {
     demandId: card.dataset.id || "",
     card,
+    pointerId: event.pointerId,
+    pointerType: event.pointerType,
     startX: event.clientX,
     startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    grabOffsetX: event.clientX - rect.left,
+    grabOffsetY: event.clientY - rect.top,
     targetColumnId: "",
+    ghost: null,
+    scrollFrame: null,
     moved: false,
   };
+  if (event.pointerType === "touch") {
+    event.preventDefault();
+    try { card.setPointerCapture?.(event.pointerId); } catch {}
+  }
 });
 
 document.addEventListener("pointermove", (event) => {
-  if (!demandPointerDragState || event.pointerType !== "mouse" || !(event.buttons & 1)) return;
-  const dx = event.clientX - demandPointerDragState.startX;
-  const dy = event.clientY - demandPointerDragState.startY;
-  if (!demandPointerDragState.moved && Math.hypot(dx, dy) < 6) return;
-  demandPointerDragState.moved = true;
-  demandPointerDragState.card.classList.add("is-dragging");
-  event.preventDefault();
-
-  const board = document.querySelector(".operational-board-panel [data-kanban-scroll-board]");
-  if (board) {
-    const rect = board.getBoundingClientRect();
-    if (event.clientX < rect.left + 54) board.scrollLeft -= 24;
-    if (event.clientX > rect.right - 54) board.scrollLeft += 24;
+  const dragState = demandPointerDragState;
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  if (event.pointerType === "mouse" && !(event.buttons & 1)) {
+    clearDemandDragState();
+    return;
   }
-
-  const column = document.elementFromPoint(event.clientX, event.clientY)?.closest?.(".operational-board-panel .kanban-column[data-column]");
-  const demand = state.demands.find((item) => item.id === demandPointerDragState.demandId);
-  const target = demand && columnsForDemand(demand).find((item) => item.id === column?.dataset.column);
-  document.querySelectorAll(".operational-board-panel .kanban-column.is-drag-over").forEach((item) => {
-    if (item !== column) item.classList.remove("is-drag-over");
-  });
-  demandPointerDragState.targetColumnId = !column || !demand || !target || target.disabled ? "" : column.dataset.column;
-  if (demandPointerDragState.targetColumnId) column.classList.add("is-drag-over");
+  dragState.lastX = event.clientX;
+  dragState.lastY = event.clientY;
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  if (!dragState.moved && Math.hypot(dx, dy) < (event.pointerType === "touch" ? 4 : 7)) return;
+  if (!dragState.moved) activateDemandPointerDrag(event);
+  event.preventDefault();
+  positionDemandDragGhost(event.clientX, event.clientY);
+  demandDragTargetAt(event.clientX, event.clientY);
 });
 
 document.addEventListener("pointerup", async (event) => {
-  if (!demandPointerDragState || event.pointerType !== "mouse") return;
-  const { demandId, targetColumnId: storedTargetColumnId, moved } = demandPointerDragState;
+  const dragState = demandPointerDragState;
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  if (dragState.moved) demandDragTargetAt(event.clientX, event.clientY);
+  const { demandId, targetColumnId, moved } = dragState;
   const demand = state.demands.find((item) => item.id === demandId);
   const previousColumnId = demand?.coluna || "";
-  const pointerColumnId = document
-    .elementFromPoint(event.clientX, event.clientY)
-    ?.closest?.(".operational-board-panel .kanban-column[data-column]")
-    ?.dataset.column || "";
-  const resolvedTargetColumnId = storedTargetColumnId || pointerColumnId;
   const resolvedTarget = demand
-    ? columnsForDemand(demand).find((column) => column.id === resolvedTargetColumnId)
+    ? columnsForDemand(demand).find((column) => column.id === targetColumnId)
     : null;
   clearDemandDragState();
   if (!moved) return;
-  demandDragSuppressClickUntil = Date.now() + 350;
+  demandDragSuppressClickUntil = Date.now() + 450;
   event.preventDefault();
-  if (!demand || !resolvedTarget || resolvedTarget.disabled || previousColumnId === resolvedTargetColumnId) return;
-  const updated = await updateDemandColumn(demandId, resolvedTargetColumnId);
+  if (!demand || !resolvedTarget || resolvedTarget.disabled || previousColumnId === targetColumnId) return;
+  const updated = await updateDemandColumn(demandId, targetColumnId);
   if (!updated) return;
   render();
-  showToast(`Card movido para ${demandStatusLabel(updated)}.`);
+  showToast("Card movido para " + demandStatusLabel(updated) + ".");
 });
 
 document.addEventListener("pointercancel", clearDemandDragState);
