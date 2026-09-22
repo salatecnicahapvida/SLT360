@@ -1253,6 +1253,25 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await current.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
  await expect(page.locator('.ev-version-panel')).toHaveCount(0);
+ const currentAreas=page.locator('.ev-modal-card .ev-header-area');
+ await expect(currentAreas).toHaveCount(2);
+ await expect(currentAreas.nth(0)).toContainText('Área equivalente');
+ await expect(currentAreas.nth(0)).toContainText('100,00 m²');
+ await expect(currentAreas.nth(1)).toContainText('Área construída');
+ await expect(currentAreas.nth(1)).toContainText('100,00 m²');
+ const currentKpis=page.locator('.ev-modal-card .ev-top-kpis > .mini-metric');
+ await expect(currentKpis).toHaveCount(6);
+ await expect(currentKpis.locator('small')).toHaveText([
+  'Total da obra (sem taxa de risco)',
+  'Custo da obra por m² (sem taxa de risco)',
+  'Total da obra (com taxa de risco)',
+  'Custo da obra por m² (com taxa de risco)',
+  "Total de SIC's",
+  "Percentual das SIC's no valor total da obra",
+ ]);
+ await expect(currentKpis.nth(1)).toContainText('/m²');
+ await expect(currentKpis.nth(3)).toContainText('/m²');
+ await expect(currentKpis.nth(5)).toContainText('0,00%');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Ver controle de verba',exact:true})).toHaveCount(0);
@@ -1264,7 +1283,15 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
- await expect(page.locator('.ev-modal-card .ev-top-kpis')).toHaveCount(0);
+ const emptyAreas=page.locator('.ev-modal-card .ev-header-area');
+ await expect(emptyAreas).toHaveCount(1);
+ await expect(emptyAreas).toContainText('Área equivalente');
+ await expect(emptyAreas).toContainText('—');
+ await expect(page.locator('.ev-modal-card .ev-header-areas')).not.toContainText('Área construída');
+ const emptyKpis=page.locator('.ev-modal-card .ev-top-kpis > .mini-metric');
+ await expect(emptyKpis).toHaveCount(6);
+ await expect(emptyKpis.nth(1)).toContainText('—');
+ await expect(emptyKpis.nth(3)).toContainText('—');
  await expect(page.locator('.ev-modal-card .ev-master-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-area-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-attachments')).toHaveCount(0);
@@ -1282,7 +1309,9 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
  await updatedEmpty.locator('.portfolio-actions button').click();
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
- await expect(page.locator('.ev-modal-card .ev-top-kpis')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric').nth(1)).toContainText('—');
+ await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric').nth(3)).toContainText('—');
  await expect(page.locator('.ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
