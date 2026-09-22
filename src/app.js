@@ -15669,11 +15669,25 @@ function sprintOptions(selected) {
     .join("");
 }
 
+function canApproveSicDirector() {
+  return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
+}
+
 function columnsForDemand(demand) {
-  return columns.map((column) => ({
-    ...column,
-    disabled: ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(column.id) && demandTypeKey(demand?.tipo) !== "SIC",
-  }));
+  const isSicDemand = demandTypeKey(demand?.tipo) === "SIC";
+  return columns.map((column) => {
+    let disabled = ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(column.id) && !isSicDemand;
+
+    if (isSicDemand && column.id === "aprovadoDiretoria" && demand?.coluna !== "aprovadoDiretoria") {
+      disabled = demand?.coluna !== "aprovacaoDiretoria" || !canApproveSicDirector();
+    }
+
+    if (isSicDemand && column.id === "concluido" && !["aprovadoDiretoria", "concluido"].includes(demand?.coluna)) {
+      disabled = true;
+    }
+
+    return { ...column, disabled };
+  });
 }
 
 function columnOptions(demand) {
@@ -17546,8 +17560,8 @@ async function handleDemandSubmit(form) {
     projetosEnvolvidosDetalhes: projectSelection.details,
     sicMetadata,
     sicDraftDisciplines,
-    sicApprovalStatus: tipo === "SIC" ? "Pendente" : "",
-    sicApprovalRequestedAt: tipo === "SIC" ? todayISO() : "",
+    sicApprovalStatus: "",
+    sicApprovalRequestedAt: "",
     sicApprovalApprovedAt: "",
     sicApprovalApprovedBy: "",
     sicApprovalRejectedAt: "",
@@ -17797,14 +17811,6 @@ async function handleDemandDetailSubmit(form) {
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
-  const previousSicApproval = isSicDemand ? sicApprovalReading(demand) : null;
-  const previousSicPayload =
-    isSicDemand && !(demand.sicIds || []).length
-      ? JSON.stringify({
-          descricao: demand.sicMetadata?.descricaoSic || demand.observacao || "",
-          disciplinas: demand.sicDraftDisciplines || [],
-        })
-      : "";
 
   Object.assign(demand, analystAssignment);
   demand.obraId = selectedWork.id;
@@ -17852,27 +17858,6 @@ async function handleDemandDetailSubmit(form) {
   if (!isSicDemand) {
     demand.projetosEnvolvidos = projectSelection.selected;
     demand.projetosEnvolvidosDetalhes = projectSelection.details;
-  }
-  if (isSicDemand && !(demand.sicIds || []).length) {
-    const nextSicPayload = JSON.stringify({
-      descricao: demand.sicMetadata?.descricaoSic || demand.observacao || "",
-      disciplinas: demand.sicDraftDisciplines || [],
-    });
-    if (previousSicPayload && previousSicPayload !== nextSicPayload && ["Aprovado", "Reprovado", "Em revisão"].includes(previousSicApproval?.status)) {
-      demand.sicApprovalStatus = "Pendente";
-      demand.sicApprovalRequestedAt = todayISO();
-      demand.sicApprovalApprovedAt = "";
-      demand.sicApprovalApprovedBy = "";
-      demand.sicApprovalRejectedAt = "";
-      demand.sicApprovalRejectedBy = "";
-      addHistory({
-        entidade: "demanda",
-        entidadeId: demand.id,
-        campo: "aprovação SIC",
-        valorAnterior: previousSicApproval.label,
-        valorNovo: "Reenviada para aprovação após edição do card",
-      });
-    }
   }
   demand.naoEnviarValidacaoObras = formData.get("naoEnviarValidacaoObras") === "on";
   [
@@ -18234,13 +18219,14 @@ function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
   if (!demand || !work) return;
   const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
   const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
         <header>
           <div>
-            <span class="eyebrow">Conclusão da demanda</span>
-            <h2 id="demandCompletionTitle">Confirme a conclusão da demanda</h2>
+            <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
+            <h2 id="demandCompletionTitle">${isSicDemand ? "Informe os dados finais da SIC" : "Confirme a conclusão da demanda"}</h2>
             <p class="muted">${escapeAttribute(demand.id)} · ${escapeAttribute(work.nome || "Obra vinculada")}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
@@ -18257,9 +18243,9 @@ function openDemandCompletionAmountModal(id, { evNoChange = false } = {}) {
                 <small>Obrigatória para concluir qualquer demanda.</small>
               </label>
               <label class="field">
-                <span>Valor gerado (R$) *</span>
+                <span>${isSicDemand ? "Valor da demanda (R$) *" : "Valor gerado (R$) *"}</span>
                 <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" ${deliveryDate ? "autofocus" : ""} />
-                <small>Informe 0,00 quando a demanda não tiver gerado impacto financeiro.</small>
+                <small>${isSicDemand ? "Informe o valor da SIC. Use 0,00 quando não houver impacto financeiro." : "Informe 0,00 quando a demanda não tiver gerado impacto financeiro."}</small>
               </label>
             </div>
           </section>
@@ -18281,6 +18267,7 @@ function openDemandCompletionModal(id) {
     showToast("Não foi possível localizar a obra vinculada antes da conclusão.");
     return;
   }
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (demandHasEVUpdateForCompletion(demand)) {
     openDemandCompletionAmountModal(id, { evNoChange: false });
     return;
@@ -18294,13 +18281,20 @@ function openDemandCompletionModal(id) {
       <section class="modal-card demand-completion-card" aria-labelledby="demandCompletionEvTitle">
         <header>
           <div>
-            <span class="eyebrow">Conclusão da demanda</span>
-            <h2 id="demandCompletionEvTitle">Confirme o impacto no EV</h2>
+            <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
+            <h2 id="demandCompletionEvTitle">${isSicDemand ? "Obrigatoriedades para concluir a SIC" : "Confirme o impacto no EV"}</h2>
             <p class="muted">Antes de concluir ${escapeAttribute(demand.id)}, atualize o Estudo de Viabilidade ou informe que esta demanda não gerou mudança no EV.</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
         <div class="modal-body">
+          ${isSicDemand ? `
+            <div class="split-list">
+              ${splitItem("EV", "Preencher/alterar o EV ou declarar que não houve mudança")}
+              ${splitItem("Data entrega real", "Obrigatória")}
+              ${splitItem("Valor da demanda", "Obrigatório")}
+            </div>
+          ` : ""}
           <div class="demand-completion-options">
             <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
               <span class="demand-type-icon">EV</span>
@@ -18442,19 +18436,26 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   if (!demand || !nextColumn) return false;
   if (demand.coluna === nextColumnId) return demand;
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
-  if (isSicDemand && nextColumnId === "concluido") {
-    if (demand.coluna === "aprovacaoDiretoria") nextColumnId = "aprovadoDiretoria";
-    else if (demand.coluna !== "aprovadoDiretoria") nextColumnId = "aprovacaoDiretoria";
-    nextColumn = columnById(nextColumnId);
+  if (["aprovacaoDiretoria", "aprovadoDiretoria"].includes(nextColumnId) && !isSicDemand) {
+    showToast("Somente demandas do tipo SIC podem usar as etapas da Diretoria.");
+    return false;
   }
-  if (["aprovacaoDiretoria", "aprovadoDiretoria"].includes(nextColumnId)) {
-    if (!isSicDemand) {
-      showToast("Somente demandas do tipo SIC podem usar as etapas de aprovação da Diretoria.");
+  if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
+    if (demand.coluna !== "aprovacaoDiretoria") {
+      showToast("A etapa Aprovado Pela Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
       return false;
     }
-    if (nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
-      demand.dataValidacaoObras = todayISO();
+    if (!canApproveSicDirector()) {
+      showToast("Somente usuários Gestor ou Admin podem aprovar uma SIC pela Diretoria.");
+      return false;
     }
+  }
+  if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovadoDiretoria") {
+    showToast("Uma SIC só pode ser concluída após estar em Aprovado Pela Diretoria.");
+    return false;
+  }
+  if (isSicDemand && nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
+    demand.dataValidacaoObras = todayISO();
   }
   const normalizedMovementReason = String(movementReason || "").trim();
   if (["pausado", "cancelado"].includes(nextColumnId) && normalizedMovementReason.length < 5) {

@@ -1557,13 +1557,16 @@ test('operational cards drag between columns and SICs enter director approval di
  const sicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(sicStatus).toHaveValue('fazendo');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(sicStatus.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await expect(sicStatus.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(sicStatus.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
  await sicStatus.selectOption('aprovacaoDiretoria');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await directorColumn.locator('article[data-id="test-demand"]').click();
  const approvedStatus=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(approvedStatus.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await expect(approvedStatus.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
  await approvedStatus.selectOption('aprovadoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorApprovedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
@@ -1668,6 +1671,48 @@ test('legacy SIC approval import is no longer exposed in the study',async({page}
 });
 
 
+test('Analista cannot move SIC from director approval to director approved',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-director-analyst',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovacaoDiretoria',
+  analistaResponsavel:'Ana',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovação de diretoria'},
+ };
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-director-analyst"]').click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ expect(b.errors).toEqual([]);
+});
+
+test('Gestor can move SIC from director approval to director approved',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-director-manager',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovacaoDiretoria',
+  analistaResponsavel:'Ana',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovação de diretoria'},
+ };
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-director-manager"]').click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await status.selectOption('aprovadoDiretoria');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-manager"]')).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+
 test('operational completion requires real delivery date, EV decision and generated amount',async({page})=>{
  const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
  const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
@@ -1720,11 +1765,15 @@ test('SIC approved by director also requires real delivery date before conclusio
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-finish-demand"]').click();
  const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[name="coluna"] option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await detail.locator('[name="coluna"]').selectOption('concluido');
  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await expect(page.getByText('Preencher/alterar o EV ou declarar que não houve mudança',{exact:true})).toBeVisible();
+ await expect(page.getByText('Valor da demanda',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
  const completion=page.locator('#demandCompletionForm');
+ await expect(completion.getByText('Valor da demanda (R$) *',{exact:true})).toBeVisible();
  await completion.locator('[name="valorGerado"]').fill('0,00');
  await completion.getByRole('button',{name:'Concluir demanda'}).click();
  await expect(completion.locator('#formError')).toContainText('Data entrega real');
