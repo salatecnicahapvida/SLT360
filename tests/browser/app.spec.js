@@ -1199,7 +1199,7 @@ test('analyst chips use the configured spelling without case duplicates',async({
  expect(b.errors).toEqual([]);
 });
 
-test('historical EV omits redundant summary fields and keeps the composition audit',async({page})=>{
+test('historical EV shows the six requested KPIs and keeps the composition audit',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
@@ -1207,9 +1207,15 @@ test('historical EV omits redundant summary fields and keeps the composition aud
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
  const modal=page.locator('.ev-historical-modal');
  await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
- await expect(modal.locator('.ev-historical-summary')).toHaveCount(0);
- await expect(modal.getByText('Valor total do EV',{exact:true})).toHaveCount(0);
- await expect(modal.getByText('Área equivalente',{exact:true})).toHaveCount(0);
+ const kpis=modal.locator('.ev-top-kpis > .mini-metric');
+ await expect(kpis).toHaveCount(6);
+ const metric=label=>kpis.filter({has:page.getByText(label,{exact:true})});
+ await expect(metric('Área equivalente da obra')).toContainText('200,00 m²');
+ await expect(metric('Total da obra (sem taxa de risco)')).toContainText('R$ 950');
+ await expect(metric('Custo da obra por m² (sem taxa de risco)')).toContainText('R$ 4,75/m²');
+ await expect(metric('Total da obra (com taxa de risco)')).toContainText('R$ 1.000');
+ await expect(metric('Custo da obra por m² (com taxa de risco)')).toContainText('R$ 5,00/m²');
+ await expect(metric("Total de SIC's")).toContainText('R$ 150');
  const audit=modal.locator('.ev-additive-audit');
  await expect(audit).toContainText('Conferir cálculo de SICs / Aditivos');
  await audit.locator('summary').click();
@@ -1221,7 +1227,7 @@ test('historical EV omits redundant summary fields and keeps the composition aud
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.setViewportSize({width:390,height:844});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await expect(page.locator('.ev-historical-summary')).toHaveCount(0);
+ await expect(page.locator('.ev-historical-modal .ev-top-kpis > .mini-metric')).toHaveCount(6);
  await page.locator('#historicalEVTitle').click();
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  expect(b.errors).toEqual([]);
@@ -1258,7 +1264,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
- await expect(page.locator('.ev-modal-card .ev-summary-grid')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
  await expect(page.locator('.ev-modal-card .ev-master-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-area-panel')).toHaveCount(0);
  await expect(page.locator('.ev-modal-card .ev-attachments')).toHaveCount(0);
@@ -1277,7 +1283,8 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await updatedEmpty.getByRole('button',{name:'Abrir Obra',exact:true}).click();
  await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
- await expect(page.locator('.ev-modal-card .ev-summary-grid, .ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
+ await expect(page.locator('.ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
 test('legacy EV status never exposes draft and only accepts the explicit lifecycle value',async({page})=>{
