@@ -14940,6 +14940,32 @@ function renderConfigurationCatalogCard(type) {
   `;
 }
 
+function renderEVLifecycleConfigurationCard() {
+  return `
+    <article class="configuration-catalog-card" data-configuration-type="ev-status">
+      <header>
+        <div><h3>Status do EV</h3><small>3 estados fixos e automáticos</small></div>
+        <span class="tag">Não editável</span>
+      </header>
+      <div class="configuration-catalog-list">
+        ${EV_LIFECYCLE_STATUSES.map((status) => `
+          <div class="configuration-catalog-item">
+            <div>
+              <strong>${status}</strong>
+              <small>${status === "Sem EV"
+                ? "A obra não possui EV preenchido."
+                : status === "Incompleto"
+                  ? "Existe preenchimento, mas o EV ainda não está completo."
+                  : "O preenchimento atende aos critérios de conclusão do EV."}</small>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <p class="settings-help-text">O status é calculado pelo conteúdo do EV e não pode ser alterado manualmente.</p>
+    </article>
+  `;
+}
+
 function renderConfigurationCatalogsPanel() {
   return `
     <section class="panel configuration-catalogs-panel">
@@ -14951,6 +14977,7 @@ function renderConfigurationCatalogsPanel() {
         <span class="tag">Configuração compartilhada</span>
       </div>
       <div class="configuration-catalog-grid">
+        ${renderEVLifecycleConfigurationCard()}
         ${Object.keys(configurationCatalogDefinitions).map(renderConfigurationCatalogCard).join("")}
       </div>
     </section>
