@@ -19646,7 +19646,7 @@ document.addEventListener("pointerup", async (event) => {
     : null;
   clearDemandDragState();
   if (!moved) return;
-  demandDragSuppressClickUntil = Date.now() + 450;
+  demandDragSuppressClickUntil = Date.now() + 120;
   event.preventDefault();
   if (!demand || !resolvedTarget || resolvedTarget.disabled || previousColumnId === targetColumnId) return;
   const updated = await updateDemandColumn(demandId, targetColumnId);
