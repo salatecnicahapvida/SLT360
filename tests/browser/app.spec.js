@@ -121,7 +121,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(homeCards.locator('.home-launchpad-card__number')).toHaveText(['01','02','03','04']);
  await expect(homeCards.locator('.home-launchpad-card__body strong')).toHaveText(['Obras','Manutenção','Eng. Clínica','Controle de Verba']);
  const worksHomeCard=homeCards.filter({hasText:'Obras'});
- await expect(worksHomeCard.locator('.home-launchpad-card__metrics')).toContainText('Em andamento');
+ await expect(worksHomeCard.locator('.home-launchpad-card__metrics')).toContainText('Cards em andamento');
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
  await expect(page.getByText(/Pendências de cotação:/)).toHaveCount(0);
@@ -208,7 +208,7 @@ test('Home counts only Obras demands that are actually in progress',async({page}
  await expect(page.locator('.operational-board-panel article')).toHaveCount(4);
  await page.getByRole('button',{name:'Home',exact:true}).click();
  const worksCard=page.locator('.home-launchpad-card--orcamento');
- await expect(worksCard.locator('.home-launchpad-card__metrics')).toContainText('Em andamento');
+ await expect(worksCard.locator('.home-launchpad-card__metrics')).toContainText('Cards em andamento');
  await expect(worksCard.locator('.home-launchpad-card__metrics b').nth(1)).toHaveText('1');
  expect(b.errors).toEqual([]);
 });
