@@ -4767,6 +4767,9 @@ function moduleSummaries() {
   const clinicalLoaded = globalThis.SLT_CLOUD.isModuleLoaded("clinical");
   const financeLoaded = globalThis.SLT_CLOUD.isModuleLoaded("budget");
   const worksMetrics = worksLoaded ? moduleDemandMetrics("works") : null;
+  const worksInProgressCount = worksLoaded
+    ? worksMetrics.demands.filter((row) => !["pausado", "concluido", "cancelado"].includes(row.rawStatus)).length
+    : Number(summary.works?.activeCount || 0);
   const maintenancePortfolio = maintenanceLoaded ? maintenanceItemsForModule("maintenance") : null;
   const maintenancePortfolioMetrics = maintenanceLoaded ? moduleDemandMetrics("maintenance") : null;
   const clinicalPortfolioMetrics = clinicalLoaded ? moduleDemandMetrics("clinical") : null;
@@ -4793,7 +4796,7 @@ function moduleSummaries() {
       tone: "blue",
       metrics: [
         { label: "EVs históricos", value: number(historicalEVCount) },
-        { label: "Cards operacionais", value: String(worksMetrics?.active.length ?? Number(summary.works?.activeCount || 0)) },
+        { label: "Em andamento", value: String(worksInProgressCount) },
         { label: "EVs incompletos", value: String(pendingEvs) },
       ],
     },
