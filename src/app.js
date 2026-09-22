@@ -1502,7 +1502,7 @@ function evLinePosition(line, fallback = 999) {
 
 function evPostedSicDetails(work) {
   const posted = (state.sics || []).filter(
-    (sic) => sic.obraId === work?.id && canonicalDisciplineId(sic.evLineDisciplineId) === "sics"
+    (sic) => sic.obraId === work?.id && String(sic.status || "Aprovado") === "Aprovado"
   );
   if (posted.length) {
     return posted.map((sic) =>
@@ -1528,10 +1528,11 @@ function evSicGroupTotal(work) {
     (line) => !isLocalEVLine(line) && canonicalDisciplineId(line.disciplinaId) === "sics"
   );
   const postedDetails = evPostedSicDetails(work);
-  const postedTotal =
-    summaryLine && normalizeEVLineStatus(summaryLine.status) !== "Não se aplica"
+  const postedTotal = postedDetails.length
+    ? postedDetails.reduce((sum, item) => sum + Number(item.valor || 0), 0)
+    : summaryLine && normalizeEVLineStatus(summaryLine.status) !== "Não se aplica"
       ? Number(summaryLine.valorOrcado || 0)
-      : postedDetails.reduce((sum, item) => sum + Number(item.valor || 0), 0);
+      : 0;
   const localTotal = lines
     .filter(
       (line) =>
@@ -1540,18 +1541,7 @@ function evSicGroupTotal(work) {
         normalizeEVLineStatus(line.status) !== "Não se aplica"
     )
     .reduce((sum, line) => sum + Number(line.valorOrcado || 0), 0);
-  const distributedLegacyTotal = lines
-    .filter(
-      (line) =>
-        !isLocalEVLine(line) &&
-        !["sics", "taxa-risco"].includes(canonicalDisciplineId(line.disciplinaId)) &&
-        normalizeEVLineStatus(line.status) !== "Não se aplica"
-    )
-    .reduce(
-      (sum, line) => sum + Number(aditivadoByDiscipline(work.id, line.disciplinaId) || 0),
-      0
-    );
-  return postedTotal + localTotal + distributedLegacyTotal;
+  return postedTotal + localTotal;
 }
 
 function isRiskLine(line) {
