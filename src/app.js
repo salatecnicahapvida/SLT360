@@ -18442,14 +18442,14 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
       return false;
     }
     if (!canApproveSicDirector()) {
-      showToast("Somente usuários Gestor ou Admin podem fazer essa aprovação.");
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
       return false;
     }
   }
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovadoDiretoria") {
     showToast(
       demand.coluna === "aprovacaoDiretoria"
-        ? "A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria."
+        ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído."
         : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
     );
     return false;
@@ -19463,7 +19463,7 @@ document.addEventListener("change", async (event) => {
       && selected === "aprovadoDiretoria"
       && !canApproveSicDirector()
     ) {
-      showToast("Somente usuários Gestor ou Admin podem fazer essa aprovação.");
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
       event.target.value = demand.coluna;
       return;
     }
@@ -19474,7 +19474,7 @@ document.addEventListener("change", async (event) => {
     ) {
       showToast(
         demand?.coluna === "aprovacaoDiretoria"
-          ? "A SIC ainda está em Aguardando Aprovação Diretoria. Antes de concluir, ela precisa ser movida para Aprovado Pela Diretoria."
+          ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído."
           : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
       );
       event.target.value = demand.coluna;
