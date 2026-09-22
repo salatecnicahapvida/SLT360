@@ -8687,10 +8687,43 @@ button.analyst-chip {
 
 .ev-modal-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 18px;
   align-items: start;
   border-bottom: 3px solid var(--blue);
+}
+
+.ev-modal-title-block {
+  min-width: 0;
+}
+
+.ev-header-areas {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 24px;
+  min-width: 250px;
+  padding-top: 2px;
+}
+
+.ev-header-area {
+  display: grid;
+  gap: 4px;
+  min-width: 112px;
+}
+
+.ev-header-area small {
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ev-header-area strong {
+  color: var(--ink);
+  font-size: 1rem;
+  white-space: nowrap;
 }
 
 .ev-modal-status {
@@ -8711,6 +8744,10 @@ button.analyst-chip {
 
 .ev-top-kpis {
   grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.ev-top-kpis.ev-top-kpis--two-columns {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
 }
 
 .mini-metric {
@@ -12945,4 +12982,31 @@ button.analyst-chip {
 .portfolio-table-scroll-shell > .portfolio-plan-table-wrap.portfolio-works-scroll {
   overflow-y: scroll !important;
   scrollbar-gutter: stable;
+}
+
+
+@media (max-width: 900px) {
+  .ev-modal-header {
+    grid-template-columns: 1fr;
+  }
+
+  .ev-header-areas {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .ev-modal-status {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .ev-header-areas {
+    flex-wrap: wrap;
+    gap: 12px 22px;
+  }
+
+  .ev-top-kpis.ev-top-kpis--two-columns {
+    grid-template-columns: 1fr;
+  }
 }
