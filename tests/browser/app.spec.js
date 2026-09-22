@@ -953,7 +953,9 @@ test('configuration catalogs can be created and edited and feed work and EV form
 
  await page.getByRole('button',{name:'Obras',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- await page.locator('[data-action="edit-portfolio-work"][data-id="test-work"]').click();
+ const configuredWorkRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
+ await configuredWorkRow.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Editar obra',exact:true}).click();
  const editWorkForm=page.locator('#workForm');
  await expect(editWorkForm.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
  await expect(editWorkForm.getByText('Assistente de busca de unidades',{exact:true})).toHaveCount(0);
@@ -1292,7 +1294,9 @@ test('work funding is persisted in Works and Finance before confirming the form'
  expect(changes.some(change=>change.entity==='finance_funds'&&change.key==='seed-fund')).toBe(false);
  expect(changes.some(change=>change.entity==='finance_manual_orders'&&change.document?.workId===work.key)).toBe(true);
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
- await page.locator(`[data-action="edit-portfolio-work"][data-id="${work.key}"]`).click();
+ const createdWorkRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Nova obra com verba/i});
+ await createdWorkRow.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Editar obra',exact:true}).click();
  const editForm=page.locator('#workForm');
  await editForm.locator('[name="valorVerbaAportada"]').fill('1200');
  await editForm.getByRole('button',{name:'Salvar alterações',exact:true}).click();
@@ -1477,7 +1481,7 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
  await historicalRow.getByRole('button',{name:'Abrir Obra'}).click();
  workDetail=page.locator('#portfolioWorkDetail');
  await expect(workDetail.locator('.portfolio-work-address')).toContainText('Rua histórica, 10');
- await workDetail.getByRole('button',{name:'Fechar',exact:true}).click();
+ await workDetail.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
  await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
  await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
@@ -1515,7 +1519,7 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
  await currentRow.getByRole('button',{name:'Abrir Obra'}).click();
  workDetail=page.locator('#portfolioWorkDetail');
  await expect(workDetail.locator('.portfolio-work-address')).toContainText('Rua editada, 100');
- await workDetail.getByRole('button',{name:'Fechar',exact:true}).click();
+ await workDetail.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const noEvRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(noEvRow.locator('td').nth(0)).toHaveText('0000');
@@ -1602,7 +1606,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await expect(sicStatus).toHaveValue('fazendo');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
  await expect(sicStatus.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
- await expect(sicStatus.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await expect(sicStatus.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await sicStatus.selectOption('aprovacaoDiretoria');
  await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
@@ -1733,6 +1737,7 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  const card=approvalColumn.locator('article[data-id="sic-director-analyst"]');
 
  const dragCardTo=async(targetColumn)=>{
+  await targetColumn.scrollIntoViewIfNeeded();
   await card.scrollIntoViewIfNeeded();
   const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),targetColumn.locator('.demand-list').boundingBox()]);
   await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
