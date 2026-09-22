@@ -1908,6 +1908,14 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  await postButton.click();
  await expect(page.locator('#evForm')).toBeVisible();
  await expect(page.locator('#toast')).toHaveText('SIC postada no EV.');
+ const sicGroup=page.locator('#evForm [data-ev-group-body="Sics"]');
+ await expect(sicGroup.locator('[data-ev-group-total="Sics"]')).toContainText('R$ 25');
+ await expect(sicGroup.locator('.ev-sic-posted-row')).toHaveCount(1);
+ await expect(sicGroup.locator('.ev-sic-posted-row')).toContainText('SIC-POST-001');
+ await expect(sicGroup.locator('.ev-sic-posted-row')).toContainText('SIC sem revisão na postagem');
+ await expect(page.locator('#evForm [data-discipline-id="sics"]')).toHaveCount(0);
+ const sicMetric=page.locator('.ev-modal-card .ev-top-kpis > .mini-metric').filter({has:page.getByText("Total de SIC's",{exact:true})});
+ await expect(sicMetric).toContainText('R$ 25');
  const changes=b.requests.flatMap(request=>request.changes);
  expect(changes.some(change=>change.entity==='budget_estimate_versions')).toBe(false);
  const estimateChanges=changes.filter(change=>change.entity==='budget_estimates');
