@@ -8709,6 +8709,10 @@ button.analyst-chip {
   grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
+.ev-top-kpis {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
 .mini-metric {
   min-height: 76px;
   padding: 12px;
