@@ -12934,3 +12934,10 @@ button.analyst-chip {
   position: relative;
   z-index: 1;
 }
+
+
+/* Portfólio: mantém a rolagem vertical sempre disponível e visível. */
+.portfolio-table-scroll-shell > .portfolio-plan-table-wrap.portfolio-works-scroll {
+  overflow-y: scroll !important;
+  scrollbar-gutter: stable;
+}
