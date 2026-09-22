@@ -332,7 +332,7 @@ const baseDisciplines = [
   ["contas-consumo", "Contas de Consumo", "OutrasCategorias", true],
   ["comunicacao-visual-externa-e-interna", "Comunicação Visual Externa e Interna", "OutrasCategorias", true],
   ["quadros-eletricos", "Quadros Elétricos", "OutrasCategorias", true],
-  ["sics", "SIC's", "OutrasCategorias", false],
+  ["sics", "SIC's", "Sics", false],
   ["sistemas-de-automacao", "Sistemas de Automação", "OutrasCategorias", true],
   ["taxa-risco", "Taxa de Risco (5%)", "OutrasCategorias", false],
   ["blindagem", "Blindagem", "OutrasCategorias", true],
@@ -1043,14 +1043,17 @@ function configurationLabels(type) {
 }
 
 function configuredDisciplines({ includeInactive = true } = {}) {
-  return configurationItems("discipline", { includeInactive }).map((item) => ({
-    id: item.code || item.id.replace(/^discipline\//, ""),
-    nome: item.label,
-    categoria: item.category || "OutrasCategorias",
-    posicao: Number(item.position || 999),
-    ativo: item.active !== false,
-    selecionavelParaSIC: item.active !== false && item.selectableForSIC !== false,
-  }));
+  return configurationItems("discipline", { includeInactive }).map((item) => {
+    const id = item.code || item.id.replace(/^discipline\//, "");
+    return {
+      id,
+      nome: item.label,
+      categoria: id === "sics" ? "Sics" : item.category || "OutrasCategorias",
+      posicao: Number(item.position || 999),
+      ativo: item.active !== false,
+      selecionavelParaSIC: item.active !== false && item.selectableForSIC !== false,
+    };
+  });
 }
 
 function persistConfigurationType(type, items) {
@@ -1469,6 +1472,88 @@ function disciplineById(id) {
   };
 }
 
+function isLocalEVLine(line) {
+  return Boolean(line?.isLocalEVLine || line?.isLocal);
+}
+
+function evLineCategory(line) {
+  if (!line) return "OutrasCategorias";
+  if (isLocalEVLine(line)) {
+    return ["CustosDaObra", "OutrasCategorias", "Sics"].includes(line.localCategory)
+      ? line.localCategory
+      : "OutrasCategorias";
+  }
+  return canonicalDisciplineId(line.disciplinaId) === "sics"
+    ? "Sics"
+    : disciplineById(line.disciplinaId).categoria;
+}
+
+function evLineDisplayName(line) {
+  if (isLocalEVLine(line)) {
+    return String(line.localName || line.nome || line.disciplinaId || "Linha local");
+  }
+  return disciplineById(line?.disciplinaId).nome;
+}
+
+function evLinePosition(line, fallback = 999) {
+  if (isLocalEVLine(line)) return Number(line.localPosition || fallback);
+  return Number(disciplineById(line?.disciplinaId).posicao || fallback);
+}
+
+function evPostedSicDetails(work) {
+  const posted = (state.sics || []).filter(
+    (sic) => sic.obraId === work?.id && canonicalDisciplineId(sic.evLineDisciplineId) === "sics"
+  );
+  if (posted.length) {
+    return posted.map((sic) =>
+      evSicDetailViewModel({
+        id: sic.id,
+        numeroSic: sic.numeroSic || sic.id,
+        lecomNumber: sic.lecomNumber || "",
+        titulo: sicDisplayTitle(sic),
+        valor: sicTotal(sic),
+        status: sic.status || "Aprovado",
+      })
+    );
+  }
+  const summaryLine = (work?.ev?.lines || []).find(
+    (line) => !isLocalEVLine(line) && canonicalDisciplineId(line.disciplinaId) === "sics"
+  );
+  return (summaryLine?.sicDetails || []).map((item) => evSicDetailViewModel(item));
+}
+
+function evSicGroupTotal(work) {
+  const lines = work?.ev?.lines || [];
+  const summaryLine = lines.find(
+    (line) => !isLocalEVLine(line) && canonicalDisciplineId(line.disciplinaId) === "sics"
+  );
+  const postedDetails = evPostedSicDetails(work);
+  const postedTotal =
+    summaryLine && normalizeEVLineStatus(summaryLine.status) !== "Não se aplica"
+      ? Number(summaryLine.valorOrcado || 0)
+      : postedDetails.reduce((sum, item) => sum + Number(item.valor || 0), 0);
+  const localTotal = lines
+    .filter(
+      (line) =>
+        isLocalEVLine(line) &&
+        evLineCategory(line) === "Sics" &&
+        normalizeEVLineStatus(line.status) !== "Não se aplica"
+    )
+    .reduce((sum, line) => sum + Number(line.valorOrcado || 0), 0);
+  const distributedLegacyTotal = lines
+    .filter(
+      (line) =>
+        !isLocalEVLine(line) &&
+        !["sics", "taxa-risco"].includes(canonicalDisciplineId(line.disciplinaId)) &&
+        normalizeEVLineStatus(line.status) !== "Não se aplica"
+    )
+    .reduce(
+      (sum, line) => sum + Number(aditivadoByDiscipline(work.id, line.disciplinaId) || 0),
+      0
+    );
+  return postedTotal + localTotal + distributedLegacyTotal;
+}
+
 function isRiskLine(line) {
   return canonicalDisciplineId(line.disciplinaId) === "taxa-risco";
 }
@@ -1619,13 +1704,7 @@ function evTopKpiReading(work) {
   const area = Number(work?.areaEquivalente || 0) || 0;
   const totalWithoutRisk = workBudgetValue(work);
   const totalWithRisk = workBudgetValue(work, { includeRisk: true });
-  const totalSics = (work?.ev?.lines || []).reduce((sum, line) => {
-    if (normalizeEVLineStatus(line.status) === "Não se aplica") return sum;
-    const disciplineId = canonicalDisciplineId(line.disciplinaId);
-    if (disciplineId === "taxa-risco") return sum;
-    if (disciplineId === "sics") return sum + Number(line.valorOrcado || 0);
-    return sum + Number(aditivadoByDiscipline(work.id, disciplineId) || 0);
-  }, 0);
+  const totalSics = evSicGroupTotal(work);
   return {
     area,
     totalWithoutRisk,
@@ -2141,7 +2220,9 @@ function sicRiskReading(work, sic, totalOverride = null) {
 }
 
 function categoryLabel(category) {
-  return category === "CustosDaObra" ? "Custos da Obra" : "Outras Categorias";
+  if (category === "CustosDaObra") return "Custos da Obra";
+  if (category === "Sics") return "SIC's";
+  return "Outras Categorias";
 }
 
 const sicMotivoDefinitions = [
@@ -8438,6 +8519,308 @@ function miniMetric(label, value, modifier = "") {
 }
 
 function renderEVStandardStructure(work, completionDemandId = "") {
+  const lineMap = new Map();
+  (work.ev.lines || [])
+    .filter((line) => !isLocalEVLine(line))
+    .forEach((line) => {
+      lineMap.set(canonicalDisciplineId(line.disciplinaId), line);
+    });
+
+  const configuredRows = configuredDisciplines()
+    .filter((discipline) => discipline.id !== "sics")
+    .map((discipline) => {
+      const line = lineMap.get(discipline.id);
+      const status = normalizeEVLineStatus(line?.status || "Estimado");
+      const value = status === "Não se aplica" ? 0 : Number(line?.valorOrcado || 0);
+      return { discipline, line, status, value, category: discipline.categoria, local: false };
+    });
+
+  const localRows = (work.ev.lines || [])
+    .filter(isLocalEVLine)
+    .map((line, index) => {
+      const status = normalizeEVLineStatus(line.status || "Estimado");
+      const value = status === "Não se aplica" ? 0 : Number(line.valorOrcado || 0);
+      const category = evLineCategory(line);
+      return {
+        discipline: {
+          id: line.disciplinaId,
+          nome: evLineDisplayName(line),
+          categoria: category,
+          posicao: Number(line.localPosition || 900 + index),
+          local: true,
+        },
+        line,
+        status,
+        value,
+        category,
+        local: true,
+      };
+    });
+
+  const rows = [...configuredRows, ...localRows];
+  const postedSics = evPostedSicDetails(work);
+  const summarySicLine = lineMap.get("sics");
+  const postedSicTotal = postedSics.length
+    ? postedSics.reduce((sum, item) => sum + Number(item.valor || 0), 0)
+    : normalizeEVLineStatus(summarySicLine?.status) === "Não se aplica"
+      ? 0
+      : Number(summarySicLine?.valorOrcado || 0);
+  const displaySics = postedSics.length
+    ? postedSics
+    : postedSicTotal
+      ? [{
+          id: "legacy-sic-total",
+          numeroSic: "",
+          lecomNumber: "",
+          titulo: "SIC's consolidadas (histórico sem detalhamento)",
+          valor: postedSicTotal,
+          status: "Histórico",
+        }]
+      : [];
+
+  const applicableRows = rows.filter((row) => row.status !== "Não se aplica");
+  const editableTotal = applicableRows.reduce((sum, row) => sum + row.value, 0);
+  const riskTotal = applicableRows
+    .filter((row) => isRiskLine({ disciplinaId: row.discipline.id }))
+    .reduce((sum, row) => sum + row.value, 0);
+  const baseTotal = editableTotal + postedSicTotal;
+  const baseTotalNoRisk = baseTotal - riskTotal;
+  const valuesByDiscipline = Object.fromEntries(
+    applicableRows.map((row) => [row.discipline.id, row.value])
+  );
+
+  const groupTotal = (category) =>
+    applicableRows
+      .filter((row) => row.category === category)
+      .reduce((sum, row) => sum + row.value, 0) +
+    (category === "Sics" ? postedSicTotal : 0);
+
+  const renderRows = (category) =>
+    rows
+      .filter((row) => row.category === category)
+      .sort((a, b) => Number(a.discipline.posicao || 999) - Number(b.discipline.posicao || 999))
+      .map((row) => renderEVGroupedEditableRow(work, row, baseTotal))
+      .join("");
+
+  const lifecycleStatus = effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto";
+  const groups = [
+    { id: "CustosDaObra", label: "Obra" },
+    { id: "OutrasCategorias", label: "Outras categorias" },
+    { id: "Sics", label: "SIC's" },
+  ];
+
+  return `
+    <form class="ev-editor" id="evForm" data-work-id="${work.id}" data-ev-total-no-risk="${baseTotalNoRisk}" data-completion-demand-id="${escapeAttribute(completionDemandId)}" data-deleted-local-line-ids="[]">
+      <input type="hidden" name="evLifecycleStatus" value="${lifecycleStatus}" />
+      <div class="error-box" id="formError" role="alert"></div>
+      <section class="ev-deviation-panel" data-ev-deviation-panel>
+        ${evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotalNoRisk)}
+      </section>
+      <div class="ev-editor-toolbar">
+        <button class="secondary-action compact-action" type="button" data-action="toggle-ev-zero-lines" data-hidden="true" aria-pressed="true">
+          Exibir vazios
+        </button>
+      </div>
+      <div class="table-wrap ev-editor-table">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Descrição</th>
+              <th class="numeric">Valor</th>
+              <th class="numeric">%</th>
+              <th>Status</th>
+              <th class="numeric">R$/m²</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          ${groups.map((group) => `
+            <tbody data-ev-group-body="${group.id}">
+              ${renderEVGroupHeader(group.id, group.label, groupTotal(group.id))}
+              ${group.id === "Sics" ? displaySics.map((item) => renderEVPostedSicRow(work, item, baseTotal)).join("") : ""}
+              ${renderRows(group.id)}
+            </tbody>
+          `).join("")}
+          <tbody>
+            <tr class="ev-total-row">
+              <td colspan="2"><strong>Total Geral</strong></td>
+              <td class="numeric"><strong data-ev-grand-total>${money(baseTotal)}</strong></td>
+              <td class="numeric"><strong data-ev-grand-percent>${baseTotal ? "100,00%" : "—"}</strong></td>
+              <td></td>
+              <td class="numeric"><strong data-ev-grand-unit>${work.areaEquivalente && baseTotal ? money(baseTotal / work.areaEquivalente) : "—"}</strong></td>
+              <td></td>
+            </tr>
+            <tr class="ev-total-row is-secondary">
+              <td colspan="2"><strong>Total Geral (Sem Taxa de Risco)</strong></td>
+              <td class="numeric"><strong data-ev-grand-no-risk>${money(baseTotalNoRisk)}</strong></td>
+              <td class="numeric"><strong data-ev-grand-no-risk-percent>${baseTotal ? `${number((baseTotalNoRisk / baseTotal) * 100, 2)}%` : "—"}</strong></td>
+              <td></td>
+              <td class="numeric"><strong data-ev-grand-no-risk-unit>${work.areaEquivalente && baseTotalNoRisk ? money(baseTotalNoRisk / work.areaEquivalente) : "—"}</strong></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="ev-editor-actions">
+        <button class="secondary-action ev-completeness-toggle ${lifecycleStatus === "Completo" ? "is-complete" : "is-incomplete"}" type="button" data-action="toggle-ev-completeness" data-status="${lifecycleStatus}" aria-pressed="${lifecycleStatus === "Completo" ? "true" : "false"}">
+          <span>EV completo?</span>
+          <strong>${lifecycleStatus === "Completo" ? "Sim" : "Não"}</strong>
+        </button>
+        <button class="primary-action" type="submit" data-save-mode="final">Salvar EV</button>
+      </footer>
+    </form>
+  `;
+}
+
+function renderEVGroupHeader(category, label, total) {
+  return `
+    <tr class="ev-section-row" data-ev-group-header="${category}">
+      <td colspan="7">
+        <div class="ev-section-heading">
+          <span>${label}<strong data-ev-group-total="${category}">${money(total)}</strong></span>
+          <button class="ghost-button compact-action ev-add-line-action" type="button" data-action="add-ev-local-line" data-category="${category}">+ Nova linha</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderEVGroupedEditableRow(work, row, baseTotal, { hideEmpty = true, existingLocal = true } = {}) {
+  const { discipline, line, status, value } = row;
+  const isNA = status === "Não se aplica";
+  const local = Boolean(row.local || isLocalEVLine(line));
+  const category = row.category || (local ? evLineCategory(line) : discipline.categoria);
+  const percent = baseTotal && !isNA ? (value / baseTotal) * 100 : 0;
+  const unitCost = work.areaEquivalente && !isNA ? value / work.areaEquivalente : 0;
+  const hideRow = hideEmpty && Math.abs(value) < 0.000001;
+  const localName = local ? evLineDisplayName(line) : discipline.nome;
+  return `
+    <tr class="ev-line-row ev-zero-toggle-row ${isNA ? "is-not-applicable" : ""}" data-discipline-id="${escapeAttribute(discipline.id)}" data-ev-group="${category}" data-local-line="${local ? "true" : "false"}" data-existing-local="${local && existingLocal ? "true" : "false"}" ${hideRow ? "hidden" : ""}>
+      <td>${local ? `<span class="ev-local-chip">Local</span>` : discipline.posicao}</td>
+      <td>
+        ${local
+          ? `<input class="ev-local-name-input" name="evLocalName_${escapeAttribute(discipline.id)}" required maxlength="160" value="${escapeAttribute(localName === "Linha local" ? "" : localName)}" placeholder="Nome da linha" />`
+          : `<strong>${escapeAttribute(discipline.nome)}</strong>`}
+      </td>
+      <td class="numeric">
+        <input class="ev-value-input" name="evValue_${escapeAttribute(discipline.id)}" inputmode="decimal" value="${currencyInputValue(value)}" ${isNA ? "disabled" : ""} />
+      </td>
+      <td class="numeric" data-ev-row-percent>${isNA ? "–" : `${number(percent, 2)}%`}</td>
+      <td>
+        <select class="ev-status-select" name="evStatus_${escapeAttribute(discipline.id)}" data-status="${status}">
+          ${evStatusOptions(status)}
+        </select>
+      </td>
+      <td class="numeric" data-ev-row-unit>${isNA || !unitCost ? "–" : money(unitCost)}</td>
+      <td>
+        <div class="ev-line-actions">
+          <button class="ghost-button compact-action" type="button" data-action="set-ev-line-na">N/A</button>
+          ${local ? `<button class="ghost-button compact-action danger-action" type="button" data-action="remove-ev-local-line">Excluir</button>` : ""}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderEVPostedSicRow(work, rawItem, baseTotal) {
+  const item = evSicDetailViewModel(rawItem);
+  const value = Number(item.valor || 0);
+  const percent = baseTotal ? (value / baseTotal) * 100 : 0;
+  const unitCost = Number(work.areaEquivalente || 0) ? value / Number(work.areaEquivalente) : 0;
+  const hideRow = Math.abs(value) < 0.000001;
+  return `
+    <tr class="ev-sic-posted-row ev-zero-toggle-row ${item.riskExceeded ? "is-risk-alert" : ""}" data-ev-group="Sics" data-ev-static-value="${value}" ${hideRow ? "hidden" : ""}>
+      <td><span class="ev-local-chip">SIC</span></td>
+      <td>
+        <strong>${escapeAttribute(sicDisplayReference(item))}</strong>
+        <small class="ev-sic-posted-title">${escapeAttribute(sicDisplayTitle(item))}</small>
+        ${item.riskExceeded ? `<small class="ev-sic-risk-warning">Alerta: valor da SIC maior que o risco disponível (${money(item.riskAvailable)}). Excesso: ${money(item.riskExcess)}.</small>` : ""}
+      </td>
+      <td class="numeric"><strong>${money(value)}</strong></td>
+      <td class="numeric" data-ev-row-percent>${baseTotal ? `${number(percent, 2)}%` : "—"}</td>
+      <td><span class="status-pill" data-status="${escapeAttribute(item.status || "Aprovado")}">${escapeAttribute(item.status || "Aprovado")}</span></td>
+      <td class="numeric" data-ev-row-unit>${unitCost ? money(unitCost) : "–"}</td>
+      <td><span class="tag">Postada</span></td>
+    </tr>
+  `;
+}
+
+function evFormTotals(form) {
+  const groups = { CustosDaObra: 0, OutrasCategorias: 0, Sics: 0 };
+  let risk = 0;
+
+  [...(form?.querySelectorAll(".ev-line-row") || [])].forEach((row) => {
+    const status = normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
+    const value = status === "Não se aplica" ? 0 : parseCurrency(row.querySelector(".ev-value-input")?.value);
+    const category = row.dataset.evGroup || "OutrasCategorias";
+    groups[category] = (groups[category] || 0) + value;
+    if (isRiskLine({ disciplinaId: row.dataset.disciplineId })) risk += value;
+  });
+
+  [...(form?.querySelectorAll(".ev-sic-posted-row") || [])].forEach((row) => {
+    groups.Sics += Number(row.dataset.evStaticValue || 0);
+  });
+
+  const total = Object.values(groups).reduce((sum, value) => sum + Number(value || 0), 0);
+  return { groups, total, totalNoRisk: total - risk, risk };
+}
+
+function updateEVGroupTotals(form) {
+  if (!form) return;
+  const totals = evFormTotals(form);
+  const work = workById(form.dataset.workId);
+  const area = Number(work?.areaEquivalente || 0) || 0;
+
+  Object.entries(totals.groups).forEach(([category, value]) => {
+    const target = form.querySelector(`[data-ev-group-total="${category}"]`);
+    if (target) target.textContent = money(value);
+  });
+
+  const setText = (selector, value) => {
+    const target = form.querySelector(selector);
+    if (target) target.textContent = value;
+  };
+  setText("[data-ev-grand-total]", money(totals.total));
+  setText("[data-ev-grand-percent]", totals.total ? "100,00%" : "—");
+  setText("[data-ev-grand-unit]", area && totals.total ? money(totals.total / area) : "—");
+  setText("[data-ev-grand-no-risk]", money(totals.totalNoRisk));
+  setText(
+    "[data-ev-grand-no-risk-percent]",
+    totals.total ? `${number((totals.totalNoRisk / totals.total) * 100, 2)}%` : "—"
+  );
+  setText(
+    "[data-ev-grand-no-risk-unit]",
+    area && totals.totalNoRisk ? money(totals.totalNoRisk / area) : "—"
+  );
+
+  [...form.querySelectorAll(".ev-line-row, .ev-sic-posted-row")].forEach((row) => {
+    const isStaticSic = row.classList.contains("ev-sic-posted-row");
+    const status = isStaticSic
+      ? "Orçado"
+      : normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
+    const value = isStaticSic
+      ? Number(row.dataset.evStaticValue || 0)
+      : status === "Não se aplica"
+        ? 0
+        : parseCurrency(row.querySelector(".ev-value-input")?.value);
+    const percentTarget = row.querySelector("[data-ev-row-percent]");
+    const unitTarget = row.querySelector("[data-ev-row-unit]");
+    if (percentTarget) {
+      percentTarget.textContent =
+        status === "Não se aplica" ? "–" : totals.total ? `${number((value / totals.total) * 100, 2)}%` : "—";
+    }
+    if (unitTarget) {
+      unitTarget.textContent =
+        status === "Não se aplica" || !area || !value ? "–" : money(value / area);
+    }
+  });
+
+  form.dataset.evTotalNoRisk = String(totals.totalNoRisk);
+  return totals;
+}
+
+function renderEVStandardStructureLegacy(work, completionDemandId = "") {
   const lineMap = new Map();
   (work.ev.lines || []).forEach((line) => {
     lineMap.set(canonicalDisciplineId(line.disciplinaId), line);
