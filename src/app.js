@@ -17107,7 +17107,11 @@ async function handleEVSubmit(form, mode = "final") {
     work.ev.versions.push({
       numero: work.ev.versaoAtual,
       data: todayISO(),
-      origem: mode === "final" && completionDemand ? completionDemand.id : "Edição manual SLT 360",
+      origem: mode === "final" && completionDemand
+        ? demandTypeKey(completionDemand.tipo) === "SIC"
+          ? `Conclusão ${completionDemand.id}`
+          : completionDemand.id
+        : "Edição manual SLT 360",
       valorTotal: totalValue,
       custoM2: totalValue / Math.max(work.areaEquivalente || 0, 1),
       diffPorDisciplina: [],
@@ -18213,7 +18217,19 @@ async function approveSic(id) {
 function demandHasEVUpdateForCompletion(demand) {
   const work = workById(demand?.obraId);
   if (!work) return false;
-  return arrayOrFallback(work.ev?.versions).some((version) => String(version.origem || "") === String(demand.id));
+  const versions = arrayOrFallback(work.ev?.versions);
+  if (demandTypeKey(demand?.tipo) !== "SIC") {
+    return versions.some((version) => String(version.origem || "") === String(demand.id));
+  }
+  const completionOrigin = `Conclusão ${demand.id}`;
+  if (versions.some((version) => String(version.origem || "") === completionOrigin)) return true;
+
+  // Compatibilidade com salvamentos feitos antes de existir o marcador específico de conclusão:
+  // uma SIC já postada possui uma versão com origem = demand.id; uma segunda versão indica
+  // que houve novo salvamento do EV durante a conclusão.
+  const sameDemandVersions = versions.filter((version) => String(version.origem || "") === String(demand.id));
+  const wasPreviouslyPosted = Boolean(demand.sicPostedAt || arrayOrFallback(demand.sicIds).length);
+  return wasPreviouslyPosted ? sameDemandVersions.length >= 2 : sameDemandVersions.length >= 1;
 }
 
 function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false } = {}) {
