@@ -8424,19 +8424,6 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
   const work = workById(workId);
   if (!work) return;
   selectedWorkId = work.id;
-  const totals = workTotals(work);
-  const totalValue = totals.orcado + totals.aditivado;
-  const kpis = evTopKpiReading(work);
-  const displayVersions = [...(work.ev.versions || [])];
-  const currentRevision = Number(work.ev.versaoAtual || 0);
-  if (!work.ev._virtualEmptyEV && !displayVersions.some((version) => Number(version.numero) === currentRevision)) {
-    displayVersions.push({
-      numero: currentRevision,
-      data: "",
-      origem: "Versão atual",
-      valorTotal: totalValue,
-    });
-  }
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-modal-card" aria-labelledby="evModalTitle">
@@ -8452,39 +8439,9 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
             <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
           </div>
         </header>
-        <div class="modal-body ev-modal-body">
-          <section class="ev-summary-grid ev-top-kpis">
-            ${miniMetric("Área equivalente da obra", kpis.area ? `${number(kpis.area, 2)} m²` : "—")}
-            ${miniMetric("Total da obra (sem taxa de risco)", money(kpis.totalWithoutRisk))}
-            ${miniMetric("Custo da obra por m² (sem taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithoutRisk)}/m²` : "—")}
-            ${miniMetric("Total da obra (com taxa de risco)", money(kpis.totalWithRisk))}
-            ${miniMetric("Custo da obra por m² (com taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithRisk)}/m²` : "—")}
-            ${miniMetric("Total de SIC's", money(kpis.totalSics))}
-          </section>
-
+        <div class="modal-body ev-modal-body ev-modal-body--direct-composition">
           ${renderEVStandardStructure(work, completionDemandId)}
-
-          <section class="ev-version-panel">
-            <h3>Rastreabilidade de versões</h3>
-            <div class="timeline-list">
-              ${
-                displayVersions.length
-                  ? displayVersions
-                      .map(
-                        (version) => `
-                          <article>
-                            <strong>REV${String(version.numero).padStart(2, "0")} | ${dateText(version.data)}</strong>
-                            <span>${version.origem || "Versão importada"} | ${money(version.valorTotal || 0)}</span>
-                          </article>
-                        `
-                      )
-                      .join("")
-                  : `<div class="empty-state">Sem versões registradas.</div>`
-              }
-            </div>
-          </section>
         </div>
-
       </article>
     </div>
   `);
