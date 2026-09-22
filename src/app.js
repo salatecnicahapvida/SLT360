@@ -17714,30 +17714,9 @@ async function postDemandSicToEV(demandId) {
     dataAprovacao: demand.sicApprovalApprovedAt || todayISO(),
   };
 
-  const sicDiffs = affected.map((item) => {
-    const line = ensureEVLineForDiscipline(work, item.disciplinaId);
-    const before = Number(line.valorOrcado || 0) + aditivadoByDiscipline(work.id, item.disciplinaId);
-    return {
-      disciplinaId: item.disciplinaId,
-      valorAntes: before,
-      valorDepois: before + item.valorDelta,
-    };
-  });
-
   state.sics.unshift(sic);
   syncSicWithEV(work, sic);
   syncWorkSicSummaryLine(work);
-  work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
-  work.ev.versions = work.ev.versions || [];
-  const updatedValues = workTotals(work);
-  work.ev.versions.push({
-    numero: work.ev.versaoAtual,
-    data: todayISO(),
-    origem: demand.id,
-    valorTotal: updatedValues.orcado + updatedValues.aditivado,
-    custoM2: (updatedValues.orcado + updatedValues.aditivado) / Math.max(work.areaEquivalente || 0, 1),
-    diffPorDisciplina: sicDiffs,
-  });
   demand.sicIds = [sic.id];
   demand.sicPostedAt = todayISO();
   demand.sicApprovalStatus = "Postada";
@@ -17773,7 +17752,7 @@ async function postDemandSicToEV(demandId) {
     return;
   }
   selectedWorkId = work.id;
-  showToast("SIC postada no EV e nova versão confirmada no banco.");
+  showToast("SIC postada no EV.");
   render();
   openEVModal(work.id);
 }
