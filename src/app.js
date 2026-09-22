@@ -7318,6 +7318,7 @@ function openPortfolioWorkDetail(workId) {
             ${splitItem("Tipo de unidade", detailValue(row.tipoUnidade))}
             ${splitItem("Tipologia", detailValue(row.tipologia))}
             ${splitItem("Categoria", detailValue(row.categoria))}
+            ${splitItem("Status do EV", row.evStatus || "Sem EV")}
             ${splitItem("Tempo de obra", prazoValue)}
             ${splitItem("Área equivalente", areaValue(row.areaEquivalente))}
             ${splitItem("Área construída", areaValue(row.areaConstruida))}
