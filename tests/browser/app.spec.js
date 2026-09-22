@@ -1222,29 +1222,32 @@ test('historical EV shows original and additive totals with an unobstructed titl
  expect(b.errors).toEqual([]);
 });
 
-test('portfolio rows expose only the unified EV action and work editing',async({page})=>{
+test('portfolio rows expose EV and work-detail actions',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  const rows=page.locator('.portfolio-works-table tbody tr');
+
  const historical=rows.filter({hasText:/Obra Histórica Norte/i});
- await expect(historical.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ await expect(historical.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
  await historical.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
  await expect(page.locator('.ev-historical-modal')).toContainText('REV02');
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Editar EV',exact:true})).toBeVisible();
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
+
  const current=rows.filter({hasText:/Obra de Teste/i});
- await expect(current.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ await expect(current.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
  await current.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
  await expect(page.locator('.ev-version-panel')).toContainText('REV01');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
+
  const empty=rows.filter({hasText:/Obra Nova Sem EV/i});
- await expect(empty.locator('.portfolio-actions button')).toHaveText(['Criar EV','Editar Obra']);
+ await expect(empty.locator('.portfolio-actions button')).toHaveText(['Criar EV','Abrir Obra']);
  await empty.getByRole('button',{name:'Criar EV',exact:true}).click();
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
@@ -1254,12 +1257,14 @@ test('portfolio rows expose only the unified EV action and work editing',async({
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+
  const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
- await expect(updatedEmpty.locator('td').nth(10)).toHaveText('75,00');
- await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Editar Obra']);
+ await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
+ await expect(updatedEmpty).not.toContainText('75,00');
+ await updatedEmpty.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ await expect(page.locator('#portfolioWorkDetail').locator('.split-item').filter({hasText:'Área construída'})).toContainText('75,00 m²');
  expect(b.errors).toEqual([]);
 });
-
 test('work funding is persisted in Works and Finance before confirming the form',async({page})=>{
  const b=await backend(page,'Admin',false,{fundRecords:[{id:'seed-fund',workId:'test-work',obraId:'test-work',ordemInternaSAP:'OI-TESTE-1',ordemInterna:'OI-TESTE-1',account:'OI-TESTE-1',type:'works',approved:50,requested:50}]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
