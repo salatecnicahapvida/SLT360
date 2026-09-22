@@ -8424,14 +8424,29 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
   const work = workById(workId);
   if (!work) return;
   selectedWorkId = work.id;
+  const kpis = evTopKpiReading(work);
+  const areaConstruida = Number(work.areaConstruida || 0) || 0;
+  const sicShare = kpis.totalWithRisk > 0 ? (kpis.totalSics / kpis.totalWithRisk) * 100 : null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-modal-card" aria-labelledby="evModalTitle">
         <header class="ev-modal-header">
-          <div>
+          <div class="ev-modal-title-block">
             <span class="eyebrow">Estudo de Viabilidade</span>
             <h2 id="evModalTitle">${work.nome}</h2>
             <p class="muted">${work.chaveUnica} | ${work.tipoUnidade} | ${work.cidade}/${work.uf}</p>
+          </div>
+          <div class="ev-header-areas" aria-label="Áreas da obra">
+            <div class="ev-header-area">
+              <small>Área equivalente</small>
+              <strong>${kpis.area ? `${number(kpis.area, 2)} m²` : "—"}</strong>
+            </div>
+            ${areaConstruida ? `
+              <div class="ev-header-area">
+                <small>Área construída</small>
+                <strong>${number(areaConstruida, 2)} m²</strong>
+              </div>
+            ` : ""}
           </div>
           <div class="ev-modal-status">
             <span class="tag">REV${String(work.ev.versaoAtual).padStart(2, "0")}</span>
@@ -8440,6 +8455,14 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
           </div>
         </header>
         <div class="modal-body ev-modal-body ev-modal-body--direct-composition">
+          <section class="ev-summary-grid ev-top-kpis ev-top-kpis--two-columns">
+            ${miniMetric("Total da obra (sem taxa de risco)", money(kpis.totalWithoutRisk))}
+            ${miniMetric("Custo da obra por m² (sem taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithoutRisk)}/m²` : "—")}
+            ${miniMetric("Total da obra (com taxa de risco)", money(kpis.totalWithRisk))}
+            ${miniMetric("Custo da obra por m² (com taxa de risco)", kpis.area ? `${moneyCents(kpis.costWithRisk)}/m²` : "—")}
+            ${miniMetric("Total de SIC's", money(kpis.totalSics))}
+            ${miniMetric("Percentual das SIC's no valor total da obra", sicShare === null ? "—" : `${number(sicShare, 2)}%`)}
+          </section>
           ${renderEVStandardStructure(work, completionDemandId)}
         </div>
       </article>
