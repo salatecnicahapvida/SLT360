@@ -1338,14 +1338,14 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(completeness).toContainText('EV completo?');
  await expect(completeness).toContainText('Não');
  await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
- await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+ await expect(page.locator('#toast')).toHaveText('Nenhuma alteração no EV. Nenhuma nova revisão foi criada.');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
 
  const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
- await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
+ await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Criar EV']);
  await updatedEmpty.locator('.portfolio-actions button').click();
- await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
+ await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Sem EV');
  await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric')).toHaveCount(6);
  await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric').nth(1)).toContainText('—');
  await expect(page.locator('.ev-modal-card .ev-top-kpis > .mini-metric').nth(3)).toContainText('—');
@@ -1967,6 +1967,7 @@ test('saving the EV from the completion flow resumes the final required fields',
  const evForm=page.locator('#evForm');
  await expect(evForm).toBeVisible();
  await expect(evForm).toHaveAttribute('data-completion-demand-id','finish-after-ev');
+ await evForm.locator('.ev-value-input').first().fill('125,00');
  await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
  const deviation=page.locator('[data-ev-haptec-confirm]');
  if(await deviation.isVisible().catch(()=>false)){
@@ -1987,6 +1988,32 @@ test('saving the EV from the completion flow resumes the final required fields',
  const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='finish-after-ev'&&change.document?.coluna==='concluido');
  expect(completed.document.evSemMudanca).toBe(false);
  expect(completed.document.dataEntregaReal).toBe('2026-09-22');
+ expect(b.errors).toEqual([]);
+});
+
+test('completion does not create EV revision when nothing changed',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[1]),id:'finish-without-ev-change',obraId:'test-work',tipo:'DemandaExtra',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="finish-without-ev-change"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await page.getByRole('button',{name:/Atualizar o EV/}).click();
+
+ const evForm=page.locator('#evForm');
+ await expect(evForm).toHaveAttribute('data-completion-demand-id','finish-without-ev-change');
+ await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
+ const deviation=page.locator('[data-ev-haptec-confirm]');
+ if(await deviation.isVisible().catch(()=>false)){
+  await deviation.locator('[data-ev-haptec-check]').check();
+  await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
+ }
+
+ await expect(page.getByRole('heading',{name:'Confirme o impacto no EV'})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Não houve mudança no EV/})).toBeVisible();
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='budget_estimate_versions')).toBe(false);
  expect(b.errors).toEqual([]);
 });
 
@@ -2041,7 +2068,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
  };
  const postedWork=structuredClone(payload.state.works[0]);
  postedWork.ev.versaoAtual=1;
- postedWork.ev.versions=[{numero:1,data:'2026-09-20',origem:'sic-finish-after-ev',valorTotal:150,custoM2:1.5,diffPorDisciplina:[]}];
+ postedWork.ev.versions=[];
  const b=await backend(page,'Analista',false,{workRecords:[postedWork],demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-finish-after-ev"]').click();
