@@ -1460,7 +1460,7 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
  await expect(page.locator('[data-portfolio-quick-filter="evStatus"] option')).toHaveText([
   'Todos','Sem EV','Incompleto','Completo',
  ]);
- await expect(page.locator('[data-portfolio-quick-filter="evStatus"] option')).not.toContainText('Rascunho');
+ await expect(page.locator('[data-portfolio-quick-filter="evStatus"]')).not.toContainText('Rascunho');
  await expect(page.locator('.portfolio-works-table thead th')).toHaveText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria',
   'Área equivalente (m²)','Total orçado','Custo por m²','Ações',
@@ -1781,15 +1781,21 @@ test('Analista cannot move SIC from director approval to director approved',asyn
    const right=Math.max(source.offsetLeft+source.offsetWidth,target.offsetLeft+target.offsetWidth);
    element.scrollLeft=Math.max(0,(left+right-element.clientWidth)/2);
   },{cardId:'sic-director-analyst',targetColumnId});
-  const source=approvalColumn.locator('article[data-id="sic-director-analyst"]');
-  const target=page.locator(`.kanban-column[data-column="${targetColumnId}"] .demand-list`);
-  const [sourceBox,targetBox]=await Promise.all([source.boundingBox(),target.boundingBox()]);
-  expect(sourceBox).toBeTruthy();
-  expect(targetBox).toBeTruthy();
-  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
-  await page.mouse.down();
-  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,120),{steps:12});
-  await page.mouse.up();
+  await page.waitForTimeout(50);
+  await page.evaluate(({cardId,targetColumnId})=>{
+   const source=document.querySelector(`article[data-id="${cardId}"]`);
+   const target=document.querySelector(`.kanban-column[data-column="${targetColumnId}"] .demand-list`);
+   if(!source||!target) throw new Error('Card ou coluna alvo não encontrados para o teste de arraste.');
+   const sourceBox=source.getBoundingClientRect();
+   const targetBox=target.getBoundingClientRect();
+   const sx=sourceBox.left+sourceBox.width/2;
+   const sy=sourceBox.top+Math.min(sourceBox.height/2,40);
+   const tx=targetBox.left+targetBox.width/2;
+   const ty=targetBox.top+Math.min(targetBox.height/2,120);
+   source.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'mouse',button:0,buttons:1,clientX:sx,clientY:sy,pointerId:1}));
+   document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerType:'mouse',button:0,buttons:1,clientX:tx,clientY:ty,pointerId:1}));
+   document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerType:'mouse',button:0,buttons:0,clientX:tx,clientY:ty,pointerId:1}));
+  },{cardId:'sic-director-analyst',targetColumnId});
  };
 
  await dragCardTo('aprovadoDiretoria');
