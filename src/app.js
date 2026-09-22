@@ -7358,7 +7358,7 @@ function renderPortfolioTable(rows) {
             const displayCode = portfolioWorkDisplayCode(row);
             const displayName = portfolioWorkDisplayName(row);
             return `
-            <tr class="portfolio-work-row" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}" tabindex="0" role="button" aria-label="Abrir obra ${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}">
+            <tr class="portfolio-work-row" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}" tabindex="0" title="Clique para abrir a obra">
               <td><strong>${escapeAttribute(displayCode)}</strong></td>
               <td><strong>${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
