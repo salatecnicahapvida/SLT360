@@ -746,13 +746,6 @@ function evHasBudgetData(ev) {
   );
 }
 
-function canonicalStoredEVStatus(status) {
-  const value = normalizeSearchText(status);
-  if (value === "completo") return "Completo";
-  if (value === "sem ev") return "Sem EV";
-  return "Incompleto";
-}
-
 function effectiveEVStatus(work) {
   if (!work?.ev || work.ev._virtualEmptyEV || !evHasBudgetData(work.ev)) return "Sem EV";
   return deriveEVStatus(work);
@@ -3051,7 +3044,7 @@ function haptecEVDataAnswer(text) {
   const total = works.reduce((sum, work) => sum + workBudgetValue(work), 0);
   const top = haptecTopEVWork();
 
-  if (haptecHasAny(text, ["pendente", "incompleto", "rascunho"])) return `Hoje temos ${incomplete.length} EV(s) incompleto(s), ${completed.length} completo(s) e ${withoutEV.length} obra(s) sem EV.`;
+  if (haptecHasAny(text, ["pendente", "incompleto"])) return `Hoje temos ${incomplete.length} EV(s) incompleto(s), ${completed.length} completo(s) e ${withoutEV.length} obra(s) sem EV.`;
   if (haptecHasAny(text, ["completo", "cotacao completa", "finalizado"])) return `${completed.length} EV(s) estão completos. Isso representa ${number((completed.length / Math.max(works.length, 1)) * 100, 1)}% do portfólio.`;
   if (haptecHasAny(text, ["sem ev"])) return `${withoutEV.length} obra(s) ainda não possuem EV.`;
   if (haptecHasAny(text, ["total", "consolidado", "somatorio", "soma"])) return `O valor total de EV consolidado é ${money(total)}. ${top ? `O maior EV é ${top.work.nome}, com ${money(top.value)}.` : ""}`;
