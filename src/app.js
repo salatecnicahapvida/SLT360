@@ -4757,7 +4757,7 @@ function moduleSummaries() {
   const clinicalPortfolioMetrics = clinicalLoaded ? moduleDemandMetrics("clinical") : null;
   const fundsBalance = financeLoaded ? positiveFundsBalanceTotal() : Number(summary.finance?.availableBalance || 0);
   const totals = worksLoaded ? allTotals() : { contratado: Number(summary.works?.contracted || 0) };
-  const pendingEvs = worksLoaded ? budgetWorks().filter((work) => work.ev?.status !== "Completo").length : Number(summary.works?.pendingEVCount || 0);
+  const pendingEvs = worksLoaded ? budgetWorks().filter((work) => effectiveEVStatus(work) === "Incompleto").length : Number(summary.works?.pendingEVCount || 0);
   const historicalEVCount = worksLoaded
     ? arrayOrFallback(globalThis.EV_HISTORICAL_DATA?.records).length
     : Number(summary.works?.historicalEVCount || 0);
@@ -4779,7 +4779,7 @@ function moduleSummaries() {
       metrics: [
         { label: "EVs históricos", value: number(historicalEVCount) },
         { label: "Cards operacionais", value: String(worksMetrics?.active.length ?? Number(summary.works?.activeCount || 0)) },
-        { label: "EVs pendentes", value: String(pendingEvs) },
+        { label: "EVs incompletos", value: String(pendingEvs) },
       ],
     },
     {
@@ -4954,7 +4954,7 @@ function kpiDetailData(key) {
       { label: "Total de obras", value: String(budgetWorks().length) },
       { label: "Regiões", value: String(new Set(budgetWorks().map((work) => work.regiao)).size) },
       { label: "CAPEX", value: money(capex) },
-      { label: "EVs pendentes", value: String(pendingEvs.length) },
+      { label: "EVs incompletos", value: String(pendingEvs.length) },
     ]);
   }
   if (key === "activeDemands") {
@@ -4987,19 +4987,19 @@ function kpiDetailData(key) {
   }
   if (key === "nearMilestone") {
     const works = nearMilestone.map((row) => workById(row.id)).filter(Boolean);
-    return workDetail("Próximas do marco", "Obras com marco de acompanhamento próximo ou EV ainda pendente.", works, [
+    return workDetail("Próximas do marco", "Obras com marco de acompanhamento próximo ou EV ainda incompleto.", works, [
       { label: "Próximas", value: String(works.length) },
-      { label: "EVs pendentes", value: String(pendingEvs.length) },
+      { label: "EVs incompletos", value: String(pendingEvs.length) },
       { label: "Marco dominante", value: topLabel(groupRowsBy(nearMilestone, "proximoMarco")) },
       { label: "Carteira", value: String(rows.length) },
     ]);
   }
   if (key === "pendingEvs") {
-    return workDetail("EVs com pendência", "Obras com estudo de viabilidade em rascunho ou cotação aberta.", pendingEvs, [
-      { label: "Pendentes", value: String(pendingEvs.length) },
-      { label: "Completos", value: String(budgetWorks().length - pendingEvs.length) },
-      { label: "% pendente", value: `${number((pendingEvs.length / Math.max(budgetWorks().length, 1)) * 100)}%` },
-      { label: "Total obras", value: String(budgetWorks().length) },
+    return workDetail("EVs incompletos", "Obras que possuem EV, mas cujo preenchimento ainda não está completo.", pendingEvs, [
+      { label: "Incompletos", value: String(pendingEvs.length) },
+      { label: "Completos", value: String(budgetWorks().filter((work) => effectiveEVStatus(work) === "Completo").length) },
+      { label: "% incompleto", value: `${number((pendingEvs.length / Math.max(budgetWorks().filter((work) => effectiveEVStatus(work) !== "Sem EV").length, 1)) * 100)}%` },
+      { label: "Sem EV", value: String(budgetWorks().filter((work) => effectiveEVStatus(work) === "Sem EV").length) },
     ], "ev", "Abrir EVs");
   }
   if (key === "completedDemands") {
@@ -15888,7 +15888,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
         <header>
           <div>
             <h2 id="workTitle">${isEditing ? "Editar obra" : "Nova obra"}</h2>
-            <p class="muted">${historicalRecord ? "Complete os dados cadastrais desta obra histórica; o EV existente será preservado e vinculado sem duplicidade." : isEditing ? "Atualize os dados cadastrais do portfólio sem perder o EV vinculado." : "Cadastre a demanda do plano de investimento e vincule automaticamente um EV rascunho."}</p>
+            <p class="muted">${historicalRecord ? "Complete os dados cadastrais desta obra histórica; o EV existente será preservado e vinculado sem duplicidade." : isEditing ? "Atualize os dados cadastrais do portfólio sem perder o EV vinculado." : "Cadastre a obra no portfólio. Ela permanecerá sem EV até o primeiro preenchimento do estudo."}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
