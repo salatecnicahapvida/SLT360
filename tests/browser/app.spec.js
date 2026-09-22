@@ -1239,7 +1239,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await historical.getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
  await expect(page.locator('.ev-historical-modal')).toContainText('REV02');
- await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
+ await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Editar EV',exact:true})).toBeVisible();
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
 
@@ -1249,7 +1249,8 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('#evModalTitle')).toHaveText('Obra de teste');
  await expect(page.locator('.ev-version-panel')).toContainText('REV01');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
- await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toBeVisible();
+ await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Ver controle de verba',exact:true})).toHaveCount(0);
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const empty=rows.filter({hasText:/Obra Nova Sem EV/i});
@@ -1259,7 +1260,10 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
- await page.locator('#evForm').getByRole('button',{name:'Salvar preenchimento',exact:true}).click();
+ const completeness=page.locator('#evForm .ev-completeness-toggle');
+ await expect(completeness).toContainText('EV completo?');
+ await expect(completeness).toContainText('Não');
+ await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
@@ -1273,7 +1277,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
  expect(b.errors).toEqual([]);
 });
-test('legacy EV status never exposes draft and is recalculated from its content',async({page})=>{
+test('legacy EV status never exposes draft and only accepts the explicit lifecycle value',async({page})=>{
  const legacy={
   ...structuredClone(payload.state.works[0]),
   id:'legacy-draft-work',
