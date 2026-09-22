@@ -1821,7 +1821,7 @@ test('Gestor can move SIC from director approval to director approved',async({pa
 
 test('operational completion requires real delivery date, EV decision and generated amount',async({page})=>{
  const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
- const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="finish-demand"]').click();
@@ -1867,7 +1867,7 @@ test('SIC approved by director also requires real delivery date before conclusio
   anexos:[],
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC para concluir'},
  };
- const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-finish-demand"]').click();
  const detail=page.locator('#demandDetailForm');
