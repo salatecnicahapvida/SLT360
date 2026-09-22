@@ -6845,9 +6845,91 @@ button.alert-item {
 }
 
 .operational-board-panel .demand-card.is-dragging {
-  opacity: 0.42;
+  opacity: 0.24;
   cursor: grabbing;
-  transform: scale(0.98);
+  transform: scale(0.985);
+}
+
+.demand-drag-handle {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 92, 169, 0.16);
+  border-radius: 7px;
+  background: #f4f8fc;
+  color: #6f8298;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.demand-drag-handle:hover {
+  border-color: rgba(0, 92, 169, 0.38);
+  background: #eaf4ff;
+  color: var(--blue);
+}
+
+.demand-drag-active,
+.demand-drag-active * {
+  cursor: grabbing !important;
+}
+
+.demand-drag-ghost {
+  position: fixed !important;
+  z-index: 5000;
+  left: 0;
+  top: 0;
+  margin: 0 !important;
+  pointer-events: none !important;
+  opacity: 0.94;
+  box-shadow: 0 20px 44px rgba(0, 40, 80, 0.28) !important;
+  transform-origin: top left;
+  transition: none !important;
+  will-change: transform;
+}
+
+.operational-board-panel .kanban-column.is-drop-eligible {
+  border-color: rgba(0, 92, 169, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(0, 92, 169, 0.08);
+}
+
+.operational-board-panel .kanban-column.is-drop-eligible > header {
+  background: #f7fbff;
+}
+
+.operational-board-panel .kanban-column.is-drop-disabled {
+  opacity: 0.58;
+}
+
+.operational-board-panel .kanban-column.is-drag-over {
+  border-color: var(--blue);
+  background: #dceeff;
+  box-shadow:
+    inset 0 0 0 3px rgba(0, 92, 169, 0.18),
+    0 0 0 3px rgba(0, 92, 169, 0.08);
+}
+
+.operational-board-panel .kanban-column.is-drag-over > header {
+  background: #d9ecff;
+}
+
+.operational-board-panel .kanban-column.is-drag-over > header::after {
+  content: "Soltar aqui";
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  padding: 0 8px;
+  font-size: 0.64rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .demand-card[data-status="concluido"] {
@@ -8198,6 +8280,39 @@ button.alert-item {
   border-radius: 8px;
   background: #f8fbff;
   padding: 12px;
+}
+
+.completion-resume-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(0, 143, 90, 0.24);
+  border-radius: 10px;
+  background: rgba(0, 143, 90, 0.08);
+  color: #146c4c;
+  padding: 10px 12px;
+}
+
+.completion-resume-notice > span {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 900;
+}
+
+.completion-resume-notice div {
+  display: grid;
+  gap: 2px;
+}
+
+.completion-resume-notice small {
+  color: #487568;
 }
 
 .modal-section {
