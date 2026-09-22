@@ -8010,16 +8010,6 @@ async function openHistoricalEVModal(recordId) {
           <div class="ev-modal-status"><span class="tag">${items.length} filhas</span><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></div>
         </header>
         <div class="modal-body ev-modal-body">
-          <section class="ev-summary-grid ev-historical-summary">
-            ${miniMetric("Valor total do EV", moneyCents(record.total))}
-            ${miniMetric("Valor do EV original (sem SICs)", moneyCents(originalTotal))}
-            ${miniMetric("EV sem taxa de risco", money(record.baseTotal))}
-            ${miniMetric("Taxa de risco", money(risk))}
-            ${miniMetric("Área equivalente", record.area ? `${number(record.area, 2)} m²` : "—")}
-            ${miniMetric("Custo total por m²", record.area ? `${money(record.total / record.area)}/m²` : "—")}
-            ${miniMetric("SICs / Aditivos", moneyCents(sicTotal), sicThresholdClass)}
-            ${miniMetric("Percentual de SICs / Aditivos", sicPercentage, sicThresholdClass)}
-          </section>
           <details class="ev-additive-audit">
             <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>
             <p>${additives.detailed ? "Soma das linhas identificadas como SIC, ADT ou aditivo na descrição, ou classificadas como SICs. Cada linha é contada uma vez, preservando seu sinal." : "Composição detalhada indisponível: valor limitado ao agrupamento SICs informado na base."}</p>
@@ -8420,7 +8410,6 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
   if (!work) return;
   selectedWorkId = work.id;
   const totals = workTotals(work);
-  const riskTotal = work.ev.lines.filter(isRiskLine).reduce((sum, line) => sum + (line.valorOrcado || 0), 0);
   const totalValue = totals.orcado + totals.aditivado;
   const displayVersions = [...(work.ev.versions || [])];
   const currentRevision = Number(work.ev.versaoAtual || 0);
@@ -8432,7 +8421,6 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
       valorTotal: totalValue,
     });
   }
-  const masterItems = projectMasterItems(work);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-modal-card" aria-labelledby="evModalTitle">
@@ -8449,38 +8437,7 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
           </div>
         </header>
         <div class="modal-body ev-modal-body">
-          <section class="ev-summary-grid">
-            ${miniMetric("Valor da obra", money(totals.orcado))}
-            ${miniMetric("Taxa de risco 5%", money(riskTotal))}
-            ${miniMetric("Total do EV", money(totalValue))}
-            ${miniMetric("Custo por m²", work.areaEquivalente ? `${money(totalValue / work.areaEquivalente)}/m²` : "—")}
-            ${miniMetric("Área construída", `${number(work.areaConstruida)} m²`)}
-            ${miniMetric("Área equivalente", `${number(work.areaEquivalente)} m²`)}
-          </section>
-
-          <section class="ev-master-panel">
-            <div>
-              <h3>Lista mestre do projeto</h3>
-              <p class="muted">Cadastro de documentos e disciplinas que embasam o orçamento.</p>
-            </div>
-            <div class="master-list">
-              ${
-                masterItems.length
-                  ? masterItems.map((item) => `<span class="tag">${item}</span>`).join("")
-                  : `<span class="muted">Lista mestre pendente para esta obra.</span>`
-              }
-            </div>
-          </section>
-
-          <section>
-            <div class="panel-header">
-              <div>
-                <h3>Nomenclatura do EV padrão</h3>
-                <p class="panel-subtitle">Estrutura oficial de disciplinas, valores e status do estudo selecionado.</p>
-              </div>
-            </div>
-            ${renderEVStandardStructure(work, completionDemandId)}
-          </section>
+          ${renderEVStandardStructure(work, completionDemandId)}
 
           <section class="ev-version-panel">
             <h3>Rastreabilidade de versões</h3>
@@ -8535,38 +8492,16 @@ function renderEVStandardStructure(work, completionDemandId = "") {
     .filter((row) => !isRiskLine({ disciplinaId: row.discipline.id }))
     .reduce((sum, row) => sum + row.value, 0);
   const valuesByDiscipline = Object.fromEntries(applicableRows.map((row) => [row.discipline.id, row.value]));
-  const currentCostPerM2 = work.areaEquivalente ? baseTotalNoRisk / work.areaEquivalente : 0;
   const renderRows = (category) =>
     visibleRows
       .filter((row) => row.discipline.categoria === category)
       .map((row) => renderEVEditableRow(work, row, baseTotal))
       .join("");
-  const anexos = work.ev.anexos || [];
   const lifecycleStatus = effectiveEVStatus(work) === "Completo" ? "Completo" : "Incompleto";
   return `
     <form class="ev-editor" id="evForm" data-work-id="${work.id}" data-ev-total-no-risk="${baseTotalNoRisk}" data-completion-demand-id="${escapeAttribute(completionDemandId)}">
       <input type="hidden" name="evLifecycleStatus" value="${lifecycleStatus}" />
       <div class="error-box" id="formError" role="alert"></div>
-      <section class="ev-area-panel">
-        <div>
-          <h3>Dados de área do EV</h3>
-          <p class="muted">Campos usados para recalcular automaticamente o custo por m² deste estudo.</p>
-        </div>
-        <div class="form-grid ev-area-grid">
-          <label class="field">
-            <span>Área construída (m²)</span>
-            <input name="evAreaConstruida" data-ev-area-input inputmode="decimal" value="${currencyInputValue(work.areaConstruida)}" placeholder="0,00" />
-          </label>
-          <label class="field">
-            <span>Área equivalente (m²)</span>
-            <input name="evAreaEquivalente" data-ev-area-input inputmode="decimal" value="${currencyInputValue(work.areaEquivalente)}" placeholder="0,00" />
-          </label>
-          <div class="mini-metric ev-area-preview">
-            <small>Custo/m² sem risco</small>
-            <strong data-ev-area-preview>${currentCostPerM2 ? `${money(currentCostPerM2)}/m²` : "—"}</strong>
-          </div>
-        </div>
-      </section>
       <section class="ev-deviation-panel" data-ev-deviation-panel>
         ${evHistoricalDeviationMarkup(work, valuesByDiscipline, baseTotalNoRisk)}
       </section>
@@ -8607,19 +8542,6 @@ function renderEVStandardStructure(work, completionDemandId = "") {
           </tbody>
         </table>
       </div>
-
-      <section class="ev-attachments">
-        <div>
-          <h3>Arquivos do EV</h3>
-          <p class="muted">Anexe planilhas, memórias de cálculo, cotações ou documentos que sustentam este orçamento.</p>
-        </div>
-        <label class="file-drop">
-          <input name="evFiles" type="file" multiple />
-          <span>Selecionar arquivo(s)</span>
-          <small>${anexos.length ? `${anexos.length} arquivo(s) anexado(s) ao EV.` : "Nenhum arquivo anexado ao EV."}</small>
-        </label>
-        ${renderAttachmentList(anexos, "Nenhum arquivo anexado ao EV.")}
-      </section>
 
       <footer class="ev-editor-actions">
         <button class="secondary-action ev-completeness-toggle ${lifecycleStatus === "Completo" ? "is-complete" : "is-incomplete"}" type="button" data-action="toggle-ev-completeness" data-status="${lifecycleStatus}" aria-pressed="${lifecycleStatus === "Completo" ? "true" : "false"}">
@@ -17142,24 +17064,6 @@ async function handleEVSubmit(form, mode = "final") {
   const workSnapshot = clone(work);
   const historySnapshot = clone(state.history || []);
   const previousTotal = workTotals(work).orcado;
-  const previousAreaConstruida = Number(work.areaConstruida || 0);
-  const previousAreaEquivalente = Number(work.areaEquivalente || 0);
-  const nextAreaConstruida = parseCurrency(form.querySelector('[name="evAreaConstruida"]')?.value);
-  const nextAreaEquivalente = parseCurrency(form.querySelector('[name="evAreaEquivalente"]')?.value);
-  const missingAreaFields = [
-    !nextAreaConstruida ? "área construída" : "",
-    !nextAreaEquivalente ? "área equivalente" : "",
-  ].filter(Boolean);
-  if (missingAreaFields.length) {
-    haptecSystemNotice(
-      `EV salvo pode seguir, mas falta preencher ${missingAreaFields.join(" e ")} para calcular o custo por m² com precisão.`,
-      "error_alert",
-      true
-    );
-  }
-  work.areaConstruida = nextAreaConstruida;
-  work.areaEquivalente = nextAreaEquivalente;
-  work.area = nextAreaEquivalente || nextAreaConstruida || 0;
   work.ev.lines = work.ev.lines || [];
 
   form.querySelectorAll(".ev-line-row").forEach((row) => {
@@ -17178,19 +17082,6 @@ async function handleEVSubmit(form, mode = "final") {
   });
 
   work.ev.lines.sort((a, b) => disciplineById(a.disciplinaId).posicao - disciplineById(b.disciplinaId).posicao);
-
-  const fileInput = form.querySelector('[name="evFiles"]');
-  let files = [];
-  try {
-    files = await fileAttachmentMetadata(fileInput, { entidade: "ev", entidadeId: work.ev.id || work.id, workId: work.id });
-  } catch (error) {
-    console.warn("Falha ao gravar anexos do EV.", error);
-    showFormError("Não consegui salvar os anexos do EV no navegador. Tente anexar novamente ou reduza o tamanho dos arquivos.", form);
-    return;
-  }
-  if (files.length) {
-    work.ev.anexos = uniqueAttachments([...(work.ev.anexos || []), ...files]);
-  }
 
   delete work.ev._virtualEmptyEV;
   const totals = workTotals(work);
@@ -17224,26 +17115,6 @@ async function handleEVSubmit(form, mode = "final") {
       campo: "status do EV",
       valorAnterior: previousEVStatus,
       valorNovo: nextEVStatus,
-    });
-  }
-
-  if (previousAreaConstruida !== work.areaConstruida) {
-    addHistory({
-      entidade: "obra",
-      entidadeId: work.id,
-      campo: "área construída",
-      valorAnterior: `${number(previousAreaConstruida, 2)} m²`,
-      valorNovo: `${number(work.areaConstruida, 2)} m²`,
-    });
-  }
-
-  if (previousAreaEquivalente !== work.areaEquivalente) {
-    addHistory({
-      entidade: "obra",
-      entidadeId: work.id,
-      campo: "área equivalente",
-      valorAnterior: `${number(previousAreaEquivalente, 2)} m²`,
-      valorNovo: `${number(work.areaEquivalente, 2)} m²`,
     });
   }
 
