@@ -1524,7 +1524,7 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
 
  await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
  await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
- await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC'})).toBeVisible();
+ await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC'})).toHaveCount(0);
  await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
