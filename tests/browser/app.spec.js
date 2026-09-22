@@ -1199,7 +1199,7 @@ test('analyst chips use the configured spelling without case duplicates',async({
  expect(b.errors).toEqual([]);
 });
 
-test('historical EV shows original and additive totals with an unobstructed title',async({page})=>{
+test('historical EV omits redundant summary fields and keeps the composition audit',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
@@ -1207,29 +1207,22 @@ test('historical EV shows original and additive totals with an unobstructed titl
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
  const modal=page.locator('.ev-historical-modal');
  await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
- const metric=label=>modal.locator('.ev-historical-summary > .mini-metric').filter({has:page.getByText(label,{exact:true})});
- await expect(metric('Valor total do EV')).toContainText('R$ 1.000');
- await expect(metric('Valor do EV original (sem SICs)')).toContainText('R$ 850');
- await expect(metric('SICs / Aditivos')).toContainText('R$ 150');
- await expect(metric('Percentual de SICs / Aditivos')).toContainText('15,00%');
- await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
- await expect(metric('Percentual de SICs / Aditivos')).toHaveClass(/mini-metric--alert/);
- await expect(metric('Percentual sobre o EV original')).toHaveCount(0);
- await expect(modal.locator('.ev-historical-summary')).not.toContainText('Filhas da coluna F');
+ await expect(modal.locator('.ev-historical-summary')).toHaveCount(0);
+ await expect(modal.getByText('Valor total do EV',{exact:true})).toHaveCount(0);
+ await expect(modal.getByText('Área equivalente',{exact:true})).toHaveCount(0);
+ const audit=modal.locator('.ev-additive-audit');
+ await expect(audit).toContainText('Conferir cálculo de SICs / Aditivos');
+ await audit.locator('summary').click();
+ await expect(audit).toContainText('Total: R$ 150');
+ await expect(audit).toContainText('EV original: R$ 850');
+ await expect(audit).toContainText('15,00%');
  const title=modal.locator('#historicalEVTitle');
- await title.click(); // Also checks that the site header does not cover the title.
- await page.screenshot({path:'outputs/ev-summary-layout.png',fullPage:false});
- await modal.getByRole('button',{name:'Fechar',exact:true}).click();
- const safeRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Sul/i});
- await safeRow.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await expect(metric('SICs / Aditivos')).toContainText('R$ 20');
- await expect(metric('Percentual de SICs / Aditivos')).toContainText('3,85%');
- await expect(metric('SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
- await expect(metric('Percentual de SICs / Aditivos')).toHaveClass(/mini-metric--warning/);
+ await title.click();
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  await page.setViewportSize({width:390,height:844});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await title.click();
+ await expect(page.locator('.ev-historical-summary')).toHaveCount(0);
+ await page.locator('#historicalEVTitle').click();
  await modal.getByRole('button',{name:'Fechar',exact:true}).click();
  expect(b.errors).toEqual([]);
 });
@@ -1265,7 +1258,12 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('#evModalTitle')).toHaveText('Obra nova sem EV');
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
- await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
+ await expect(page.locator('.ev-modal-card .ev-summary-grid')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-master-panel')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-area-panel')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card .ev-attachments')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card')).not.toContainText('Nomenclatura do EV padrão');
+ await expect(page.locator('.ev-modal-card')).not.toContainText('Arquivos do EV');
  const completeness=page.locator('#evForm .ev-completeness-toggle');
  await expect(completeness).toContainText('EV completo?');
  await expect(completeness).toContainText('Não');
@@ -1276,11 +1274,10 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
 
  const updatedEmpty=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Nova Sem EV/i});
  await expect(updatedEmpty.locator('.portfolio-actions button')).toHaveText(['Abrir EV','Abrir Obra']);
- await expect(updatedEmpty).not.toContainText('75,00');
  await updatedEmpty.getByRole('button',{name:'Abrir Obra',exact:true}).click();
- await expect(page.locator('#portfolioWorkDetail').locator('.split-item').filter({hasText:'Área construída'})).toContainText('75,00 m²');
  await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Abrir EV',exact:true}).click();
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
+ await expect(page.locator('.ev-modal-card .ev-summary-grid, .ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
 test('legacy EV status never exposes draft and only accepts the explicit lifecycle value',async({page})=>{
