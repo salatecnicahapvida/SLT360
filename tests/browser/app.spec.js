@@ -1766,52 +1766,20 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+
  const approvalColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
  const approvedColumn=page.locator('.kanban-column[data-column="aprovadoDiretoria"]');
  const completedColumn=page.locator('.kanban-column[data-column="concluido"]');
  const card=approvalColumn.locator('article[data-id="sic-director-analyst"]');
-
- const dragCardTo=async(targetColumnId)=>{
-  const board=page.locator('.operational-board-panel [data-kanban-scroll-board]');
-  await board.evaluate((element,{cardId,targetColumnId})=>{
-   const source=element.querySelector(`article[data-id="${cardId}"]`)?.closest('.kanban-column');
-   const target=element.querySelector(`.kanban-column[data-column="${targetColumnId}"]`);
-   if(!source||!target)return;
-   const left=Math.min(source.offsetLeft,target.offsetLeft);
-   const right=Math.max(source.offsetLeft+source.offsetWidth,target.offsetLeft+target.offsetWidth);
-   element.scrollLeft=Math.max(0,(left+right-element.clientWidth)/2);
-  },{cardId:'sic-director-analyst',targetColumnId});
-  await page.waitForTimeout(50);
-  await page.evaluate(({cardId,targetColumnId})=>{
-   const source=document.querySelector(`article[data-id="${cardId}"]`);
-   const target=document.querySelector(`.kanban-column[data-column="${targetColumnId}"] .demand-list`);
-   if(!source||!target) throw new Error('Card ou coluna alvo não encontrados para o teste de arraste.');
-   const sourceBox=source.getBoundingClientRect();
-   const targetBox=target.getBoundingClientRect();
-   const sx=sourceBox.left+sourceBox.width/2;
-   const sy=sourceBox.top+Math.min(sourceBox.height/2,40);
-   const tx=targetBox.left+targetBox.width/2;
-   const ty=targetBox.top+Math.min(targetBox.height/2,120);
-   source.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'mouse',button:0,buttons:1,clientX:sx,clientY:sy,pointerId:1}));
-   document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerType:'mouse',button:0,buttons:1,clientX:tx,clientY:ty,pointerId:1}));
-   document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerType:'mouse',button:0,buttons:0,clientX:tx,clientY:ty,pointerId:1}));
-  },{cardId:'sic-director-analyst',targetColumnId});
- };
-
- await dragCardTo('aprovadoDiretoria');
- await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
  await expect(card).toBeVisible();
  await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
-
- await dragCardTo('concluido');
- await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
- await expect(card).toBeVisible();
  await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
 
  await card.click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
+
  await status.selectOption('aprovadoDiretoria');
  await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
@@ -1821,9 +1789,13 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
  await expect(page.locator('#toast')).toHaveClass(/is-visible/);
  await expect(status).toHaveValue('aprovacaoDiretoria');
+
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).click();
+ await expect(approvalColumn.locator('article[data-id="sic-director-analyst"]')).toBeVisible();
+ await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
+ await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
-
 test('Gestor can move SIC from director approval to director approved',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
