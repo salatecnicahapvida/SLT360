@@ -1255,7 +1255,7 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  expect(await page.locator('#evForm .ev-line-row').count()).toBeGreaterThan(4);
  await expect(page.locator('.ev-modal-card').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
  await page.locator('#evForm [name="evAreaConstruida"]').fill('75');
- await page.locator('#evForm').getByRole('button',{name:'Salvar sem gerar versão',exact:true}).click();
+ await page.locator('#evForm').getByRole('button',{name:'Salvar preenchimento',exact:true}).click();
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
@@ -1269,6 +1269,36 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
  expect(b.errors).toEqual([]);
 });
+test('legacy EV status never exposes draft and is recalculated from its content',async({page})=>{
+ const legacy={
+  ...structuredClone(payload.state.works[0]),
+  id:'legacy-draft-work',
+  nome:'Obra EV legado',
+  codigoOriginal:'LEG',
+  ev:{
+   ...structuredClone(payload.state.works[0].ev),
+   id:'legacy-draft-ev',
+   status:'Rascunho',
+   lines:[
+    {disciplinaId:'adequacoes-civis',valorOrcado:100,status:'Estimado'},
+   ],
+  },
+ };
+ const b=await backend(page,'Admin',false,{workRecords:[legacy],demandRecords:[],evRecords:[]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const statusFilter=page.locator('[data-portfolio-quick-filter="evStatus"]');
+ await expect(statusFilter.locator('option')).toHaveText(['Todos','Sem EV','Incompleto','Completo']);
+ await expect(statusFilter).not.toContainText('Rascunho');
+ const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra EV legado'});
+ await row.getByRole('button',{name:'Abrir Obra',exact:true}).click();
+ await expect(page.locator('#portfolioWorkDetail').locator('.split-item').filter({hasText:'Status do EV'})).toContainText('Incompleto');
+ await page.locator('#portfolioWorkDetail').getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('.ev-modal-status .status-pill')).toHaveText('Incompleto');
+ await expect(page.locator('.ev-modal-card')).not.toContainText('Rascunho');
+ expect(b.errors).toEqual([]);
+});
+
 test('work funding is persisted in Works and Finance before confirming the form',async({page})=>{
  const b=await backend(page,'Admin',false,{fundRecords:[{id:'seed-fund',workId:'test-work',obraId:'test-work',ordemInternaSAP:'OI-TESTE-1',ordemInterna:'OI-TESTE-1',account:'OI-TESTE-1',type:'works',approved:50,requested:50}]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -1426,6 +1456,7 @@ test('portfolio includes works without EV, keeps the table concise and opens ful
  await expect(page.locator('[data-portfolio-quick-filter="evStatus"] option')).toHaveText([
   'Todos','Sem EV','Incompleto','Completo',
  ]);
+ await expect(page.locator('[data-portfolio-quick-filter="evStatus"] option')).not.toContainText('Rascunho');
  await expect(page.locator('.portfolio-works-table thead th')).toHaveText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria',
   'Área equivalente (m²)','Total orçado','Custo por m²','Ações',
