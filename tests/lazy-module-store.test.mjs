@@ -5,7 +5,7 @@ import { createLazyModuleStore, installPendingWriteUnloadGuard } from '../src/la
 
 test('lazy modules block writes until their database snapshot is loaded',async()=>{
   const all=flattenPayload({state:{
-    works:[{id:'work-1',nome:'Obra',ev:{id:'ev-1',status:'Rascunho',lines:[],versions:[]}}],
+    works:[{id:'work-1',nome:'Obra',ev:{id:'ev-1',status:'Incompleto',lines:[],versions:[]}}],
     demands:[{id:'demand-1',obraId:'work-1',titulo:'Demanda',coluna:'fazer'}],
     maintenanceDemands:[{id:'order-1',titulo:'Manutenção',centroCusto:'Manutenção predial',historico:[]}],
   }});
