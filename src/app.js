@@ -659,6 +659,7 @@ function createPortfolioQuickFilters() {
 }
 
 let portfolioQuickFilters = createPortfolioQuickFilters();
+let portfolioSort = { key: "year", direction: "desc" };
 let investmentPlanFilters = {
   query: "",
   etapa: "Projetos",
@@ -7146,7 +7147,7 @@ function openInvestmentDetailModal(workId) {
 
 function renderPortfolio() {
   const allRows = portfolioRows(false, false);
-  const rows = portfolioRows(true, false);
+  const rows = sortPortfolioRows(portfolioRows(true, false));
   const evCount = evUnifiedRecords().length;
   const worksWithEVCount = rows.filter((row) => row.hasAssociatedEV).length;
   const worksWithEVLabel = worksWithEVCount === 1
@@ -7268,24 +7269,87 @@ function workDisplayLabel(row) {
   return `${portfolioWorkDisplayCode(row)}. ${name}`;
 }
 
+function portfolioSortValue(row, key) {
+  if (key === "codigo") return portfolioWorkDisplayCode(row);
+  if (key === "nome") return portfolioWorkDisplayName(row);
+  if (key === "uf") return row.uf || "";
+  if (key === "regional") return row.regional || "";
+  if (key === "year") return Number(row.year || 0);
+  if (key === "tipologia") return row.tipologia || "";
+  if (key === "categoria") return row.categoria || "";
+  if (key === "areaEquivalente") return Number(row.areaEquivalente || 0);
+  if (key === "capex") return Number(row.capex || 0);
+  if (key === "custoM2") return Number(row.custoM2 || 0);
+  return "";
+}
+
+function comparePortfolioValues(left, right) {
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  return String(left || "").localeCompare(String(right || ""), "pt-BR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function sortPortfolioRows(rows) {
+  const { key, direction } = portfolioSort;
+  const factor = direction === "asc" ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((leftItem, rightItem) => {
+      const left = leftItem.row;
+      const right = rightItem.row;
+      const primary = comparePortfolioValues(
+        portfolioSortValue(left, key),
+        portfolioSortValue(right, key)
+      );
+      if (primary) return primary * factor;
+
+      // Ordenação inicial e desempate oficial: ano mais recente e código maior primeiro.
+      if (key !== "year") {
+        const yearTie = comparePortfolioValues(Number(left.year || 0), Number(right.year || 0));
+        if (yearTie) return yearTie * -1;
+      }
+      if (key !== "codigo") {
+        const codeTie = comparePortfolioValues(portfolioWorkDisplayCode(left), portfolioWorkDisplayCode(right));
+        if (codeTie) return codeTie * -1;
+      }
+      return leftItem.index - rightItem.index;
+    })
+    .map(({ row }) => row);
+}
+
+function portfolioSortHeader(label, key, { numeric = false } = {}) {
+  const active = portfolioSort.key === key;
+  const arrow = active ? (portfolioSort.direction === "asc" ? "▲" : "▼") : "↕";
+  const ariaSort = active ? (portfolioSort.direction === "asc" ? "ascending" : "descending") : "none";
+  return `
+    <th class="${numeric ? "numeric " : ""}portfolio-sort-th" aria-sort="${ariaSort}">
+      <button class="portfolio-sort-button" type="button" data-action="sort-portfolio" data-sort-key="${key}" title="Ordenar por ${escapeAttribute(label)}">
+        <span>${label}</span><i aria-hidden="true">${arrow}</i>
+      </button>
+    </th>
+  `;
+}
+
 function renderPortfolioTable(rows) {
   return `
     <div class="portfolio-table-scroll-shell">
       ${renderKanbanTopScrollbar("Rolagem horizontal da carteira de obras")}
-      <div class="table-wrap portfolio-plan-table-wrap" data-kanban-scroll-board>
+      <div class="table-wrap portfolio-plan-table-wrap portfolio-works-scroll" data-kanban-scroll-board>
       <table class="data-table portfolio-table portfolio-works-table" data-no-sort>
         <thead>
           <tr>
-            <th>Código</th>
-            <th>Nome da obra</th>
-            <th>Estado</th>
-            <th>Região</th>
-            <th>Ano</th>
-            <th>Tipologia</th>
-            <th>Categoria</th>
-            <th class="numeric">Área equivalente (m²)</th>
-            <th class="numeric">Total orçado</th>
-            <th class="numeric">Custo por m²</th>
+            ${portfolioSortHeader("Código", "codigo")}
+            ${portfolioSortHeader("Nome da obra", "nome")}
+            ${portfolioSortHeader("Estado", "uf")}
+            ${portfolioSortHeader("Região", "regional")}
+            ${portfolioSortHeader("Ano", "year")}
+            ${portfolioSortHeader("Tipologia", "tipologia")}
+            ${portfolioSortHeader("Categoria", "categoria")}
+            ${portfolioSortHeader("Área equivalente (m²)", "areaEquivalente", { numeric: true })}
+            ${portfolioSortHeader("Total orçado", "capex", { numeric: true })}
+            ${portfolioSortHeader("Custo por m²", "custoM2", { numeric: true })}
             <th>Ações</th>
           </tr>
         </thead>
@@ -7294,7 +7358,7 @@ function renderPortfolioTable(rows) {
             const displayCode = portfolioWorkDisplayCode(row);
             const displayName = portfolioWorkDisplayName(row);
             return `
-            <tr class="portfolio-work-row">
+            <tr class="portfolio-work-row" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}" tabindex="0" role="button" aria-label="Abrir obra ${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}">
               <td><strong>${escapeAttribute(displayCode)}</strong></td>
               <td><strong>${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
@@ -7307,7 +7371,6 @@ function renderPortfolioTable(rows) {
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
               <td><div class="table-actions portfolio-actions">
                 <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">${row.hasAssociatedEV ? "Abrir EV" : "Criar EV"}</button>
-                <button class="secondary-action compact-action" type="button" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}">Abrir Obra</button>
               </div></td>
             </tr>
           `;
@@ -18781,6 +18844,13 @@ function openWorkFromInvestmentPlan(rowNumber) {
   openWorkModal();
 }
 
+document.addEventListener("keydown", (event) => {
+  const row = event.target.closest?.(".portfolio-work-row[data-action=\"open-portfolio-work\"]");
+  if (!row || event.target !== row || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  openPortfolioWorkDetail(row.dataset.id);
+});
+
 document.addEventListener("click", async (event) => {
   if (Date.now() < demandDragSuppressClickUntil && event.target.closest(".operational-board-panel .demand-card")) {
     event.preventDefault();
@@ -18886,6 +18956,17 @@ document.addEventListener("click", async (event) => {
     workModalReturnMode = "";
     workModalPlanDraft = null;
     openWorkModal(actionButton.dataset.id);
+  }
+  if (action === "sort-portfolio") {
+    const key = actionButton.dataset.sortKey || "year";
+    const numericKeys = new Set(["year", "areaEquivalente", "capex", "custoM2", "codigo"]);
+    if (portfolioSort.key === key) {
+      portfolioSort.direction = portfolioSort.direction === "asc" ? "desc" : "asc";
+    } else {
+      portfolioSort = { key, direction: numericKeys.has(key) ? "desc" : "asc" };
+    }
+    render();
+    return;
   }
   if (action === "open-portfolio-work") {
     openPortfolioWorkDetail(actionButton.dataset.id);
