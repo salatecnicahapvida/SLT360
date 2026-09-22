@@ -7359,7 +7359,7 @@ function renderPortfolioTable(rows) {
             const displayCode = portfolioWorkDisplayCode(row);
             const displayName = portfolioWorkDisplayName(row);
             return `
-            <tr class="portfolio-work-row" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}" tabindex="0" title="Clique para abrir a obra">
+            <tr class="portfolio-work-row" data-action="open-portfolio-work" data-id="${escapeAttribute(row.id)}" tabindex="0" title="Clique para editar a obra">
               <td><strong>${escapeAttribute(displayCode)}</strong></td>
               <td><strong>${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}</strong></td>
               <td>${escapeAttribute(row.uf || "")}</td>
@@ -7381,65 +7381,6 @@ function renderPortfolioTable(rows) {
       </div>
     </div>
   `;
-}
-
-function openPortfolioWorkDetail(workId) {
-  const row = portfolioRows(false, false).find((item) => item.id === workId);
-  if (!row) return;
-  const registeredWork = state.works.find((work) => work.id === row.id) || null;
-  const displayCode = portfolioWorkDisplayCode(row);
-  const displayName = portfolioWorkDisplayName(row);
-  const detailValue = (value, fallback = "—") => {
-    const text = String(value ?? "").trim();
-    return escapeAttribute(text || fallback);
-  };
-  const areaValue = (value) => Number(value || 0) ? `${number(Number(value), 2)} m²` : "—";
-  const moneyValue = (value, available = true) => available ? moneyCents(Number(value || 0)) : "—";
-  const prazoValue = row.prazo ? `${escapeAttribute(row.prazo)} dias` : "—";
-  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop" data-action="close-modal">
-      <article class="modal-card work-modal-card portfolio-work-detail-modal" id="portfolioWorkDetail" aria-labelledby="portfolioWorkDetailTitle">
-        <header class="modal-header">
-          <div>
-            <span class="eyebrow">Portfólio de Obras</span>
-            <h2 id="portfolioWorkDetailTitle">${escapeAttribute(displayCode)}. ${escapeAttribute(displayName)}</h2>
-            <p class="muted">Dados cadastrais e indicadores da obra.</p>
-          </div>
-          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
-        </header>
-        <div class="modal-body">
-          <div class="kpi-detail-grid portfolio-work-detail-grid">
-            ${splitItem("Código", escapeAttribute(displayCode))}
-            ${splitItem("Estado", detailValue(row.uf))}
-            ${splitItem("Região", detailValue(row.regional))}
-            ${splitItem("Ano", detailValue(row.year))}
-            ${splitItem("Tipo de unidade", detailValue(row.tipoUnidade))}
-            ${splitItem("Tipologia", detailValue(row.tipologia))}
-            ${splitItem("Categoria", detailValue(row.categoria))}
-            ${splitItem("Status do EV", row.evStatus || "Sem EV")}
-            ${splitItem("Tempo de obra", prazoValue)}
-            ${splitItem("Área equivalente", areaValue(row.areaEquivalente))}
-            ${splitItem("Área construída", areaValue(row.areaConstruida))}
-            ${splitItem("CNPJ", detailValue(row.cnpj))}
-            ${splitItem("Total orçado", moneyValue(row.capex, row.hasAssociatedEV))}
-            ${splitItem("Custo por m²", row.custoM2 === null ? "—" : moneyCents(row.custoM2))}
-          </div>
-          <section class="portfolio-work-address">
-            <strong>Endereço</strong>
-            <p>${detailValue(row.endereco)}</p>
-          </section>
-        </div>
-        <footer class="modal-actions">
-          ${row.hasAssociatedEV
-            ? `<button class="secondary-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">Abrir EV</button>`
-            : `<button class="secondary-action" type="button" data-action="open-ev-modal" data-id="${escapeAttribute(row.openId)}">Criar EV</button>`}
-          ${registeredWork && canDeleteWorks() ? `<button class="ghost-button danger-action" type="button" data-action="open-delete-work" data-id="${escapeAttribute(registeredWork.id)}">Excluir obra</button>` : ""}
-          <button class="ghost-button" type="button" data-action="edit-portfolio-work" data-id="${escapeAttribute(row.id)}">Editar obra</button>
-          <button class="primary-action" type="button" data-action="close-modal">Fechar</button>
-        </footer>
-      </article>
-    </div>
-  `);
 }
 
 function openPortfolioWorkEditor(workId) {
@@ -18849,7 +18790,7 @@ document.addEventListener("keydown", (event) => {
   const row = event.target.closest?.(".portfolio-work-row[data-action=\"open-portfolio-work\"]");
   if (!row || event.target !== row || !["Enter", " "].includes(event.key)) return;
   event.preventDefault();
-  openPortfolioWorkDetail(row.dataset.id);
+  openPortfolioWorkEditor(row.dataset.id);
 });
 
 document.addEventListener("click", async (event) => {
@@ -18970,10 +18911,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "open-portfolio-work") {
-    openPortfolioWorkDetail(actionButton.dataset.id);
-    return;
-  }
-  if (action === "edit-portfolio-work") {
     openPortfolioWorkEditor(actionButton.dataset.id);
     return;
   }
