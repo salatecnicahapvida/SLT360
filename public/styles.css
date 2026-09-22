@@ -4284,17 +4284,18 @@ button.maintenance-exec-kpi {
 
 .status-pill[data-status="Pendente"],
 .status-pill[data-status="Aguardando"],
-.status-pill[data-status="Estimado"] {
+.status-pill[data-status="Estimado"],
+.status-pill[data-status="Incompleto"] {
   background: #fff7e5;
   color: var(--yellow);
 }
 
-.status-pill[data-status="Cotado"],
-.status-pill[data-status="Em cotação"] {
+.status-pill[data-status="Cotado"] {
   background: #eaf3ff;
   color: var(--blue);
 }
 
+.status-pill[data-status="Sem EV"],
 .status-pill[data-status="Não se aplica"] {
   background: #eef2f7;
   color: var(--muted);
