@@ -583,6 +583,8 @@ let operationalFilters = {
   status: [],
   validationGroup: false,
   punctuality: [],
+  dateFrom: "",
+  dateTo: "",
 };
 let managementStatusFilter = "all";
 let strategicHistoricalQuery = "";
@@ -2325,7 +2327,7 @@ function exportWorksOperationalReport() {
       demand.unidadeMunicipio || "",
       demand.unidadeCnpj || "",
       demand.unidadeCentro || "",
-      demand.analistaResponsavel || "A definir",
+      demandAnalystNames(demand).join(" | ") || "A definir",
       sprintById(demand.sprintId)?.nome || demand.sprintId || "",
       demandStatusLabel(demand),
       demand.prioridade || "",
@@ -2340,8 +2342,8 @@ function exportWorksOperationalReport() {
     ];
   });
   downloadCsv(
-    `SLT360-obras-kanban-${todayISO()}.csv`,
-    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analista", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor da demanda", "Observação"],
+    `SLT360-relatorio-operacional-${todayISO()}.csv`,
+    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analistas", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor da demanda", "Observação"],
     rows
   );
   showToast(`Relatório de Obras exportado com ${rows.length} card(s).`);
@@ -5530,7 +5532,7 @@ function renderWorksOperational() {
 
   return `
     ${renderWorksToolbar("worksOperational", "Visão Operacional", "Planejamento, fluxo de trabalho e controle dos marcos de entrega por sprint", `
-      <button class="secondary-action" type="button" data-action="export-works-operational">Exportar relatório</button>
+      <button class="secondary-action" type="button" data-action="export-works-operational">Exportar relatório filtrado</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
     `)}
     <section class="status-line module-status-line">
@@ -5584,6 +5586,9 @@ function filteredDemands() {
     const selectedTypes = operationalFilterValues("type");
     const selectedStatuses = operationalFilterValues("status");
     const selectedPunctualities = operationalFilterValues("punctuality");
+    const plannedDelivery = dateOnly(demand.dataPrevistaEntrega);
+    if (operationalFilters.dateFrom && (!plannedDelivery || plannedDelivery < operationalFilters.dateFrom)) return false;
+    if (operationalFilters.dateTo && (!plannedDelivery || plannedDelivery > operationalFilters.dateTo)) return false;
     if (selectedSprints.length && !selectedSprints.includes(demand.sprintId)) return false;
     if (selectedAnalysts.length) {
       const demandAnalysts = demandAnalystNames(demand);
@@ -5689,8 +5694,18 @@ function renderOperationalFilters() {
           ...uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })),
         ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
+        ${renderOperationalMultiFilter("status", "Status", columns.map((column) => ({ value: column.id, label: column.label })), "Todos")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [{ value: "late", label: "Atrasadas" }, { value: "onTime", label: "No prazo" }], "Todos")}
+        <label class="field operational-date-filter">
+          <span>Entrega prevista de</span>
+          <input type="date" data-operational-date-filter="dateFrom" value="${escapeAttribute(operationalFilters.dateFrom || "")}" />
+        </label>
+        <label class="field operational-date-filter">
+          <span>Entrega prevista até</span>
+          <input type="date" data-operational-date-filter="dateTo" value="${escapeAttribute(operationalFilters.dateTo || "")}" />
+        </label>
       </div>
+      <p class="muted operational-export-hint">O relatório exportado considera exatamente os filtros aplicados nesta visão.</p>
       <div class="operational-filter-actions">
         <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
       </div>
@@ -6186,6 +6201,8 @@ function resetOperationalFilters() {
     status: [],
     validationGroup: false,
     punctuality: [],
+    dateFrom: "",
+    dateTo: "",
   };
 }
 
@@ -6224,6 +6241,11 @@ function operationalActiveFilterText() {
   if (operationalFilters.validationGroup) active.push("validação Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
   if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : "no prazo").join(", "));
+  if (operationalFilters.dateFrom || operationalFilters.dateTo) {
+    const from = operationalFilters.dateFrom ? dateText(operationalFilters.dateFrom) : "início";
+    const to = operationalFilters.dateTo ? dateText(operationalFilters.dateTo) : "sem limite";
+    active.push(`entrega prevista ${from} a ${to}`);
+  }
   return active.length ? `Filtrando por: ${active.join(" | ")}` : "";
 }
 
@@ -19709,6 +19731,14 @@ document.addEventListener("change", async (event) => {
     if (key === "status") operationalFilters.validationGroup = false;
     render();
     document.querySelector(`[data-operational-filter-group="${key}"]`)?.setAttribute("open", "");
+  }
+  if (event.target.matches("[data-operational-date-filter]")) {
+    const key = event.target.dataset.operationalDateFilter;
+    if (["dateFrom", "dateTo"].includes(key)) {
+      operationalFilters[key] = event.target.value || "";
+      render();
+    }
+    return;
   }
   if (event.target.matches("[data-project-plan-filter]")) {
     projectPlanFilters[event.target.dataset.projectPlanFilter] = event.target.value;
