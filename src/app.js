@@ -17082,7 +17082,9 @@ async function handleEVSubmit(form, mode = "final") {
   const workSnapshot = clone(work);
   const historySnapshot = clone(state.history || []);
   const previousRevisionState = evRevisionComparableState(workSnapshot);
-  const previousTotal = workTotals(work).orcado;
+  const previousTotals = workTotals(work);
+  const previousTotal = previousTotals.orcado + previousTotals.aditivado;
+  const previousRevisionNumber = Number(work.ev.versaoAtual || 0);
   work.ev.lines = work.ev.lines || [];
 
   form.querySelectorAll(".ev-line-row").forEach((row) => {
@@ -17130,13 +17132,21 @@ async function handleEVSubmit(form, mode = "final") {
   if (mode === "final") {
     work.ev.versaoAtual = Number(work.ev.versaoAtual || 0) + 1;
     work.ev.versions = work.ev.versions || [];
+    const revisionOrigin = completionDemand ? `Conclusão ${completionDemand.id}` : "Edição manual SLT 360";
     work.ev.versions.push({
       numero: work.ev.versaoAtual,
       data: todayISO(),
-      origem: completionDemand ? `Conclusão ${completionDemand.id}` : "Edição manual SLT 360",
+      origem: revisionOrigin,
       valorTotal: totalValue,
       custoM2: work.areaEquivalente ? totalValue / Number(work.areaEquivalente) : 0,
       diffPorDisciplina: evRevisionDisciplineDiff(previousRevisionState, nextRevisionState),
+    });
+    addHistory({
+      entidade: "ev",
+      entidadeId: work.ev.id || work.id,
+      campo: "revisão",
+      valorAnterior: `REV${String(previousRevisionNumber).padStart(2, "0")}`,
+      valorNovo: `REV${String(work.ev.versaoAtual).padStart(2, "0")} | ${revisionOrigin}`,
     });
   }
 
@@ -18170,6 +18180,7 @@ async function approveSic(id) {
   const sic = state.sics.find((item) => item.id === id);
   const work = sic && workById(sic.obraId);
   if (!sic || !work) return;
+  work.ev.lines = work.ev.lines || [];
 
   sic.disciplinasAfetadas.forEach((item) => {
     const line = work.ev.lines.find((entry) => canonicalDisciplineId(entry.disciplinaId) === canonicalDisciplineId(item.disciplinaId));
