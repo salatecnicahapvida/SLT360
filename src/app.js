@@ -15679,7 +15679,7 @@ function columnsForDemand(demand) {
     let disabled = ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(column.id) && !isSicDemand;
 
     if (isSicDemand && column.id === "aprovadoDiretoria" && demand?.coluna !== "aprovadoDiretoria") {
-      disabled = demand?.coluna !== "aprovacaoDiretoria" || !canApproveSicDirector();
+      disabled = demand?.coluna !== "aprovacaoDiretoria";
     }
 
     if (isSicDemand && column.id === "concluido" && !["aprovadoDiretoria", "concluido"].includes(demand?.coluna)) {
@@ -18446,7 +18446,7 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
       return false;
     }
     if (!canApproveSicDirector()) {
-      showToast("Somente usuários Gestor ou Admin podem aprovar uma SIC pela Diretoria.");
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
       return false;
     }
   }
@@ -19457,6 +19457,16 @@ document.addEventListener("change", async (event) => {
     const textarea = field?.querySelector('[name="statusReason"]');
     const label = field?.querySelector("[data-demand-status-reason-label]");
     const selected = event.target.value;
+    if (
+      demandTypeKey(demand?.tipo) === "SIC"
+      && demand?.coluna === "aprovacaoDiretoria"
+      && selected === "aprovadoDiretoria"
+      && !canApproveSicDirector()
+    ) {
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
+      event.target.value = demand.coluna;
+      return;
+    }
     const required = ["pausado", "cancelado"].includes(selected);
     if (field) field.hidden = !required;
     if (textarea) {

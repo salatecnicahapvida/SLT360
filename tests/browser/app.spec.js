@@ -1685,8 +1685,12 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-director-analyst"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
- await expect(status.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await expect(status.locator('option[value="concluido"]')).toHaveAttribute('disabled','');
+ await status.selectOption('aprovadoDiretoria');
+ await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
+ await expect(page.locator('#toast')).toHaveClass(/is-visible/);
+ await expect(status).toHaveValue('aprovacaoDiretoria');
  expect(b.errors).toEqual([]);
 });
 
