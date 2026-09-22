@@ -8022,7 +8022,7 @@ async function openHistoricalEVModal(recordId) {
   const historicalRisk = Number(record.disciplines?.["taxa-risco"] || 0) || 0;
   const historicalArea = Number(record.area || 0) || 0;
   const historicalTotalWithRisk = Number(record.total || 0) || 0;
-  const historicalTotalWithoutRisk = Number(record.baseTotal || 0) || Math.max(historicalTotalWithRisk - historicalRisk, 0);
+  const historicalTotalWithoutRisk = Math.max(historicalTotalWithRisk - historicalRisk, 0);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
