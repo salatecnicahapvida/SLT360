@@ -17143,7 +17143,11 @@ async function handleEVSubmit(form, mode = "final") {
 
   if (mode === "final" && completionDemand) {
     pendingDemandCompletion = null;
-    openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false, resumedAfterEV: true });
+    if (demandTypeKey(completionDemand.tipo) === "SIC") {
+      openDemandCompletionModal(completionDemand.id, { forceChecklist: true, resumedAfterEV: true });
+    } else {
+      openDemandCompletionAmountModal(completionDemand.id, { evNoChange: false, resumedAfterEV: true });
+    }
     return;
   }
   if (form.closest(".ev-modal-card")) openEVModal(work.id);
@@ -18266,7 +18270,7 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
   `);
 }
 
-function openDemandCompletionModal(id) {
+function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) {
@@ -18274,14 +18278,23 @@ function openDemandCompletionModal(id) {
     return;
   }
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
-  if (demandHasEVUpdateForCompletion(demand)) {
+  const hasEVUpdate = demandHasEVUpdateForCompletion(demand);
+  const evRequirementSatisfied = Boolean(hasEVUpdate || demand.evSemMudanca === true);
+  const evRequirementText = hasEVUpdate
+    ? "EV atualizado e salvo"
+    : demand.evSemMudanca === true
+      ? "Sem mudança no EV declarada"
+      : "Preencher/alterar o EV ou declarar que não houve mudança";
+
+  if (!isSicDemand && !forceChecklist && hasEVUpdate) {
     openDemandCompletionAmountModal(id, { evNoChange: false });
     return;
   }
-  if (demand.evSemMudanca === true) {
+  if (!isSicDemand && !forceChecklist && demand.evSemMudanca === true) {
     openDemandCompletionAmountModal(id, { evNoChange: true });
     return;
   }
+
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <section class="modal-card demand-completion-card" aria-labelledby="demandCompletionEvTitle">
@@ -18289,28 +18302,45 @@ function openDemandCompletionModal(id) {
           <div>
             <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
             <h2 id="demandCompletionEvTitle">${isSicDemand ? "Obrigatoriedades para concluir a SIC" : "Confirme o impacto no EV"}</h2>
-            <p class="muted">Antes de concluir ${escapeAttribute(demand.id)}, atualize o Estudo de Viabilidade ou informe que esta demanda não gerou mudança no EV.</p>
+            <p class="muted">${isSicDemand
+              ? `Antes de concluir ${escapeAttribute(demand.id)}, confira as obrigatoriedades abaixo.`
+              : `Antes de concluir ${escapeAttribute(demand.id)}, atualize o Estudo de Viabilidade ou informe que esta demanda não gerou mudança no EV.`}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
         <div class="modal-body">
           ${isSicDemand ? `
+            ${resumedAfterEV ? `
+              <div class="completion-resume-notice">
+                <span>✓</span>
+                <div><strong>EV salvo</strong><small>O requisito do EV foi atendido. Continue para informar os dados finais da SIC.</small></div>
+              </div>
+            ` : ""}
             <div class="split-list">
-              ${splitItem("EV", "Preencher/alterar o EV ou declarar que não houve mudança")}
+              ${splitItem("EV", evRequirementSatisfied ? `✓ ${evRequirementText}` : evRequirementText)}
               ${splitItem("Data entrega real", "Obrigatória")}
               ${splitItem("Valor da demanda", "Obrigatório")}
             </div>
           ` : ""}
-          <div class="demand-completion-options">
-            <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
-              <span class="demand-type-icon">EV</span>
-              <span><strong>Atualizar o EV</strong><small>Abrir o EV da obra, registrar as alterações e salvar uma nova versão.</small></span>
-            </button>
-            <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
-              <span class="demand-type-icon demand-type-icon--green">✓</span>
-              <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
-            </button>
-          </div>
+          ${evRequirementSatisfied ? `
+            <div class="demand-completion-options">
+              <button class="demand-type-option" type="button" data-action="continue-demand-completion" data-id="${demand.id}" data-ev-no-change="${demand.evSemMudanca === true ? "true" : "false"}">
+                <span class="demand-type-icon demand-type-icon--green">✓</span>
+                <span><strong>Continuar para os dados finais</strong><small>Informar Data entrega real e Valor da demanda.</small></span>
+              </button>
+            </div>
+          ` : `
+            <div class="demand-completion-options">
+              <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
+                <span class="demand-type-icon">EV</span>
+                <span><strong>Atualizar o EV</strong><small>Abrir o EV da obra, registrar as alterações e salvar uma nova versão.</small></span>
+              </button>
+              <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
+                <span class="demand-type-icon demand-type-icon--green">✓</span>
+                <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
+              </button>
+            </div>
+          `}
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
@@ -19336,6 +19366,13 @@ document.addEventListener("click", async (event) => {
     actionButton.classList.toggle("is-incomplete", nextStatus !== "Completo");
     const label = actionButton.querySelector("strong");
     if (label) label.textContent = nextStatus === "Completo" ? "Sim" : "Não";
+    return;
+  }
+  if (action === "continue-demand-completion") {
+    openDemandCompletionAmountModal(actionButton.dataset.id, {
+      evNoChange: actionButton.dataset.evNoChange === "true",
+      resumedAfterEV: actionButton.dataset.evNoChange !== "true",
+    });
     return;
   }
   if (action === "complete-demand-no-ev-change") {
