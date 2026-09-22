@@ -2034,17 +2034,23 @@ test('SIC completion returns to obligations after EV save before final data',asy
   coluna:'aprovadoDiretoria',
   dataEntregaReal:'',
   analistaResponsavel:'Ana',
-  sicIds:[],
+  sicIds:['SIC-POSTED'],
+  sicPostedAt:'2026-09-20',
   anexos:[],
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC com ajuste no EV'},
  };
- const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ const postedWork=structuredClone(payload.state.works[0]);
+ postedWork.ev.versaoAtual=1;
+ postedWork.ev.versions=[{numero:1,data:'2026-09-20',origem:'sic-finish-after-ev',valorTotal:150,custoM2:1.5,diffPorDisciplina:[]}];
+ const b=await backend(page,'Analista',false,{workRecords:[postedWork],demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-finish-after-ev"]').click();
  const detail=page.locator('#demandDetailForm');
  await detail.locator('[name="coluna"]').selectOption('concluido');
  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Atualizar o EV/})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Continuar para os dados finais/})).toHaveCount(0);
  await page.getByRole('button',{name:/Atualizar o EV/}).click();
 
  const evForm=page.locator('#evForm');
