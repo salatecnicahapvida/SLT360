@@ -18282,12 +18282,15 @@ function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV 
   }
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   const hasEVUpdate = demandHasEVUpdateForCompletion(demand);
-  const evRequirementSatisfied = Boolean(hasEVUpdate || demand.evSemMudanca === true);
+  const pendingEVChange = demandHasPendingEVChangeForCompletion(demand);
+  const evRequirementSatisfied = Boolean(hasEVUpdate || (!pendingEVChange && demand.evSemMudanca === true));
   const evRequirementText = hasEVUpdate
     ? "EV atualizado e salvo"
-    : demand.evSemMudanca === true
-      ? "Sem mudança no EV declarada"
-      : "Preencher/alterar o EV ou declarar que não houve mudança";
+    : pendingEVChange
+      ? "Há alteração pendente no EV; salve uma nova revisão para concluir"
+      : demand.evSemMudanca === true
+        ? "Sem mudança no EV declarada"
+        : "Preencher/alterar o EV ou declarar que não houve mudança";
 
   if (!isSicDemand && !forceChecklist && hasEVUpdate) {
     openDemandCompletionAmountModal(id, { evNoChange: false });
@@ -18336,12 +18339,14 @@ function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV 
             <div class="demand-completion-options">
               <button class="demand-type-option" type="button" data-action="complete-demand-update-ev" data-id="${demand.id}">
                 <span class="demand-type-icon">EV</span>
-                <span><strong>Atualizar o EV</strong><small>Abrir o EV da obra, registrar as alterações e salvar uma nova versão.</small></span>
+                <span><strong>Atualizar o EV</strong><small>${pendingEVChange ? "Há alteração pendente desta demanda. Salve o EV para registrar a nova revisão." : "Abrir o EV da obra, registrar as alterações e salvar uma nova revisão."}</small></span>
               </button>
-              <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
-                <span class="demand-type-icon demand-type-icon--green">✓</span>
-                <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
-              </button>
+              ${pendingEVChange ? "" : `
+                <button class="demand-type-option" type="button" data-action="complete-demand-no-ev-change" data-id="${demand.id}">
+                  <span class="demand-type-icon demand-type-icon--green">✓</span>
+                  <span><strong>Não houve mudança no EV</strong><small>Registrar explicitamente que esta demanda não alterou o estudo.</small></span>
+                </button>
+              `}
             </div>
           `}
         </div>
