@@ -19462,15 +19462,23 @@ document.addEventListener("pointermove", (event) => {
 
 document.addEventListener("pointerup", async (event) => {
   if (!demandPointerDragState || event.pointerType !== "mouse") return;
-  const { demandId, targetColumnId, moved } = demandPointerDragState;
+  const { demandId, targetColumnId: storedTargetColumnId, moved } = demandPointerDragState;
   const demand = state.demands.find((item) => item.id === demandId);
   const previousColumnId = demand?.coluna || "";
+  const pointerColumnId = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest?.(".operational-board-panel .kanban-column[data-column]")
+    ?.dataset.column || "";
+  const resolvedTargetColumnId = storedTargetColumnId || pointerColumnId;
+  const resolvedTarget = demand
+    ? columnsForDemand(demand).find((column) => column.id === resolvedTargetColumnId)
+    : null;
   clearDemandDragState();
   if (!moved) return;
   demandDragSuppressClickUntil = Date.now() + 350;
   event.preventDefault();
-  if (!demand || !targetColumnId || previousColumnId === targetColumnId) return;
-  const updated = await updateDemandColumn(demandId, targetColumnId);
+  if (!demand || !resolvedTarget || resolvedTarget.disabled || previousColumnId === resolvedTargetColumnId) return;
+  const updated = await updateDemandColumn(demandId, resolvedTargetColumnId);
   if (!updated) return;
   render();
   showToast(`Card movido para ${demandStatusLabel(updated)}.`);
