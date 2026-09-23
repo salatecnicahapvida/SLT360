@@ -1404,7 +1404,7 @@ test('EV local child line persists only in the selected work and not in global c
  await localRow.locator('.ev-local-name-input').fill('Mobilização exclusiva da obra');
  await localRow.locator('.ev-value-input').fill('0,00');
  await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
- await expect(page.locator('#toast')).toContainText('EV incompleto salvo com nova revisão');
+ await expect(page.locator('#toast')).toHaveText('EV salvo no banco');
  await expect(page.locator('#evForm')).toBeVisible();
 
  const savedName=page.locator('#evForm .ev-line-row[data-local-line="true"] .ev-local-name-input');
