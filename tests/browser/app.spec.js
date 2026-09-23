@@ -1932,7 +1932,7 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  expect(kanbanHeight).toBeLessThanOrEqual(3040);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
   'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Validado Obras','Aguardando Aprovação Diretoria',
-  'Aprovado Pela Diretoria','Concluído','Cancelado',
+  'Aprovado Diretoria','Concluído','Cancelado',
  ]);
 
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
