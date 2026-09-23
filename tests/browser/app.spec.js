@@ -1918,7 +1918,7 @@ test('operational cards drag between columns and SICs enter director approval di
  expect(kanbanHeight).toBeGreaterThanOrEqual(2080);
  expect(kanbanHeight).toBeLessThanOrEqual(3040);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
-  'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Aguardando Aprovação Diretoria',
+  'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Validado Obras','Aguardando Aprovação Diretoria',
   'Aprovado Pela Diretoria','Concluído','Cancelado',
  ]);
 
@@ -2119,7 +2119,60 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  expect(b.errors).toEqual([]);
 });
 
-test('Analista cannot move SIC from director approval to director approved',async({page})=>{
+test('Analista can validate Obras but cannot send a SIC to Diretoria',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-validation-analyst',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validacaoObras',
+  analistaResponsavel:'Ana',
+  dataValidacaoObras:'',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC validação de obras'},
+ };
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+
+ const card=page.locator('.kanban-column[data-column="validacaoObras"] article[data-id="sic-validation-analyst"]');
+ await expect(card).toBeVisible();
+ await card.click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await status.selectOption('validadoObras');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]')).toBeVisible();
+
+ await page.locator('article[data-id="sic-validation-analyst"]').click();
+ const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
+ await validatedStatus.selectOption('aprovacaoDiretoria');
+ await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Validado Obras para Aguardando Aprovação Diretoria.');
+ await expect(validatedStatus).toHaveValue('validadoObras');
+ await page.locator('#demandDetailForm .modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
+ await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]')).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+test('Gestor sends validated SIC to Diretoria',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-validation-manager',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validadoObras',
+  analistaResponsavel:'Ana',
+  dataValidacaoObras:'2026-09-23',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC validada por obras'},
+ };
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-validation-manager"]').click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await status.selectOption('aprovacaoDiretoria');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(page.locator('.kanban-column[data-column="aprovacaoDiretoria"] article[data-id="sic-validation-manager"]')).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+test('Analista can move SIC from director approval to director approved',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-director-analyst',
@@ -2131,55 +2184,11 @@ test('Analista cannot move SIC from director approval to director approved',asyn
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
-
- const approvalColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
- const approvedColumn=page.locator('.kanban-column[data-column="aprovadoDiretoria"]');
- const completedColumn=page.locator('.kanban-column[data-column="concluido"]');
- const card=approvalColumn.locator('article[data-id="sic-director-analyst"]');
- await expect(card).toBeVisible();
- await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
- await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
-
- await card.click();
+ await page.locator('article[data-id="sic-director-analyst"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
- await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
-
- await status.selectOption('aprovadoDiretoria');
- await expect(page.locator('#toast')).toHaveText('Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.');
- await expect(page.locator('#toast')).toHaveClass(/is-visible/);
- await expect(status).toHaveValue('aprovacaoDiretoria');
-
- await status.selectOption('concluido');
- await expect(page.locator('#toast')).toHaveText('Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído.');
- await expect(page.locator('#toast')).toHaveClass(/is-visible/);
- await expect(status).toHaveValue('aprovacaoDiretoria');
-
- await page.locator('#demandDetailForm .modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
- await expect(approvalColumn.locator('article[data-id="sic-director-analyst"]')).toBeVisible();
- await expect(approvedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
- await expect(completedColumn.locator('article[data-id="sic-director-analyst"]')).toHaveCount(0);
- expect(b.errors).toEqual([]);
-});
-test('Gestor can move SIC from director approval to director approved',async({page})=>{
- const demand={
-  ...structuredClone(payload.state.demands[0]),
-  id:'sic-director-manager',
-  obraId:'test-work',
-  tipo:'SIC',
-  coluna:'aprovacaoDiretoria',
-  analistaResponsavel:'Ana',
-  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovação de diretoria'},
- };
- const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
- await page.getByRole('button',{name:'Abrir Obras'}).click();
- await page.locator('article[data-id="sic-director-manager"]').click();
- const status=page.locator('#demandDetailForm [name="coluna"]');
- await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect(status.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
- await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-manager"]')).toBeVisible();
+ await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-analyst"]')).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 
