@@ -17486,7 +17486,7 @@ async function handleEVSubmit(form, mode = "final") {
     return;
   }
 
-  showToast(`EV ${effectiveEVStatus(work).toLocaleLowerCase("pt-BR")} salvo com nova revisão.`);
+  showToast("EV salvo no banco");
 
   if (mode === "final" && completionDemand) {
     pendingDemandCompletion = null;
