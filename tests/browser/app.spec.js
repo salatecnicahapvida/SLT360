@@ -1819,7 +1819,9 @@ test('operational cards drag between columns and SICs enter director approval di
  await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
  await expect(kanbanColumns).toHaveCount(8);
- expect((await kanbanColumns.first().boundingBox()).height).toBeGreaterThanOrEqual(1100);
+ const kanbanHeight=(await kanbanColumns.first().boundingBox()).height;
+ expect(kanbanHeight).toBeGreaterThanOrEqual(520);
+ expect(kanbanHeight).toBeLessThanOrEqual(760);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
   'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Aguardando Aprovação Diretoria',
   'Aprovado Pela Diretoria','Concluído','Cancelado',
