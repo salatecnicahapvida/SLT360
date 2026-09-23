@@ -120,7 +120,7 @@ test('refresh restores the last view only after the bank module is fully reloade
  expect(b.errors).toEqual([]);
 });
 
-test('mouse wheel over kanban cards scrolls the hovered column vertically without moving the board sideways',async({page})=>{
+test('mouse wheel scrolls the kanban column first and then continues on the page at the column limit',async({page})=>{
  const manyDemands=Array.from({length:12},(_,index)=>({
   ...structuredClone(payload.state.demands[1]),
   id:`wheel-demand-${index+1}`,
@@ -133,16 +133,26 @@ test('mouse wheel over kanban cards scrolls the hovered column vertically withou
 
  const board=page.locator('.kanban-board[data-kanban-scroll-board]');
  const list=page.locator('.operational-board-panel .kanban-column[data-column="fazer"] .demand-list');
- const card=list.locator('.demand-card').first();
- await expect(card).toBeVisible();
+ const firstCard=list.locator('.demand-card').first();
+ await expect(firstCard).toBeVisible();
  await expect.poll(()=>list.evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
 
  const boardLeftBefore=await board.evaluate(node=>node.scrollLeft);
  const listTopBefore=await list.evaluate(node=>node.scrollTop);
- await card.hover();
+ await firstCard.hover();
  await page.mouse.wheel(0,500);
-
  await expect.poll(()=>list.evaluate(node=>node.scrollTop)).toBeGreaterThan(listTopBefore);
+ expect(await board.evaluate(node=>node.scrollLeft)).toBe(boardLeftBefore);
+
+ await list.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+ const listBottom=await list.evaluate(node=>node.scrollTop);
+ await page.evaluate(()=>window.scrollTo(0,0));
+ const pageTopBefore=await page.evaluate(()=>window.scrollY);
+ await list.hover({position:{x:80,y:120}});
+ await page.mouse.wheel(0,700);
+
+ await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(pageTopBefore);
+ expect(await list.evaluate(node=>node.scrollTop)).toBe(listBottom);
  expect(await board.evaluate(node=>node.scrollLeft)).toBe(boardLeftBefore);
  expect(b.errors).toEqual([]);
 });

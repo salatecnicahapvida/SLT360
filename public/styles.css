@@ -6618,7 +6618,7 @@ button.alert-item {
 
 .operational-board-panel .demand-list {
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
 }
 
 .operational-board-panel .kanban-column.is-drag-over {
@@ -6795,7 +6795,8 @@ button.alert-item {
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
+  overscroll-behavior-x: contain;
   padding: 10px;
   scrollbar-gutter: stable;
 }
