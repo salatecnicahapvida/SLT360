@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 import {flattenPayload,ENTITY_BY_NAME} from '../../src/module-model.js';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -59,6 +60,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   else if(p.endsWith('/slt360_profiles'))data=[profile];
   else if(p.endsWith('/slt_core_module_access'))data=grants;
   else if(p.endsWith('/slt_core_analysts'))data=analysts;
+  else if(p.endsWith('/slt_budget_sic_approval_initial_state'))data={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}}};
   else if(p.endsWith('/slt_admin_users'))data={users:[{...profile,email:user.email,access:grants}],analysts};
   else if(p.endsWith('/slt_admin_create_analyst')){
    const body=req.postDataJSON();const analyst={id:'22222222-2222-4222-8222-222222222222',nome:body.analyst_name,created_at:'2026-09-09T12:00:00Z'};
@@ -96,6 +98,29 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
  return {requests,moduleLoads,errors};
 }
 async function login(page){await page.goto('./');await page.locator('#cloudLogin [name=email]').fill('admin@example.test');await page.locator('#cloudLogin [name=password]').fill('TestPassword123!');await page.locator('#cloudLogin button').click();await expect(page.locator('#legacyShell')).toBeVisible();}
+
+test('Aprovação de SICs keeps the supplied dashboard and round-trips its full Excel backup',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const frame=page.frameLocator('iframe.sic-approvals-frame');
+ await expect(frame.getByRole('heading',{name:'Controle de EVs — Aditivos & Revisões'})).toBeVisible();
+ await expect(frame.getByRole('button',{name:/Backup completo \(Excel\)/})).toBeVisible();
+ await expect(frame.getByRole('button',{name:/Restaurar backup/})).toBeVisible();
+ await expect(frame.locator('#weekChips')).toContainText('Semana teste');
+ await expect.poll(()=>page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBe('1');
+ page.on('dialog',dialog=>dialog.accept());
+ const [download]=await Promise.all([
+  page.waitForEvent('download'),frame.locator('#btnExportFullBackup').click()
+ ]);
+ expect(download.suggestedFilename()).toMatch(/^Controle_EVs_BACKUP_COMPLETO_.*\.xlsx$/);
+ await frame.locator('#btnRestoreFullBackup').click();
+ await frame.locator('#backupRestoreFile').setInputFiles({name:download.suggestedFilename(),mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await readFile(await download.path())});
+ await expect(frame.locator('#backupRestorePreview')).toContainText('Backup íntegro');
+ await frame.locator('#btnConfirmBackupRestore').click();
+ await expect(frame.locator('#toast')).toContainText('Restauração concluída');
+ expect(b.errors).toEqual([]);
+});
 
 test('refresh restores the last view only after the bank module is fully reloaded',async({page})=>{
  const b=await backend(page,'Admin',false,{moduleLoadDelay:300});await login(page);
@@ -270,8 +295,8 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-operational-date-filter="dateFrom"]')).toHaveValue('');
  await expect(page.locator('[data-operational-date-filter="dateTo"]')).toHaveValue('');
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
- await expect(worksTabs).toHaveCount(5);
- await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);
+ await expect(worksTabs).toHaveCount(6);
+ await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's","Aprovação de SIC's"]);
  await expect(page.locator('[data-view="ev"]:visible')).toHaveCount(0);
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
  await expect(page.getByText('Retroanálise de custos por disciplina',{exact:true})).toHaveCount(0);

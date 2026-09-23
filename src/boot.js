@@ -388,6 +388,12 @@ async function startInternal() {
       });
     },
     ensureCharts: ensureChartLibraries,
+    async sicApprovalInitialState() {
+      if (!moduleAllowed(currentProfile, 'budget')) throw new Error('Seu perfil não possui acesso a Obras.');
+      const result = await client.from('slt_budget_sic_approval_initial_state').select('payload').eq('id', 1).single();
+      if (result.error) throw new Error('Não foi possível carregar a base privada de Aprovação de SICs.');
+      return result.data.payload;
+    },
     async adminUsers() {
       const r = await client.rpc('slt_admin_users');
       if (r.error) throw r.error;
