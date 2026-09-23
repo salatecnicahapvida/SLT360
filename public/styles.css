@@ -6994,6 +6994,28 @@ button.alert-item {
   flex-wrap: wrap;
 }
 
+.operational-board-panel .demand-card-top {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.operational-board-panel .demand-card-id {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.operational-board-panel .demand-card-actions {
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.operational-board-panel .demand-type-badge {
+  max-width: 100%;
+  padding-inline: 5px;
+  font-size: 0.64rem;
+  letter-spacing: 0;
+}
+
 .demand-card-actions {
   display: inline-flex;
   align-items: center;
