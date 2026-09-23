@@ -7400,7 +7400,7 @@ function renderPortfolioTable(rows) {
               <td class="numeric">${row.hasAssociatedEV ? `<strong>${moneyCents(row.capex)}</strong>` : ""}</td>
               <td class="numeric">${row.custoM2 === null ? "" : `<strong>${moneyCents(row.custoM2)}</strong>`}</td>
               <td><div class="table-actions portfolio-actions">
-                <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "open-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">${row.hasAssociatedEV ? "Abrir EV" : "Criar EV"}</button>
+                <button class="primary-action compact-action" type="button" data-action="${row.isHistorical ? "edit-historical-ev" : "open-ev-modal"}" data-id="${escapeAttribute(row.openId)}">${row.hasAssociatedEV ? "Abrir EV" : "Criar EV"}</button>
               </div></td>
             </tr>
           `;
