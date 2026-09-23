@@ -1409,36 +1409,6 @@ test('EV local child line persists only in the selected work and not in global c
  const savedName=page.locator('#evForm .ev-line-row[data-local-line="true"] .ev-local-name-input');
  await expect(savedName).toHaveCount(1);
  await expect(savedName).toHaveValue('Mobilização exclusiva da obra');
- await expect(savedName.locator('xpath=..').locator('xpath=..')).toBeHidden();
-
- const changes=b.requests.flatMap(request=>request.changes);
- const localChange=changes.find(change=>change.entity==='budget_estimate_lines'&&change.document?.localName==='Mobilização exclusiva da obra');
- expect(localChange).toBeTruthy();
- expect(localChange.document.localCategory).toBe('CustosDaObra');
- expect(localChange.document.isLocalEVLine).toBe(true);
- expect(changes.some(change=>change.entity==='core_configuration_catalog'&&change.document?.label==='Mobilização exclusiva da obra')).toBe(false);
- expect(b.errors).toEqual([]);
-});
-
-test('EV local child line persists only in the selected work and not in global configuration',async({page})=>{
- const b=await backend(page);await login(page);
- await page.getByRole('button',{name:'Abrir Obras'}).click();
- await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
- await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
-
- const obraGroup=page.locator('#evForm [data-ev-group-body="CustosDaObra"]');
- await obraGroup.getByRole('button',{name:'+ Nova linha',exact:true}).click();
- const localRow=obraGroup.locator('.ev-line-row[data-local-line="true"]').last();
- await localRow.locator('.ev-local-name-input').fill('Mobilização exclusiva da obra');
- await localRow.locator('.ev-value-input').fill('0,00');
- await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
- await expect(page.locator('#toast')).toContainText('EV incompleto salvo com nova revisão');
- await expect(page.locator('#evForm')).toBeVisible();
-
- const savedName=page.locator('#evForm .ev-line-row[data-local-line="true"] .ev-local-name-input');
- await expect(savedName).toHaveCount(1);
- await expect(savedName).toHaveValue('Mobilização exclusiva da obra');
  const savedRow=savedName.locator('xpath=ancestor::tr');
  await expect(savedRow).toBeHidden();
 
