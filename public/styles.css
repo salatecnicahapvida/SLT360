@@ -6995,25 +6995,51 @@ button.alert-item {
 }
 
 .operational-board-panel .demand-card-top {
-  flex-wrap: nowrap;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
 }
 
 .operational-board-panel .demand-card-id {
   min-width: 0;
-  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .operational-board-panel .demand-card-actions {
+  min-width: 0;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: 3px;
+  margin-left: 0;
 }
 
 .operational-board-panel .demand-type-badge {
   max-width: 100%;
+  min-height: 18px;
+  overflow: hidden;
+  padding-inline: 5px;
+  font-size: 0.62rem;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+}
+
+.operational-board-panel .sprint-flag {
+  min-width: 30px;
+  min-height: 20px;
   padding-inline: 5px;
   font-size: 0.64rem;
-  letter-spacing: 0;
+}
+
+.operational-board-panel .priority-pill {
+  min-height: 19px;
+  padding-inline: 6px;
+  font-size: 0.64rem;
+}
+
+.operational-board-panel .demand-drag-handle {
+  width: 22px;
+  height: 22px;
 }
 
 .demand-card-actions {
