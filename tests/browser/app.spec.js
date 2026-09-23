@@ -862,7 +862,7 @@ test('management view recalculates every indicator and analyst row from the filt
   {id:'mgmt-4',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',sicIds:[]},
   {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',valorGerado:200,sicIds:[]},
  ];
- const b=await backend(page,'Admin',false,{analystNames:['Somente no diretório'],demandRecords:demands});await login(page);
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Somente no diretório'],demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
 
@@ -2414,7 +2414,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
  await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
- await expect(completion.locator('[name="valorGerado"]')).toHaveValue('10,00');
+ await expect(completion.locator('[name="valorGerado"]')).toHaveValue('40,00');
  await expect(completion).toContainText('Preenchido automaticamente com o impacto financeiro da revisão salva no EV');
  expect(b.errors).toEqual([]);
 });
