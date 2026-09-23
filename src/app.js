@@ -3377,11 +3377,10 @@ function addHaptecMessage(role, text) {
   haptecMessages = haptecMessages.concat({ role, text }).slice(-10);
 }
 
-function haptecSystemNotice(message, face = "smiling_ready", shouldOpen = false) {
+function haptecSystemNotice(message, face = "smiling_ready") {
   const clean = String(message || "").trim();
   if (!clean) return;
   addHaptecMessage("bot", haptecWithFace(face, clean));
-  if (shouldOpen) haptecOpen = true;
   refreshHaptecAssistant();
 }
 
@@ -17153,7 +17152,7 @@ function showFormError(message, form = null) {
     showToast(message);
     return;
   }
-  haptecSystemNotice(message, "error_alert", true);
+  haptecSystemNotice(message, "error_alert");
   box.textContent = message;
   box.classList.add("is-visible");
   toast.textContent = message;
@@ -17186,7 +17185,7 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("is-visible");
   const haptecFace = haptecFaceForSystemMessage(message);
-  if (haptecFace) haptecSystemNotice(message, haptecFace, haptecFace === "error_alert");
+  if (haptecFace) haptecSystemNotice(message, haptecFace);
   setTimeout(() => toast.classList.remove("is-visible"), 2600);
 }
 
@@ -17276,7 +17275,7 @@ function showEVHaptecConfirmation(form, mode, readings) {
       <footer><button class="secondary-action" type="button" data-action="cancel-ev-deviation-save">Voltar e revisar</button><button class="primary-action" type="button" data-action="confirm-ev-deviation-save" data-mode="${escapeAttribute(mode)}" disabled>Confirmar e salvar EV</button></footer>
     </article>`);
   modalRoot.appendChild(overlay);
-  haptecSystemNotice(`Encontrei ${readings.length} divergência${readings.length === 1 ? "" : "s"} relevante${readings.length === 1 ? "" : "s"} neste EV. Averigue os valores e confirme antes de salvar.`, "error_alert", true);
+  haptecSystemNotice(`Encontrei ${readings.length} divergência${readings.length === 1 ? "" : "s"} relevante${readings.length === 1 ? "" : "s"} neste EV. Averigue os valores e confirme antes de salvar.`, "error_alert");
 }
 
 function evRevisionComparableState(work) {
