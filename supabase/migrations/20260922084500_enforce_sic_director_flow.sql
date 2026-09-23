@@ -49,7 +49,7 @@ begin
        and new.phase = 'aprovadoDiretoria'
        and old.phase is distinct from new.phase then
       if old.phase <> 'aprovacaoDiretoria' then
-        raise exception 'Aprovado Pela Diretoria só pode ser acessado a partir de Aguardando Aprovação Diretoria'
+        raise exception 'Aprovado Diretoria só pode ser acessado a partir de Aguardando Aprovação Diretoria'
           using errcode = '42501';
       end if;
       if actor_role not in ('Admin', 'Gestor') then
@@ -62,7 +62,7 @@ begin
        and new.phase = 'concluido'
        and old.phase is distinct from new.phase
        and old.phase <> 'aprovadoDiretoria' then
-      raise exception 'Uma SIC só pode ser concluída após estar em Aprovado Pela Diretoria'
+      raise exception 'Uma SIC só pode ser concluída após estar em Aprovado Diretoria'
         using errcode = '42501';
     end if;
 
