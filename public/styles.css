@@ -6613,7 +6613,7 @@ button.alert-item {
 }
 
 .operational-board-panel .kanban-column {
-  height: clamp(520px, calc(100vh - 260px), 760px);
+  height: clamp(2080px, calc(400vh - 1040px), 3040px);
 }
 
 .operational-board-panel .demand-list {

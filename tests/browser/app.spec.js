@@ -121,7 +121,7 @@ test('refresh restores the last view only after the bank module is fully reloade
 });
 
 test('mouse wheel scrolls the kanban column first and then continues on the page at the column limit',async({page})=>{
- const manyDemands=Array.from({length:12},(_,index)=>({
+ const manyDemands=Array.from({length:36},(_,index)=>({
   ...structuredClone(payload.state.demands[1]),
   id:`wheel-demand-${index+1}`,
   obraId:'test-work',
@@ -1830,8 +1830,8 @@ test('operational cards drag between columns and SICs enter director approval di
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
  await expect(kanbanColumns).toHaveCount(8);
  const kanbanHeight=(await kanbanColumns.first().boundingBox()).height;
- expect(kanbanHeight).toBeGreaterThanOrEqual(520);
- expect(kanbanHeight).toBeLessThanOrEqual(760);
+ expect(kanbanHeight).toBeGreaterThanOrEqual(2080);
+ expect(kanbanHeight).toBeLessThanOrEqual(3040);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
   'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Aguardando Aprovação Diretoria',
   'Aprovado Pela Diretoria','Concluído','Cancelado',
