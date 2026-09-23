@@ -282,9 +282,20 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  const alignedDemandHeaders=await page.locator('.operational-board-panel article[data-id="test-demand"], .operational-board-panel article[data-id="test-budget-demand"]').evaluateAll(cards=>cards.map(card=>{
   const type=card.querySelector('.demand-type-badge')?.getBoundingClientRect();
   const sprint=card.querySelector('.sprint-flag')?.getBoundingClientRect();
-  return type&&sprint?Math.abs(type.top-sprint.top):999;
+  const top=card.querySelector('.demand-card-top');
+  const topRect=top?.getBoundingClientRect();
+  const cardRect=card.getBoundingClientRect();
+  return {
+    delta:type&&sprint?Math.abs(type.top-sprint.top):999,
+    topFits:Boolean(topRect)&&topRect.right<=cardRect.right+1,
+    noHorizontalOverflow:card.scrollWidth<=card.clientWidth+1,
+  };
  }));
- alignedDemandHeaders.forEach(delta=>expect(delta).toBeLessThanOrEqual(3));
+ alignedDemandHeaders.forEach(item=>{
+  expect(item.delta).toBeLessThanOrEqual(3);
+  expect(item.topFits).toBe(true);
+  expect(item.noHorizontalOverflow).toBe(true);
+ });
  const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
  await expect(analystFilter.locator('.operational-multiselect-menu span')).toHaveText(['Sem analista']);
  await analystFilter.locator('summary').click();
