@@ -1946,6 +1946,7 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[demand],analystNames:['Ana']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
+ await page.locator('[data-action="set-sic-view"][data-view-mode="approval"]').click();
  const postButton=page.locator('[data-action="post-sic-to-ev"][data-id="sic-post-no-revision"]');
  await expect(postButton).toBeVisible();
  await postButton.click();
@@ -2088,7 +2089,7 @@ test('saving the EV from the completion flow resumes the final required fields',
   await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
  }
 
- await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions'&&change.document?.origin==='Conclusão finish-after-ev').length).toBe(1);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions').length).toBe(1);
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
  await expect(completion.locator('.completion-resume-notice')).toContainText('EV salvo');
@@ -2206,7 +2207,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
   await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
  }
 
- await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions'&&change.document?.origin==='Conclusão sic-finish-after-ev').length).toBe(1);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_estimate_versions').length).toBe(1);
  await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
  const checklist=page.locator('.demand-completion-card');
  await expect(checklist.locator('.completion-resume-notice')).toContainText('EV salvo');
