@@ -6601,6 +6601,14 @@ button.alert-item {
   height: 0;
 }
 
+[data-kanban-scroll-board].is-wheel-scrolling {
+  scroll-behavior: auto;
+}
+
+[data-kanban-scroll-board].is-wheel-scrolling .kanban-column {
+  box-shadow: 0 0 0 1px rgba(0, 92, 169, 0.06);
+}
+
 .kanban-column {
   display: flex;
   flex-direction: column;
@@ -6795,8 +6803,17 @@ button.alert-item {
   scrollbar-gutter: stable;
 }
 
+.demand-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(88, 106, 133, 0.34) transparent;
+}
+
+.demand-list:hover {
+  scrollbar-color: rgba(0, 92, 169, 0.52) transparent;
+}
+
 .demand-list::-webkit-scrollbar {
-  width: 8px;
+  width: 9px;
 }
 
 .demand-list::-webkit-scrollbar-track {

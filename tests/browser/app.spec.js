@@ -120,6 +120,20 @@ test('refresh restores the last view only after the bank module is fully reloade
  expect(b.errors).toEqual([]);
 });
 
+test('mouse wheel over kanban cards moves horizontally when the hovered column has no vertical scroll left',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const board=page.locator('.kanban-board[data-kanban-scroll-board]');
+ await expect(board).toBeVisible();
+ const card=page.locator('.operational-board-panel .demand-card').first();
+ await expect(card).toBeVisible();
+ const before=await board.evaluate(node=>node.scrollLeft);
+ await card.dispatchEvent('wheel',{deltaY:240,deltaX:0,bubbles:true,cancelable:true});
+ await expect.poll(()=>board.evaluate(node=>node.scrollLeft)).toBeGreaterThan(before);
+ expect(b.errors).toEqual([]);
+});
+
+
 test('Suporte360 stays closed on validation errors until the user clicks it',async({page})=>{
  const b=await backend(page);await login(page);
  const support=page.locator('#supportAssistantMount');
