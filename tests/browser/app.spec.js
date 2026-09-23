@@ -866,6 +866,10 @@ test('management view recalculates every indicator and analyst row from the filt
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
 
+ await expect(page.locator('[data-operational-search]')).toBeVisible();
+ await expect(page.locator('[data-operational-filter-group]')).toHaveCount(5);
+ await expect(page.locator('[data-operational-date-filter]')).toHaveCount(2);
+
  const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
  await expect(kpiValue('Dentro do prazo')).toHaveText('2 (67%)');
@@ -881,6 +885,15 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(analystTable.locator('tbody tr')).toHaveCount(2);
  await expect(analystTable.locator('tbody tr').filter({hasText:'Ana'}).locator('td')).toHaveText(['Ana','3','2','2','0','100%','—','R$ 300,00','1']);
  await expect(analystTable).not.toContainText('Somente no diretório');
+
+ const managementAnalystFilter=page.locator('[data-operational-filter-group="analyst"]');
+ await managementAnalystFilter.locator('summary').click();
+ await managementAnalystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
+ await expect(kpiValue('Demandas no filtro')).toHaveText('3');
+ await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','A fazer 1','Em fluxo 1','Canceladas 0','Todas 3']);
+ await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
+ await expect(kpiValue('Demandas no filtro')).toHaveText('5');
 
  await page.locator('.management-tabs [data-filter="todo"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('1');
@@ -2273,7 +2286,11 @@ test('saving the EV from the completion flow resumes the final required fields',
  await expect(completion.locator('.completion-resume-notice')).toContainText('EV salvo');
  await expect(completion.locator('.completion-resume-notice')).toContainText('dados finais');
  await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
- await expect(completion.locator('[name="valorGerado"]')).toBeVisible();
+ await expect(completion.locator('[name="valorGerado"]')).toHaveValue('25,00');
+ await expect(completion).toContainText('Preenchido automaticamente com o impacto financeiro da revisão salva no EV');
+ const completionVersion=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_estimate_versions');
+ expect(completionVersion.document.valorAnterior).toBe(150);
+ expect(completionVersion.document.impactoDemanda).toBe(25);
  await completion.locator('[name="dataEntregaReal"]').fill('2026-09-22');
  await completion.locator('[name="valorGerado"]').fill('123,45');
  await completion.getByRole('button',{name:'Concluir demanda'}).click();
@@ -2397,7 +2414,8 @@ test('SIC completion returns to obligations after EV save before final data',asy
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
  await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
- await expect(completion.locator('[name="valorGerado"]')).toBeVisible();
+ await expect(completion.locator('[name="valorGerado"]')).toHaveValue('10,00');
+ await expect(completion).toContainText('Preenchido automaticamente com o impacto financeiro da revisão salva no EV');
  expect(b.errors).toEqual([]);
 });
 
