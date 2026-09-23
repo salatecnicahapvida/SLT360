@@ -1654,7 +1654,7 @@ function syncWorkSicSummaryLine(work) {
 }
 
 function workTotals(work, options = {}) {
-  const includeRisk = options.includeRisk === true || work?._historicalBudgetWork === true;
+  const includeRisk = options.excludeRisk === true ? false : (options.includeRisk === true || work?._historicalBudgetWork === true);
   const includeInitialBudgetFallback = options.includeInitialBudgetFallback === true;
   const lines = work?.ev?.lines || [];
   const totals = lines.reduce(
@@ -7377,8 +7377,8 @@ function renderPortfolioTable(rows) {
             ${portfolioSortHeader("Tipologia", "tipologia")}
             ${portfolioSortHeader("Categoria", "categoria")}
             ${portfolioSortHeader("Área equivalente (m²)", "areaEquivalente", { numeric: true })}
-            ${portfolioSortHeader("Total orçado", "capex", { numeric: true })}
-            ${portfolioSortHeader("Custo por m²", "custoM2", { numeric: true })}
+            ${portfolioSortHeader("Total orçado (sem taxa de risco)", "capex", { numeric: true })}
+            ${portfolioSortHeader("Custo por m² (sem taxa de risco)", "custoM2", { numeric: true })}
             <th>Ações</th>
           </tr>
         </thead>
@@ -7504,7 +7504,7 @@ function portfolioRows(applySearch = false, applyColumnFilters = true) {
     const historicalRecord = work._historicalBudgetWork
       ? arrayOrFallback(state.evs).find((record) => record.id === work.historicalRecordId)
       : null;
-    const totals = workTotals(work);
+    const totals = workTotals(work, { excludeRisk: true });
     const capex = totals.orcado + totals.aditivado;
     const saldoRatio = totals.saldo / Math.max(capex, 1);
     const latestVersion = arrayOrFallback(work.ev?.versions).at(-1);

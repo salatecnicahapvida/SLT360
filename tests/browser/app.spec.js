@@ -1614,7 +1614,7 @@ test('portfolio includes works without EV, keeps the table concise and opens the
  await expect(page.locator('[data-portfolio-quick-filter="evStatus"]')).not.toContainText('Rascunho');
  await expect(page.locator('.portfolio-works-table thead .portfolio-sort-button span')).toHaveText([
   'Código','Nome da obra','Estado','Região','Ano','Tipologia','Categoria',
-  'Área equivalente (m²)','Total orçado','Custo por m²',
+  'Área equivalente (m²)','Total orçado (sem taxa de risco)','Custo por m² (sem taxa de risco)',
  ]);
  await expect(page.locator('.portfolio-works-table thead th').last()).toHaveText('Ações');
  await expect(page.locator('.portfolio-works-table thead [data-action="sort-portfolio"]')).toHaveCount(10);
@@ -1662,8 +1662,8 @@ test('portfolio includes works without EV, keeps the table concise and opens the
  await expect(historicalRow.locator('td').nth(4)).toHaveText('2025');
  await expect(historicalRow.locator('td').nth(5)).toBeEmpty();
  await expect(historicalRow.locator('td').nth(7)).toHaveText('200,00');
- await expect(historicalRow.locator('td').nth(8)).toHaveText('R$ 1.000,00');
- await expect(historicalRow.locator('td').nth(9)).toHaveText('R$ 5,00');
+ await expect(historicalRow.locator('td').nth(8)).toHaveText('R$ 950,00');
+ await expect(historicalRow.locator('td').nth(9)).toHaveText('R$ 4,75');
  await expect(historicalRow.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
  await expect(historicalRow.getByRole('button',{name:'Abrir Obra'})).toHaveCount(0);
 
