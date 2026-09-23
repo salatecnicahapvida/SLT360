@@ -731,7 +731,7 @@
 /* =========================================================
    SEED DATA — Semana 1 (17/08 a 21/08/2026)
    ========================================================= */
-const SEED_OBRAS = [];
+const INITIAL_OBRAS = [];
 const SEED_WEEKS = [];
 const SEED_SNAPSHOTS = [];
 
@@ -774,7 +774,7 @@ function slugify(s){
    - O estado local é mediado pelo SLT360 após autenticação
    - A base inicial privada é carregada somente na primeira abertura
    ========================================================= */
-const STORE_KEYS = {obras:'controle-evs:obras', weeks:'controle-evs:weeks', snapshots:'controle-evs:snapshots', notificationReads:'controle-evs:notification-reads'};
+const STORE_KEYS = {obras:'sic-approval:obras', weeks:'sic-approval:weeks', snapshots:'sic-approval:snapshots', notificationReads:'sic-approval:notification-reads'};
 
 const SIC_BRIDGE_CHANNEL = 'slt360-sic-approvals-v1';
 const sicBridgePending = new Map();

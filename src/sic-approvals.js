@@ -1,8 +1,8 @@
 const KEYS = new Set([
-  'controle-evs:obras',
-  'controle-evs:weeks',
-  'controle-evs:snapshots',
-  'controle-evs:notification-reads',
+  'sic-approval:obras',
+  'sic-approval:weeks',
+  'sic-approval:snapshots',
+  'sic-approval:notification-reads',
 ]);
 const CHANNEL = 'slt360-sic-approvals-v1';
 
@@ -26,10 +26,10 @@ export function mountSicApprovals(target, cloud) {
     // Keep the workbook's exact state as the first local copy. An existing local
     // copy may contain newer decisions and must never be replaced on navigation.
     const values = {
-      'controle-evs:obras': data.obras,
-      'controle-evs:weeks': data.weeks,
-      'controle-evs:snapshots': data.snapshots,
-      'controle-evs:notification-reads': data.notificationReads || {},
+      'sic-approval:obras': data.obras,
+      'sic-approval:weeks': data.weeks,
+      'sic-approval:snapshots': data.snapshots,
+      'sic-approval:notification-reads': data.notificationReads || {},
     };
     if (localStorage.getItem(prefix + 'initialized') !== '1') {
       for (const [key, value] of Object.entries(values)) localStorage.setItem(prefix + key, JSON.stringify(value));
