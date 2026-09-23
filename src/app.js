@@ -3,6 +3,8 @@ import { evAdditiveSummary } from './ev-additives.js';
 import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 import { renderBackupsPanel, mountBackups } from './backups-ui.js';
+import { mountSicApprovals } from './sic-approvals.js';
+let unmountSicApprovals = () => {};
 const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
 const LAST_VIEW_STORAGE_KEY = "slt360-last-view-v1";
 const LAST_UI_MODULE_STORAGE_KEY = "slt360-last-ui-module-v1";
@@ -100,6 +102,7 @@ const worksViewIds = [
   "worksStrategic",
   "portfolio",
   "sics",
+  "sicApprovals",
 ];
 
 const worksNavItems = [
@@ -108,6 +111,7 @@ const worksNavItems = [
   { view: "worksStrategic", label: "Visão Estratégica" },
   { view: "portfolio", label: "Portfólio de Obras" },
   { view: "sics", label: "Estudo de SIC's" },
+  { view: "sicApprovals", label: "Aprovação de SIC's" },
 ];
 
 const projectColumns = [
@@ -2640,11 +2644,14 @@ function render() {
     budget: renderBudgetControl,
     reports: renderReports,
     sics: renderSics,
+    sicApprovals: renderSicApprovalsTab,
     analytics: renderAnalytics,
     suppliers: renderSuppliers,
     settings: renderSettings,
   };
+  unmountSicApprovals();
   app.innerHTML = globalThis.SLT_CLOUD.cleanHTML((views[currentView] || renderDashboard)());
+  if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD);
   refreshHaptecAssistant();
   applyRolePermissions();
   enhanceSortableTables();
@@ -3591,6 +3598,10 @@ function renderHaptecAssistant() {
 
 function miroButton(label = "Abrir Miro") {
   return `<a class="secondary-action link-action" href="${MIRO_FLOW_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+}
+
+function renderSicApprovalsTab() {
+  return `${renderWorksToolbar('sicApprovals', 'Aprovação de SIC\'s', 'Controle de EVs, aditivos e revisões')}<section id="sicApprovalsMount"></section>`;
 }
 
 function renderWorksTabs(activeView) {

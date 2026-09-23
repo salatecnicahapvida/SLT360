@@ -10,6 +10,8 @@ await fs.rm(dest, {recursive:true,force:true});
 await fs.mkdir(dest, {recursive:true});
 // Explicit allowlist: operational exports and standalone pages never enter the release.
 for (const file of ['index.html','styles.css','cloud.css','assets']) await fs.cp(path.join(root,'public',file),path.join(dest,file),{recursive:true});
+await fs.cp(path.join(root,'src','sic-approvals.html'),path.join(dest,'sic-approvals.html'));
+await fs.cp(path.join(root,'node_modules','xlsx','dist','xlsx.full.min.js'),path.join(dest,'xlsx.full.min.js'));
 const result = await build({
   entryPoints:['src/boot.js'], outdir:dest, bundle:true, splitting:true, format:'esm',
   platform:'browser', target:'es2022', minify:true, sourcemap:false,
