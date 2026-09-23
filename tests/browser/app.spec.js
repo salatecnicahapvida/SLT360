@@ -95,6 +95,27 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
 }
 async function login(page){await page.goto('./');await page.locator('#cloudLogin [name=email]').fill('admin@example.test');await page.locator('#cloudLogin [name=password]').fill('TestPassword123!');await page.locator('#cloudLogin button').click();await expect(page.locator('#legacyShell')).toBeVisible();}
 
+test('Suporte360 stays closed on validation errors until the user clicks it',async({page})=>{
+ const b=await backend(page);await login(page);
+ const support=page.locator('#supportAssistantMount');
+ await expect(support.locator('.haptec-panel')).toHaveCount(0);
+
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await page.getByRole('button',{name:'+ Nova obra',exact:true}).click();
+ const form=page.locator('#workForm');
+ await form.getByRole('button',{name:'Cadastrar obra',exact:true}).click();
+
+ await expect(form.locator('#formError')).toBeVisible();
+ await expect(support.locator('.haptec-panel')).toHaveCount(0);
+ await expect(support.getByRole('button',{name:/^Suporte360/})).toHaveAttribute('aria-expanded','false');
+
+ await support.getByRole('button',{name:/^Suporte360/}).click();
+ await expect(support.locator('.haptec-panel')).toBeVisible();
+ await expect(support.locator('.haptec-messages')).toContainText('obrigatório');
+ expect(b.errors).toEqual([]);
+});
+
 test('all active views load, SIC is native, no automatic writes on startup',async({page})=>{
  const b=await backend(page);await login(page);
  const supportMount=page.locator('#supportAssistantMount');
