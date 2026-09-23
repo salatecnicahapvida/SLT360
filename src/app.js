@@ -5788,7 +5788,7 @@ function renderOperationalFilters() {
           <input type="date" data-operational-date-filter="dateTo" value="${escapeAttribute(operationalFilters.dateTo || "")}" />
         </label>
       </div>
-      <p class="muted operational-export-hint">Os dados e indicadores consideram exatamente os filtros aplicados nesta visão.</p>
+      <p class="muted operational-export-hint">Esta visão considera exatamente os filtros aplicados nos dados e indicadores exibidos.</p>
       <div class="operational-filter-actions">
         <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
       </div>
