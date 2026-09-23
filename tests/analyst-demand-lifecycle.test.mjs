@@ -14,6 +14,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       projectDemands: [{ id: 'project-1', titulo: 'Projeto', obraId: 'work-1', status: 'planejado' }],
       demands: [
         { id: 'budget-1', titulo: 'Orçamento', obraId: 'work-1', coluna: 'fazer' },
+        { id: 'sic-validated', titulo: 'SIC validada', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras' },
         { id: 'sic-approval', titulo: 'SIC aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'aprovacaoDiretoria' },
         { id: 'sic-unapproved', titulo: 'SIC sem aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'fazendo' },
       ],
@@ -27,6 +28,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909174742_restrict_analyst_demand_lifecycle.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260910143000_reassert_gestor_demand_permissions.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922084500_enforce_sic_director_flow.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260923170000_shift_sic_director_gate_to_validated_works.sql', import.meta.url), 'utf8'));
     await db.query('insert into auth.users(id) values($1),($2)', [analyst, manager]);
     await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false),($2,'Gestor teste','Gestor',false)", [analyst, manager]);
     for (const module of ['projects', 'budget', 'maintenance', 'clinical']) {
@@ -64,26 +66,30 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     for (const insert of inserts) await assert.rejects(commit([insert]), { code: '42501' });
 
     await assert.rejects(commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[1], coluna: 'aprovadoDiretoria' }),
+      change('budget_demands', 'sic-validated', { ...payload.state.demands[1], coluna: 'aprovacaoDiretoria' }),
     ]), { code: '42501' });
+
+    await commit([
+      change('budget_demands', 'sic-approval', { ...payload.state.demands[2], coluna: 'aprovadoDiretoria' }),
+    ]);
 
     await as('authenticated', manager);
     await commit([change('budget_demands', 'budget-manager', { id: 'budget-manager', titulo: 'Criado pelo Gestor', obraId: 'work-1' }, 0)]);
     assert.equal((await db.query("select count(*)::integer as count from slt_budget_demands where record_key='budget-manager' and deleted_at is null")).rows[0].count, 1);
 
     await assert.rejects(commit([
-      change('budget_demands', 'sic-unapproved', { ...payload.state.demands[2], coluna: 'concluido', dataEntregaReal: '2026-09-22' }),
+      change('budget_demands', 'sic-unapproved', { ...payload.state.demands[3], coluna: 'concluido', dataEntregaReal: '2026-09-22' }),
     ]), { code: '42501' });
 
     await commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[1], coluna: 'aprovadoDiretoria' }),
+      change('budget_demands', 'sic-validated', { ...payload.state.demands[1], coluna: 'aprovacaoDiretoria' }),
     ]);
 
-    // Depois da aprovação da Diretoria, qualquer Analista com escrita em Obras
-    // pode concluir a demanda; não existe trava por analista responsável.
+    // Depois de entrar na aprovação da Diretoria, a passagem para "Aprovado" não
+    // exige perfil de Gestor/Admin; a trava fica somente na entrada da Diretoria.
     await as('authenticated', analyst);
     await commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[1], coluna: 'concluido', dataEntregaReal: '2026-09-22' }, 2),
+      change('budget_demands', 'sic-approval', { ...payload.state.demands[2], coluna: 'concluido', dataEntregaReal: '2026-09-22' }, 2),
     ]);
     assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-approval'")).rows[0].phase, 'concluido');
 
