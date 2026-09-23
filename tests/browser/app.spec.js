@@ -294,8 +294,8 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-operational-date-filter="dateFrom"]')).toHaveValue('');
  await expect(page.locator('[data-operational-date-filter="dateTo"]')).toHaveValue('');
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
- await expect(worksTabs).toHaveCount(5);
- await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's"]);
+ await expect(worksTabs).toHaveCount(6);
+ await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's","Aprovação de SIC's"]);
  await expect(page.locator('[data-view="ev"]:visible')).toHaveCount(0);
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
  await expect(page.getByText('Retroanálise de custos por disciplina',{exact:true})).toHaveCount(0);
