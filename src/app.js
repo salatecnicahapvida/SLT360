@@ -18741,7 +18741,7 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
-          <button class="primary-action" type="submit">Concluir demanda</button>
+          <button class="primary-action" type="button" data-action="save-demand-completion">Concluir demanda</button>
         </footer>
       </form>
     </div>
@@ -19947,6 +19947,23 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "complete-demand-no-ev-change") {
     openDemandCompletionAmountModal(actionButton.dataset.id, { evNoChange: true });
+    return;
+  }
+  if (action === "save-demand-completion") {
+    event.preventDefault();
+    const form = actionButton.closest("#demandCompletionForm");
+    if (!form) return;
+    const originalLabel = actionButton.textContent;
+    actionButton.disabled = true;
+    actionButton.textContent = "Concluindo…";
+    try {
+      await handleDemandCompletionSubmit(form);
+    } finally {
+      if (actionButton.isConnected) {
+        actionButton.disabled = false;
+        actionButton.textContent = originalLabel;
+      }
+    }
     return;
   }
   if (action === "complete-demand-update-ev") {
