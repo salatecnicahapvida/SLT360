@@ -154,6 +154,16 @@ test('mouse wheel scrolls the kanban column first and then continues on the page
  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(pageTopBefore);
  expect(await list.evaluate(node=>node.scrollTop)).toBe(listBottom);
  expect(await board.evaluate(node=>node.scrollLeft)).toBe(boardLeftBefore);
+
+ await list.evaluate(node=>{node.scrollTop=0;});
+ await page.evaluate(()=>window.scrollTo(0,Math.max(900,document.documentElement.scrollHeight/2)));
+ const pageTopBeforeUp=await page.evaluate(()=>window.scrollY);
+ await list.hover({position:{x:80,y:120}});
+ await page.mouse.wheel(0,-700);
+
+ await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeLessThan(pageTopBeforeUp);
+ expect(await list.evaluate(node=>node.scrollTop)).toBe(0);
+ expect(await board.evaluate(node=>node.scrollLeft)).toBe(boardLeftBefore);
  expect(b.errors).toEqual([]);
 });
 
