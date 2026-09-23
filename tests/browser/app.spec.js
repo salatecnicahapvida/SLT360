@@ -21,7 +21,7 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
@@ -40,6 +40,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
    {'NOME DA OBRA':'Autoclave original','NOME DA UNIDADE':'Hospital B','CENTRO DE CUSTO':'ENG CLINICA','Fase atual':'NÃO INICIADO'},
   ]};
  }
+ const approval=sicApprovalStore||{payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  let records=flattenPayload(input).map(r=>({...r,revision:1}));
  let analysts=analystNames.map((nome,index)=>({
   id:`22222222-2222-4222-8222-${String(index+1).padStart(12,'0')}`,
@@ -60,7 +61,17 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   else if(p.endsWith('/slt360_profiles'))data=[profile];
   else if(p.endsWith('/slt_core_module_access'))data=grants;
   else if(p.endsWith('/slt_core_analysts'))data=analysts;
-  else if(p.endsWith('/slt_budget_sic_approval_initial_state'))data={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}}};
+  else if(p.endsWith('/slt_budget_sic_approval_initial_state')){
+   if(req.method()==='PATCH'){
+    const expected=Number(url.searchParams.get('revision')?.replace('eq.',''));
+    const body=req.postDataJSON();
+    if(approval.revision===expected){
+     approval.payload=body.payload;approval.revision=body.revision;
+     data=[{revision:approval.revision}];
+    }else data=[];
+   }else if(url.searchParams.get('select')==='revision')data={revision:approval.revision};
+   else data={payload:structuredClone(approval.payload),revision:approval.revision};
+  }
   else if(p.endsWith('/slt_admin_users'))data={users:[{...profile,email:user.email,access:grants}],analysts};
   else if(p.endsWith('/slt_admin_create_analyst')){
    const body=req.postDataJSON();const analyst={id:'22222222-2222-4222-8222-222222222222',nome:body.analyst_name,created_at:'2026-09-09T12:00:00Z'};
@@ -108,7 +119,7 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await expect(frame.getByRole('button',{name:/Backup completo \(Excel\)/})).toBeVisible();
  await expect(frame.getByRole('button',{name:/Restaurar backup/})).toBeVisible();
  await expect(frame.locator('#weekChips')).toContainText('Semana teste');
- await expect.poll(()=>page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBe('1');
+ expect(await page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBeNull();
  page.on('dialog',dialog=>dialog.accept());
  const [download]=await Promise.all([
   page.waitForEvent('download'),frame.locator('#btnExportFullBackup').click()
@@ -120,6 +131,37 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await frame.locator('#btnConfirmBackupRestore').click();
  await expect(frame.locator('#toast')).toContainText('Restauração concluída');
  expect(b.errors).toEqual([]);
+});
+
+test('Aprovação de SICs shares Supabase state across signed-in users and rejects stale edits',async({browser,page})=>{
+ const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const a=page.frameLocator('iframe.sic-approvals-frame');
+ await expect(a.locator('#weekChips')).toContainText('Semana teste');
+ const context=await browser.newContext();
+ try{
+  const peer=await context.newPage();
+  await backend(peer,'Admin',false,{sicApprovalStore:shared});await login(peer);
+  await peer.getByRole('button',{name:'Abrir Obras'}).click();
+  await peer.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+  const b=peer.frameLocator('iframe.sic-approvals-frame');
+  await expect(b.locator('#weekChips')).toContainText('Semana teste');
+  const result=await a.locator('body').evaluate(el=>el.ownerDocument.defaultView.storageSet('sic-approval:notification-reads',JSON.stringify({shared:'2026-09-23'})));
+  expect(result).toBe(true);
+  expect(shared.revision).toBe(2);
+  expect(shared.payload.notificationReads.shared).toBe('2026-09-23');
+  // A stale second session cannot replace another user's decision.
+  peer.on('dialog',dialog=>dialog.accept());
+  const stale=await b.locator('body').evaluate(el=>el.ownerDocument.defaultView.storageSet('sic-approval:notification-reads',JSON.stringify({stale:true})));
+  expect(stale).toBe(false);
+  expect(shared.payload.notificationReads).toEqual({shared:'2026-09-23'});
+  await peer.reload();
+  await expect(peer.locator('iframe.sic-approvals-frame')).toBeVisible();
+  const current=await b.locator('body').evaluate(el=>el.ownerDocument.defaultView.storageGet('sic-approval:notification-reads'));
+  expect(JSON.parse(current)).toEqual({shared:'2026-09-23'});
+ }finally{await context.close();}
 });
 
 test('refresh restores the last view only after the bank module is fully reloaded',async({page})=>{

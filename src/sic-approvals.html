@@ -591,7 +591,7 @@
   <div class="top-row">
     <button class="btn-clear" id="btnExport">⭳ Relatório da visão (CSV)</button>
     <button class="btn-primary" id="btnExportFullBackup" title="Salva todos os dados e o histórico em Excel para restauração em outra máquina">⬇ Backup completo (Excel)</button>
-    <button class="btn-clear" id="btnRestoreFullBackup" title="Substitui os dados locais pelos de um backup completo deste dashboard">⬆ Restaurar backup</button>
+    <button class="btn-clear" id="btnRestoreFullBackup" title="Substitui os dados compartilhados no Supabase pelos de um backup completo deste dashboard">⬆ Restaurar backup</button>
     <button class="btn-add-current" id="btnOpenAddCurrent">＋ Acrescentar à semana vigente</button>
     <button class="btn-primary" id="btnOpenImport">+ Importar nova semana</button>
   </div>
@@ -612,7 +612,7 @@
 
   <footer class="foot">
     <span id="footStamp"></span>
-    <span>Fonte: planilha de Controle de EVs — dados mantidos localmente neste dashboard.</span>
+    <span>Fonte: planilha de Controle de EVs — dados compartilhados no Supabase.</span>
   </footer>
 </div>
 
@@ -716,7 +716,7 @@
       <p style="line-height:1.6;margin-bottom:14px">Selecione somente um arquivo gerado pelo botão <strong>Backup completo (Excel)</strong>. A planilha semanal de SICs e o relatório CSV <strong>não</strong> recuperam o histórico do sistema.</p>
       <div class="field"><label for="backupRestoreFile">Arquivo de backup (.xlsx)</label><input type="file" id="backupRestoreFile" accept=".xlsx"></div>
       <div id="backupRestorePreview" class="preview-box" aria-live="polite">Selecione um arquivo para verificar o conteúdo antes de restaurar.</div>
-      <div class="preview-box err" style="margin-top:12px">⚠ A restauração <strong>substitui</strong> todos os dados locais, inclusive aprovações, Quadros Resumo, semanas, histórico e notificações. Faça antes um backup deste computador caso queira conservar seu estado atual.</div>
+      <div class="preview-box err" style="margin-top:12px">⚠ A restauração <strong>substitui</strong> os dados compartilhados de todos os usuários, inclusive aprovações, Quadros Resumo, semanas, histórico e notificações. Faça antes um backup do estado atual caso queira conservá-lo.</div>
     </div>
     <div class="modal-foot">
       <button class="btn-clear" id="btnCancelBackupRestore">Cancelar</button>
@@ -771,7 +771,7 @@ function slugify(s){
 
 /* =========================================================
    ARMAZENAMENTO PERSISTENTE
-   - O estado local é mediado pelo SLT360 após autenticação
+   - O estado compartilhado é mediado pelo SLT360 após autenticação
    - A base inicial privada é carregada somente na primeira abertura
    ========================================================= */
 const STORE_KEYS = {obras:'sic-approval:obras', weeks:'sic-approval:weeks', snapshots:'sic-approval:snapshots', notificationReads:'sic-approval:notification-reads'};
@@ -781,11 +781,25 @@ const sicBridgePending = new Map();
 let sicBridgeSequence = 0;
 window.addEventListener('message', event => {
   if(event.source !== window.parent || event.data?.channel !== SIC_BRIDGE_CHANNEL) return;
+  if(event.data.action === 'changed'){
+    // Keep an in-progress field intact; refresh immediately once the editor leaves it.
+    const editor = document.activeElement;
+    if(editor && (editor.matches?.('input, textarea, select') || editor.isContentEditable)){
+      editor.addEventListener('blur', () => window.location.reload(), {once:true});
+    }else window.location.reload();
+    return;
+  }
   const pending = sicBridgePending.get(event.data.id);
   if(!pending) return;
   sicBridgePending.delete(event.data.id);
   clearTimeout(pending.timer);
-  if(event.data.error) pending.reject(new Error(event.data.error));
+  if(event.data.error){
+    if(event.data.error.startsWith('CONFLITO_SIC:')){
+      window.alert(event.data.error.slice('CONFLITO_SIC:'.length).trim());
+      window.location.reload();
+    }
+    pending.reject(new Error(event.data.error));
+  }
   else pending.resolve(event.data.value);
 });
 function sicBridgeRequest(action, key, value){
@@ -866,14 +880,7 @@ async function loadStore(){
 
 async function persistAll(obras, weeks, snapshots){
   try{
-    const payloads = [
-      [STORE_KEYS.obras, JSON.stringify(obras)],
-      [STORE_KEYS.weeks, JSON.stringify(weeks)],
-      [STORE_KEYS.snapshots, JSON.stringify(snapshots)]
-    ];
-    const results = [];
-    for(const [k,v] of payloads) results.push(await storageSet(k,v));
-    return results.every(Boolean);
+    return await sicBridgeRequest('saveAll', null, {obras, weeks, snapshots});
   }catch(e){ console.error('Falha ao salvar dados', e); return false; }
 }
 
@@ -2618,7 +2625,7 @@ function buildFullBackupWorkbook(data,exportedAt=new Date().toISOString()){
     ['Notificações com estado salvo',counts.notificacoesLidas],
     ['IMPORTANTE','Não altere a aba BACKUP_SISTEMA. As demais abas são para conferência; editar suas células NÃO altera os dados que serão restaurados.'],
     ['Como restaurar','Abra o dashboard HTML (mesma versão ou mais recente), clique em Restaurar backup, selecione este .xlsx, confira a prévia e confirme.'],
-    ['Diferença para a importação semanal','O botão Acrescentar/Importar nova semana importa novas SICs; este backup substitui o histórico completo de uma máquina.'],
+    ['Diferença para a importação semanal','O botão Acrescentar/Importar nova semana importa novas SICs; este backup substitui o histórico compartilhado de todos os usuários.'],
     ['Onde está o conteúdo completo','BACKUP_SISTEMA guarda TODOS os campos originais: SICs, textos, revisões, Quadros Resumo com ordem/observações, saldos, aprovações, exclusões, adiamentos, alertas, histórico e estado das notificações.'],
     ['Segurança','O arquivo inclui dados internos; armazene e compartilhe apenas em locais autorizados.']
   ],[34,112]);
@@ -2743,7 +2750,7 @@ async function stageFullBackupRestore(file){
     if(document.getElementById('backupRestoreFile').files[0]!==file)return;
     stagedFullBackup=parsed;
     const c=parsed.counts;
-    preview.innerHTML=`<strong>Backup íntegro — pronto para restaurar.</strong><br>Gerado em: ${esc(new Date(parsed.exportedAt).toLocaleString('pt-BR'))}<br>${c.obras} obra(s) · ${c.weeks} semana(s) · ${c.sics} SIC(s) · ${c.quadros} quadro(s) resumo · ${c.linhasQuadros} linha(s) de quadro · ${c.snapshots} snapshot(s) · ${c.eventos} movimentação(ões) · ${c.notificacoesLidas} notificação(ões) com estado de leitura salvo.<br><strong>O estado atual deste navegador será SUBSTITUÍDO após sua confirmação.</strong>`;
+    preview.innerHTML=`<strong>Backup íntegro — pronto para restaurar.</strong><br>Gerado em: ${esc(new Date(parsed.exportedAt).toLocaleString('pt-BR'))}<br>${c.obras} obra(s) · ${c.weeks} semana(s) · ${c.sics} SIC(s) · ${c.quadros} quadro(s) resumo · ${c.linhasQuadros} linha(s) de quadro · ${c.snapshots} snapshot(s) · ${c.eventos} movimentação(ões) · ${c.notificacoesLidas} notificação(ões) com estado de leitura salvo.<br><strong>O estado compartilhado no Supabase será SUBSTITUÍDO após sua confirmação.</strong>`;
     confirm.disabled=false;
   }catch(err){console.error('Falha na leitura do backup',err);preview.textContent=err.message||'Não foi possível validar o arquivo.';preview.classList.add('err');}
   if(stagedFullBackup)preview.classList.remove('err');
@@ -2751,25 +2758,15 @@ async function stageFullBackupRestore(file){
 async function restoreFullBackup(){
   if(fullBackupBusy||!stagedFullBackup)return;
   const parsed=stagedFullBackup,c=parsed.counts;
-  if(!window.confirm(`RESTAURAR BACKUP COMPLETO?\n\nO arquivo possui ${c.obras} obras, ${c.weeks} semanas, ${c.sics} SICs e ${c.linhasQuadros} linhas de Quadros Resumo.\n\nTodos os dados atuais deste navegador serão substituídos, inclusive decisões, exclusões, histórico e notificações.\n\nAntes de continuar, você já salvou um backup dos dados que estão nesta máquina?`))return;
+  if(!window.confirm(`RESTAURAR BACKUP COMPLETO?\n\nO arquivo possui ${c.obras} obras, ${c.weeks} semanas, ${c.sics} SICs e ${c.linhasQuadros} linhas de Quadros Resumo.\n\nOs dados atuais de todos os usuários serão substituídos, inclusive decisões, exclusões, histórico e notificações.\n\nAntes de continuar, você já salvou um backup dos dados compartilhados atuais?`))return;
   fullBackupBusy=true;
   const button=document.getElementById('btnConfirmBackupRestore');button.disabled=true;button.textContent='Restaurando…';
-  const keys=[STORE_KEYS.obras,STORE_KEYS.weeks,STORE_KEYS.snapshots,STORE_KEYS.notificationReads];
-  const oldValues={};let started=false;
   try{
-    for(const key of keys)oldValues[key]=await storageGet(key);
     const d=parsed.data;
-    const newValues={
-      [STORE_KEYS.obras]:JSON.stringify(d.obras),
-      [STORE_KEYS.weeks]:JSON.stringify(d.weeks),
-      [STORE_KEYS.snapshots]:JSON.stringify(d.snapshots),
-      [STORE_KEYS.notificationReads]:JSON.stringify(d.notificationReads)
-    };
-    started=true;
-    for(const key of keys){
-      if(!await storageSet(key,newValues[key])||(await storageGet(key))!==newValues[key])
-        throw new Error('Falha ao salvar/verificar '+key+'. Tentando recuperar os dados anteriores.');
-    }
+    const saved=await sicBridgeRequest('restore', null, {
+      obras:d.obras, weeks:d.weeks, snapshots:d.snapshots, notificationReads:d.notificationReads
+    });
+    if(!saved) throw new Error('Não foi possível confirmar a restauração no Supabase.');
     state.obras=d.obras;state.weeks=d.weeks;state.snapshots=d.snapshots;state.notificationReads=d.notificationReads;
     state.selectedWeekId=d.view?.selectedWeekId==='all'||d.weeks.some(w=>w.id===d.view?.selectedWeekId)?d.view?.selectedWeekId:'all';
     state.search=typeof d.view?.search==='string'?d.view.search:'';
@@ -2786,18 +2783,7 @@ async function restoreFullBackup(){
     showToast(`Restauração concluída: ${c.obras} obras, ${c.weeks} semanas, ${c.sics} SICs. Todos os dados do backup foram recuperados.`,'ok');
   }catch(err){
     console.error('Falha ao restaurar dados',err);
-    if(started){
-      let rollbackOK=true;
-      for(const key of keys){
-        try{if(oldValues[key]===null){
-          // Sem valor anterior: o sistema só deve voltar a criar seeds caso o usuário atualize a página.
-          await sicBridgeRequest('delete',key);
-          if((await storageGet(key))!==null)rollbackOK=false;
-        }else if(!await storageSet(key,oldValues[key])||(await storageGet(key))!==oldValues[key])rollbackOK=false;
-        }catch(e){rollbackOK=false;console.error('Falha ao reverter',key,e);}
-      }
-      showToast(rollbackOK?'Restauração interrompida. Os dados anteriores foram recuperados.':'Falha ao restaurar e reverter. NÃO atualize esta página; exporte um backup dos dados ainda abertos e confira o armazenamento.','err');
-    }else showToast(err.message||'Não foi possível iniciar a restauração.','err');
+    showToast(err.message||'Não foi possível restaurar os dados no Supabase.','err');
   }finally{fullBackupBusy=false;button.disabled=false;button.textContent='Restaurar todos os dados';}
 }
 

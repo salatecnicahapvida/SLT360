@@ -4,6 +4,12 @@ const KEYS = new Set([
   'sic-approval:snapshots',
   'sic-approval:notification-reads',
 ]);
+const FIELDS = {
+  'sic-approval:obras': 'obras',
+  'sic-approval:weeks': 'weeks',
+  'sic-approval:snapshots': 'snapshots',
+  'sic-approval:notification-reads': 'notificationReads',
+};
 const CHANNEL = 'slt360-sic-approvals-v1';
 
 export function mountSicApprovals(target, cloud) {
@@ -14,28 +20,32 @@ export function mountSicApprovals(target, cloud) {
   frame.className = 'sic-approvals-frame';
   frame.style.cssText = 'display:block;width:100%;height:calc(100vh - 215px);min-height:720px;border:0;border-radius:12px;background:#f4f6fa';
   frame.setAttribute('sandbox', 'allow-scripts allow-downloads allow-modals');
-  const prefix = `slt360:sic-approvals:${cloud.profile.id}:`;
+  let snapshot;
+  let fetching;
+  let writing = Promise.resolve();
+  let checking = false;
+  function load() {
+    if (!fetching) fetching = cloud.sicApprovalSnapshot().then(row => {
+      if (!Array.isArray(row?.payload?.obras) || !Array.isArray(row?.payload?.weeks) || !Array.isArray(row?.payload?.snapshots)) {
+        throw new Error('A base compartilhada de Aprovação de SIC’s está incompleta.');
+      }
+      snapshot = row;
+      return row;
+    }).finally(() => { fetching = null; });
+    return fetching;
+  }
+  const initial = load();
   const reply = (id, value, error) => {
     if (active && frame.contentWindow) frame.contentWindow.postMessage({ channel: CHANNEL, id, value, error }, '*');
   };
-  const initial = cloud.sicApprovalInitialState().then(data => {
-    if (!active) return;
-    if (!Array.isArray(data?.obras) || !Array.isArray(data?.weeks) || !Array.isArray(data?.snapshots)) {
-      throw new Error('A base inicial de Aprovação de SIC’s está incompleta.');
-    }
-    // Keep the workbook's exact state as the first local copy. An existing local
-    // copy may contain newer decisions and must never be replaced on navigation.
-    const values = {
-      'sic-approval:obras': data.obras,
-      'sic-approval:weeks': data.weeks,
-      'sic-approval:snapshots': data.snapshots,
-      'sic-approval:notification-reads': data.notificationReads || {},
-    };
-    if (localStorage.getItem(prefix + 'initialized') !== '1') {
-      for (const [key, value] of Object.entries(values)) localStorage.setItem(prefix + key, JSON.stringify(value));
-      localStorage.setItem(prefix + 'initialized', '1');
-    }
-  });
+  async function write(changes) {
+    if (!cloud.canWrite('works')) throw new Error('Seu perfil não permite editar Obras.');
+    const payload = { ...snapshot.payload, ...changes };
+    const saved = await cloud.saveSicApprovalSnapshot(payload, snapshot.revision);
+    if (!saved) throw new Error('CONFLITO_SIC: Outro usuário alterou estes dados. Recarregue para ver a versão atual antes de editar novamente.');
+    snapshot = { payload, revision: saved.revision };
+    return true;
+  }
   async function onMessage(event) {
     if (!active || event.source !== frame.contentWindow || event.data?.channel !== CHANNEL) return;
     const { id, action, key, value } = event.data;
@@ -43,28 +53,44 @@ export function mountSicApprovals(target, cloud) {
       await initial;
       if (!active) return;
       if (action === 'ready') return reply(id, true);
-      if (!KEYS.has(key)) throw new Error('Chave de armazenamento inválida.');
-      if (action === 'get') return reply(id, localStorage.getItem(prefix + key));
-      if (!cloud.canWrite('works')) throw new Error('Seu perfil não permite editar Obras.');
+      if ((action === 'get' || action === 'set') && !KEYS.has(key)) throw new Error('Chave de armazenamento inválida.');
+      if (action === 'get') return reply(id, JSON.stringify(snapshot.payload[FIELDS[key]] ?? (key.endsWith('notification-reads') ? {} : [])));
       if (action === 'set') {
         if (typeof value !== 'string' || value.length > 3000000) throw new Error('Dados de SIC inválidos ou grandes demais.');
-        localStorage.setItem(prefix + key, value);
-        return reply(id, true);
+        const data = JSON.parse(value);
+        return reply(id, await (writing = writing.then(() => write({ [FIELDS[key]]: data }))));
       }
-      if (action === 'delete') {
-        localStorage.removeItem(prefix + key);
-        return reply(id, true);
+      if (action === 'saveAll' || action === 'restore') {
+        const fields = action === 'restore' ? ['obras', 'weeks', 'snapshots', 'notificationReads'] : ['obras', 'weeks', 'snapshots'];
+        if (!value || fields.some(field => !Object.hasOwn(value, field)) || JSON.stringify(value).length > 3000000) throw new Error('Dados de SIC inválidos ou incompletos.');
+        return reply(id, await (writing = writing.then(() => write(Object.fromEntries(fields.map(field => [field, value[field]]))))));
       }
       throw new Error('Operação não permitida.');
     } catch (error) {
+      writing = writing.catch(() => {});
       reply(id, null, error.message || 'Não foi possível acessar os dados de SIC.');
     }
   }
+  async function checkForChanges() {
+    if (!active || !snapshot || checking || document.hidden) return;
+    checking = true;
+    try {
+      const revision = await cloud.sicApprovalRevision();
+      if (active && snapshot && revision !== snapshot.revision) frame.contentWindow?.postMessage({ channel: CHANNEL, action: 'changed' }, '*');
+    } catch (error) {
+      console.warn('Não foi possível conferir atualizações de SICs.', error);
+    } finally { checking = false; }
+  }
+  const timer = setInterval(checkForChanges, 10000);
+  const onFocus = () => { void checkForChanges(); };
+  window.addEventListener('focus', onFocus);
   window.addEventListener('message', onMessage);
   frame.src = 'sic-approvals.html';
   target.append(frame);
   return () => {
     active = false;
+    clearInterval(timer);
+    window.removeEventListener('focus', onFocus);
     window.removeEventListener('message', onMessage);
     frame.remove();
   };

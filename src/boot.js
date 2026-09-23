@@ -388,11 +388,26 @@ async function startInternal() {
       });
     },
     ensureCharts: ensureChartLibraries,
-    async sicApprovalInitialState() {
+    async sicApprovalSnapshot() {
       if (!moduleAllowed(currentProfile, 'budget')) throw new Error('Seu perfil não possui acesso a Obras.');
-      const result = await client.from('slt_budget_sic_approval_initial_state').select('payload').eq('id', 1).single();
-      if (result.error) throw new Error('Não foi possível carregar a base privada de Aprovação de SICs.');
-      return result.data.payload;
+      const result = await client.from('slt_budget_sic_approval_initial_state').select('payload,revision').eq('id', 1).single();
+      if (result.error || !result.data) throw new Error('Não foi possível carregar a base compartilhada de Aprovação de SICs.');
+      return result.data;
+    },
+    async sicApprovalRevision() {
+      if (!moduleAllowed(currentProfile, 'budget')) throw new Error('Seu perfil não possui acesso a Obras.');
+      const result = await client.from('slt_budget_sic_approval_initial_state').select('revision').eq('id', 1).single();
+      if (result.error || !result.data) throw new Error('Não foi possível conferir a versão dos dados de SICs.');
+      return result.data.revision;
+    },
+    async saveSicApprovalSnapshot(payload, expectedRevision) {
+      if (!readyForWrite('works')) throw new Error('Seu perfil não permite editar Obras.');
+      const result = await client.from('slt_budget_sic_approval_initial_state')
+        .update({ payload, revision: expectedRevision + 1, updated_at: new Date().toISOString() })
+        .eq('id', 1).eq('revision', expectedRevision).select('revision').maybeSingle();
+      if (result.error) throw new Error(result.error.message || 'Não foi possível salvar os dados de SICs no Supabase.');
+      if (result.data) notifyBankSaved('Aprovação de SICs salva no banco.');
+      return result.data;
     },
     async adminUsers() {
       const r = await client.rpc('slt_admin_users');
