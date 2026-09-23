@@ -1219,37 +1219,17 @@ test('analyst chips use the configured spelling without case duplicates',async({
  expect(b.errors).toEqual([]);
 });
 
-test('historical EV shows the six requested KPIs and keeps the composition audit',async({page})=>{
+test('Abrir EV never falls back to the legacy historical composition modal',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra Histórica Norte/i});
  await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
- const modal=page.locator('.ev-historical-modal');
- await expect(modal.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
- const kpis=modal.locator('.ev-top-kpis > .mini-metric');
- await expect(kpis).toHaveCount(6);
- const metric=label=>kpis.filter({has:page.getByText(label,{exact:true})});
- await expect(metric('Área equivalente da obra')).toContainText('200,00 m²');
- await expect(metric('Total da obra (sem taxa de risco)')).toContainText('R$ 950');
- await expect(metric('Custo da obra por m² (sem taxa de risco)')).toContainText('R$ 4,75/m²');
- await expect(metric('Total da obra (com taxa de risco)')).toContainText('R$ 1.000');
- await expect(metric('Custo da obra por m² (com taxa de risco)')).toContainText('R$ 5,00/m²');
- await expect(metric("Total de SIC's")).toContainText('R$ 150');
- const audit=modal.locator('.ev-additive-audit');
- await expect(audit).toContainText('Conferir cálculo de SICs / Aditivos');
- await audit.locator('summary').click();
- await expect(audit).toContainText('Total: R$ 150');
- await expect(audit).toContainText('EV original: R$ 850');
- await expect(audit).toContainText('15,00%');
- const title=modal.locator('#historicalEVTitle');
- await title.click();
- await modal.getByRole('button',{name:'Fechar',exact:true}).click();
- await page.setViewportSize({width:390,height:844});
- await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await expect(page.locator('.ev-historical-modal .ev-top-kpis > .mini-metric')).toHaveCount(6);
- await page.locator('#historicalEVTitle').click();
- await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+ await expect(page.locator('.ev-historical-modal')).toHaveCount(0);
+ await expect(page.locator('.ev-modal-card')).toBeVisible();
+ await expect(page.locator('#evModalTitle')).toHaveText('Obra histórica Norte - AM');
+ await expect(page.locator('#evForm [data-action="toggle-ev-zero-lines"]')).toHaveText('Exibir vazios');
+ await expect(page.locator('#evForm .ev-section-row')).toHaveCount(3);
  expect(b.errors).toEqual([]);
 });
 
