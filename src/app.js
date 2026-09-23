@@ -13777,6 +13777,12 @@ function sicViewMeta() {
       title: "Relatório Performance",
       subtitle: "Evolução e distribuição dos cards de SIC no Kanban",
     },
+    {
+      id: "approval",
+      label: "Aprovação",
+      title: "Aprovação e postagem de SICs",
+      subtitle: "SICs operacionais aguardando aprovação, aprovadas e postadas no EV",
+    },
   ];
 }
 
@@ -13954,6 +13960,7 @@ function renderSicView(data) {
     executive: renderSicExecutiveView,
     diagnostic: renderSicDiagnosticView,
     performance: renderSicPerformanceView,
+    approval: renderSicApprovalView,
   };
   return (views[sicViewMode] || renderSicReportView)(data);
 }
