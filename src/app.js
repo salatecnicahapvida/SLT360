@@ -1244,7 +1244,8 @@ function money(value) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value || 0);
 }
 
@@ -1260,9 +1261,9 @@ function moneyCents(value) {
 function moneyCompact(value) {
   const amount = Number(value) || 0;
   const abs = Math.abs(amount);
-  if (abs >= 1000000000) return `R$ ${number(amount / 1000000000, 1)} bi`;
-  if (abs >= 1000000) return `R$ ${number(amount / 1000000, 1)} mi`;
-  if (abs >= 1000) return `R$ ${number(amount / 1000, 0)} mil`;
+  if (abs >= 1000000000) return `R$ ${number(amount / 1000000000, 2)} bi`;
+  if (abs >= 1000000) return `R$ ${number(amount / 1000000, 2)} mi`;
+  if (abs >= 1000) return `R$ ${number(amount / 1000, 2)} mil`;
   return money(amount);
 }
 

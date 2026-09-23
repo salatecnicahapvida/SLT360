@@ -23,7 +23,7 @@ export function mountSicDashboard(host,cloud){
    ========================================================= */
 function fmtBRL(v){
   if(v===null||v===undefined||isNaN(v)) return '—';
-  return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function fmtNum(v,dec){
   if(v===null||v===undefined||isNaN(v)) return '—';
