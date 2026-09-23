@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 import {flattenPayload,ENTITY_BY_NAME} from '../../src/module-model.js';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -114,7 +115,7 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  ]);
  expect(download.suggestedFilename()).toMatch(/^Controle_EVs_BACKUP_COMPLETO_.*\.xlsx$/);
  await frame.locator('#btnRestoreFullBackup').click();
- await frame.locator('#backupRestoreFile').setInputFiles(await download.path());
+ await frame.locator('#backupRestoreFile').setInputFiles({name:download.suggestedFilename(),mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await readFile(await download.path())});
  await expect(frame.locator('#backupRestorePreview')).toContainText('Backup íntegro');
  await frame.locator('#btnConfirmBackupRestore').click();
  await expect(frame.locator('#toast')).toContainText('Restauração concluída');
