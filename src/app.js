@@ -15725,6 +15725,7 @@ function openDemandDetailModal(id) {
         </div>
         <footer class="modal-actions">
           ${canDeleteDemand() ? `<button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>` : ""}
+          ${work ? `<button class="secondary-action" type="button" data-action="open-work-ev" data-id="${escapeAttribute(work.id)}">Abrir EV</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
           <button class="primary-action" type="submit">Salvar</button>
         </footer>
@@ -16207,6 +16208,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
         </div>
         <footer class="modal-actions">
           ${work && canDeleteWorks() ? `<button class="ghost-button danger-action work-delete-trigger" type="button" data-action="open-delete-work" data-id="${escapeAttribute(work.id)}">Excluir obra</button>` : ""}
+          ${work ? `<button class="secondary-action" type="button" data-action="open-work-ev" data-id="${escapeAttribute(work.id)}">Abrir EV</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
           <button class="primary-action" type="submit">${isEditing ? "Salvar alterações" : "Cadastrar obra"}</button>
         </footer>

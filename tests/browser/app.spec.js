@@ -329,6 +329,31 @@ test('operational cards prioritize the validation date until validation is sent'
  expect(b.errors).toEqual([]);
 });
 
+test('demand and work modals expose a footer shortcut that opens the linked EV',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+
+ await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').first().click();
+ const demandForm=page.locator('#demandDetailForm');
+ const demandFooter=demandForm.locator('.modal-actions');
+ await expect(demandFooter.getByRole('button',{name:'Abrir EV',exact:true})).toBeVisible();
+ await demandFooter.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#evForm')).toBeVisible();
+ await expect(page.locator('#evModalTitle')).toContainText('Obra de teste');
+ await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
+
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
+ await row.locator('td').nth(1).click();
+ const workForm=page.locator('#workForm');
+ const workFooter=workForm.locator('.modal-actions');
+ await expect(workFooter.getByRole('button',{name:'Abrir EV',exact:true})).toBeVisible();
+ await workFooter.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#evForm')).toBeVisible();
+ await expect(page.locator('#evModalTitle')).toContainText('Obra de teste');
+ expect(b.errors).toEqual([]);
+});
+
 test('real validation send date automatically moves the card to Obras validation',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[1]),
