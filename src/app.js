@@ -4,6 +4,8 @@ import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 import { renderBackupsPanel, mountBackups } from './backups-ui.js';
 const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
+const LAST_VIEW_STORAGE_KEY = "slt360-last-view-v1";
+const LAST_UI_MODULE_STORAGE_KEY = "slt360-last-ui-module-v1";
 
 const MIRO_FLOW_URL = "https://miro.com/app/board/uXjVKxg3MFc=/";
 const AUTH_SESSION_KEY = "slt360-auth-session-v1";
@@ -2536,7 +2538,26 @@ function renderModuleLoading(view) {
   `);
 }
 
-async function setView(view) {
+function rememberedView() {
+  try {
+    return sessionStorage.getItem(LAST_VIEW_STORAGE_KEY) || "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
+function rememberView(view) {
+  const normalizedView = viewAliases[view] || view || "dashboard";
+  try {
+    sessionStorage.setItem(LAST_VIEW_STORAGE_KEY, normalizedView);
+    sessionStorage.setItem(LAST_UI_MODULE_STORAGE_KEY, dataUIModuleForView(normalizedView));
+  } catch {}
+}
+
+async function setView(view, options = {}) {
+  const allowPreview = options.allowPreview !== false;
+  const remember = options.remember !== false;
+  const scroll = options.scroll !== false;
   if (view === "investmentPlan" || view === "projectsPlan") view = "projectsPortfolio";
   view = viewAliases[view] || view;
   if (!canAccessView(view)) {
@@ -2551,7 +2572,7 @@ async function setView(view) {
     renderModuleLoading(view);
     try {
       const normalizedView = viewAliases[view] || view;
-      if (normalizedView === "worksOperational" && typeof globalThis.SLT_CLOUD.previewModule === "function") {
+      if (allowPreview && normalizedView === "worksOperational" && typeof globalThis.SLT_CLOUD.previewModule === "function") {
         try {
           await globalThis.SLT_CLOUD.previewModule(dataModule);
           if (request !== viewNavigationRequest) return;
@@ -2574,9 +2595,12 @@ async function setView(view) {
   if (request !== viewNavigationRequest) return;
   currentView = view;
   updateViewNavigation(view);
+  if (remember) rememberView(view);
   render();
-  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  document.querySelector(".app-shell")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+  if (scroll) {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.querySelector(".app-shell")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+  }
 }
 
 function render() {
@@ -20691,4 +20715,6 @@ mountUsersAdmin(globalThis.SLT_CLOUD, (context) => {
   render();
 });
 mountBackups(globalThis.SLT_CLOUD);
-render();
+globalThis.SLT_APP_INITIALIZE = async () => {
+  await setView(rememberedView(), { allowPreview: false, scroll: false });
+};

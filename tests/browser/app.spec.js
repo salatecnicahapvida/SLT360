@@ -20,7 +20,7 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
@@ -45,7 +45,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   nome,
   created_at:'2026-09-09T12:00:00Z',
  }));
- const requests=[]; const errors=[];
+ const requests=[]; const moduleLoads=[]; const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const user={id,email:'admin@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{}};
  const grants=['projects','budget','maintenance','clinical','finance'].map(module=>({module,can_read:true,can_write:role==='Admin'||analystCanWrite}));
@@ -71,6 +71,8 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   else if(p.endsWith('/slt_home_summary'))data={schema_version:2,works:{totalWorks:5,historicalEVCount:3,activeCount:2,pendingEVCount:1,contracted:0},maintenance:{totalCount:0,activeCount:0,overdueCount:0},clinical:{equipmentCount:0,unitCount:0,totalCount:0,activeCount:0},finance:{fundCount:0,availableBalance:0}};
   else if(p.endsWith('/slt_module_load')||p.endsWith('/slt_module_preview')){
    const module=req.postDataJSON()?.module_key;
+   moduleLoads.push({kind:p.endsWith('/slt_module_preview')?'preview':'load',module});
+   if(moduleLoadDelay)await new Promise(resolve=>setTimeout(resolve,moduleLoadDelay));
    const dependencies=new Set([
     ...(['budget','maintenance','clinical','projects'].includes(module)?['core_units','core_sprints','core_source_unit_registry_data']:[]),
     ...(module==='budget'?['core_suppliers']:[]),
@@ -91,9 +93,32 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   }
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
  });
- return {requests,errors};
+ return {requests,moduleLoads,errors};
 }
 async function login(page){await page.goto('./');await page.locator('#cloudLogin [name=email]').fill('admin@example.test');await page.locator('#cloudLogin [name=password]').fill('TestPassword123!');await page.locator('#cloudLogin button').click();await expect(page.locator('#legacyShell')).toBeVisible();}
+
+test('refresh restores the last view only after the bank module is fully reloaded',async({page})=>{
+ const b=await backend(page,'Admin',false,{moduleLoadDelay:300});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await expect(page.getByRole('heading',{name:'Portfólio de Obras e EVs',exact:true})).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>sessionStorage.getItem('slt360-last-view-v1'))).toBe('portfolio');
+ await expect.poll(()=>page.evaluate(()=>sessionStorage.getItem('slt360-last-ui-module-v1'))).toBe('works');
+ const beforeReloadLoads=b.moduleLoads.length;
+
+ await page.reload({waitUntil:'domcontentloaded'});
+ await expect(page.locator('#cloudGate')).toBeVisible();
+ await expect(page.locator('#legacyShell')).toBeHidden();
+ await expect(page.locator('#cloudMessage')).toContainText('Atualizando');
+ await expect(page.getByRole('heading',{name:'Portfólio de Obras e EVs',exact:true})).toBeVisible();
+ await expect(page.locator('#legacyShell')).toBeVisible();
+ await expect(page.locator('#legacyShell')).not.toHaveAttribute('inert','');
+
+ const reloadLoads=b.moduleLoads.slice(beforeReloadLoads);
+ expect(reloadLoads.filter(item=>item.kind==='load'&&item.module==='budget')).toHaveLength(1);
+ expect(reloadLoads.filter(item=>item.kind==='preview'&&item.module==='budget')).toHaveLength(0);
+ expect(b.errors).toEqual([]);
+});
 
 test('Suporte360 stays closed on validation errors until the user clicks it',async({page})=>{
  const b=await backend(page);await login(page);

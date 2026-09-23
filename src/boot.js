@@ -188,6 +188,19 @@ async function startInternal() {
   }
 
   const sessionUserId = session.user?.id;
+  const rememberedUiModule = (() => {
+    try {
+      const value = sessionStorage.getItem('slt360-last-ui-module-v1') || '';
+      return ['projects','works','maintenance','clinical','budget','settings'].includes(value) ? value : '';
+    } catch {
+      return '';
+    }
+  })();
+  const rememberedDataModule = rememberedUiModule ? dataModuleForUI(rememberedUiModule) : '';
+  let startupModulePrefetch = rememberedDataModule
+    ? startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: { module_key: rememberedDataModule } })
+    : null;
+  let startupModulePrefetchConsumed = false;
   if (!sessionUserId) {
     await clearInvalidLocalSession();
     showLogin();
@@ -201,8 +214,8 @@ async function startInternal() {
   const homePromise = startupRest(session, 'rpc/slt_home_summary', { method: 'POST', body: {} });
   const grantsPromise = startupRest(session, `slt_core_module_access?select=module%2Ccan_read%2Ccan_write&user_id=eq.${encodedUserId}`);
   const authPromise = client.auth.getUser(session.access_token);
-  const [authResponse, profileResponse, homeResponse, grants] = await Promise.all([
-    authPromise, profilePromise, homePromise, grantsPromise,
+  const [authResponse, profileResponse, grants] = await Promise.all([
+    authPromise, profilePromise, grantsPromise,
   ]);
 
   // A sessão persistida pode existir no navegador mesmo quando o token já não é válido.
@@ -237,17 +250,40 @@ async function startInternal() {
     return;
   }
 
-  if (homeResponse.error || !homeResponse.data || homeResponse.data.schema_version !== 2) {
-    showAccessError('Não foi possível carregar os indicadores iniciais. Recarregue a página ou tente novamente em instantes.');
-    return;
-  }
-
   if (grants.error) {
     showAccessError('Não foi possível conferir as permissões. Tente entrar novamente.');
     return;
   }
 
   const currentProfile = decorateProfile({ ...profile, email: authUser.email, access: grants.data || [] });
+  const restoreOperationalModule = Boolean(
+    rememberedUiModule &&
+    rememberedDataModule &&
+    moduleAllowed(currentProfile, rememberedDataModule)
+  );
+  let homeSummary = { schema_version: 2 };
+  if (!restoreOperationalModule) {
+    let homeResponse;
+    try {
+      homeResponse = await homePromise;
+    } catch {
+      showAccessError('Não foi possível carregar os indicadores iniciais. Recarregue a página ou tente novamente em instantes.');
+      return;
+    }
+    if (homeResponse.error || !homeResponse.data || homeResponse.data.schema_version !== 2) {
+      showAccessError('Não foi possível carregar os indicadores iniciais. Recarregue a página ou tente novamente em instantes.');
+      return;
+    }
+    homeSummary = homeResponse.data;
+  } else {
+    homePromise
+      .then((homeResponse) => {
+        if (!homeResponse?.error && homeResponse?.data?.schema_version === 2) {
+          globalThis.SLT_HOME_SUMMARY = homeResponse.data;
+        }
+      })
+      .catch(() => {});
+  }
   // A lista administrativa é consultada somente quando necessária e não atrasa
   // a abertura da aplicação para todos os usuários.
   const team = null;
@@ -274,7 +310,14 @@ async function startInternal() {
 
   lazyStore = createLazyModuleStore({
     async load(module) {
-      const response = await startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: { module_key: module } });
+      let response;
+      if (!startupModulePrefetchConsumed && startupModulePrefetch && module === rememberedDataModule) {
+        startupModulePrefetchConsumed = true;
+        response = await startupModulePrefetch;
+        startupModulePrefetch = null;
+      } else {
+        response = await startupRest(session, 'rpc/slt_module_load', { method: 'POST', body: { module_key: module } });
+      }
       if (response.error) throw new Error(response.error.message || `Não foi possível carregar o módulo ${module}.`);
       return response.data;
     },
@@ -302,7 +345,7 @@ async function startInternal() {
     return Boolean(cloudWritesEnabled && module && lazyStore.hasLoaded(module) && moduleAllowed(currentProfile, module, true));
   };
 
-  globalThis.SLT_HOME_SUMMARY = homeResponse.data;
+  globalThis.SLT_HOME_SUMMARY = homeSummary;
   globalThis.TRACO_IMPORTED_STATE = { users: [currentProfile], activeRole: currentProfile.perfil };
   globalThis.SLT_CLOUD = {
     profile: currentProfile,
@@ -460,7 +503,14 @@ async function startInternal() {
   };
 
   try {
+    if (restoreOperationalModule) {
+      message.textContent = 'Atualizando a última tela com os dados do banco…';
+      ensureAnalystDirectory().catch(() => {});
+    }
     await import('./app.js');
+    if (typeof globalThis.SLT_APP_INITIALIZE === 'function') {
+      await globalThis.SLT_APP_INITIALIZE();
+    }
     cloudWritesEnabled = true;
     loaded = true;
     gate.hidden = true;
