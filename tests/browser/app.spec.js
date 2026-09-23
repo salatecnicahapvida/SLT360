@@ -1877,7 +1877,7 @@ test('SIC study is sourced only from operational SIC demand cards',async({page})
  const b=await backend(page,'Admin',false,{demandRecords:[sicDemand,nonSic],analystNames:['Ana']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance']);
+ await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance','Aprovação']);
  await expect(page.getByText('SIC-900',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Revisão de Escopo',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Obra SIC de teste',{exact:true})).toHaveCount(0);
@@ -1895,8 +1895,8 @@ test('database grants allow finance for an analyst while SIC study remains read-
  await expect(page.locator('#app')).toContainText('Verba');
  await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance']);
- await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(0);
+ await expect(page.locator('[data-action="set-sic-view"]')).toHaveText(['Base operacional','Executivo','Diagnóstico','Performance','Aprovação']);
+ await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(1);
  await expect(page.locator('#btnOpenImport')).toHaveCount(0);
  await expect(page.locator('[data-approve]')).toHaveCount(0);
  expect(b.requests).toHaveLength(0);expect(b.errors).toEqual([]);
@@ -1916,7 +1916,7 @@ test('legacy SIC approval import is no longer exposed in the study',async({page}
  const b=await backend(page);await login(page);
  await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
  await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
- await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(0);
+ await expect(page.locator('[data-view-mode="approval"]')).toHaveCount(1);
  await expect(page.locator('#btnOpenImport')).toHaveCount(0);
  await expect(page.getByText('Obra SIC de teste',{exact:true})).toHaveCount(0);
  await expect(page.getByText('Demanda de teste',{exact:true})).toHaveCount(0);
@@ -1951,7 +1951,7 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  await expect(postButton).toBeVisible();
  await postButton.click();
  await expect(page.locator('#evForm')).toBeVisible();
- await expect(page.locator('#toast')).toHaveText('SIC postada no EV.');
+ await expect(page.locator('#legacyShell > #toast')).toHaveText('SIC postada no EV.');
  const sicGroup=page.locator('#evForm [data-ev-group-body="Sics"]');
  await expect(sicGroup.locator('[data-ev-group-total="Sics"]')).toContainText('R$ 25');
  await expect(sicGroup.locator('.ev-sic-posted-row')).toHaveCount(1);
