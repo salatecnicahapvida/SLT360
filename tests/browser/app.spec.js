@@ -1262,11 +1262,20 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  const historical=rows.filter({hasText:/Obra Histórica Norte/i});
  await expect(historical.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
  await historical.getByRole('button',{name:'Abrir EV',exact:true}).click();
- await expect(page.locator('#historicalEVTitle')).toHaveText('Obra histórica Norte - AM');
- await expect(page.locator('.ev-historical-modal')).toContainText('REV02');
- await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC',exact:true})).toHaveCount(0);
- await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Editar EV',exact:true})).toBeVisible();
- await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
+ await expect(page.locator('.ev-historical-modal')).toHaveCount(0);
+ await expect(page.locator('#evModalTitle')).toHaveText('Obra histórica Norte - AM');
+ const historicalAreas=page.locator('.ev-modal-card .ev-header-area');
+ await expect(historicalAreas).toHaveCount(2);
+ await expect(historicalAreas.nth(0)).toContainText('Área equivalente');
+ await expect(historicalAreas.nth(0)).toContainText('200,00 m²');
+ await expect(page.locator('#evForm [data-action="toggle-ev-zero-lines"]')).toHaveText('Exibir vazios');
+ await expect(page.locator('#evForm .ev-section-row')).toHaveCount(3);
+ const historicalZeroRows=page.locator('#evForm .ev-line-row').filter({has:page.locator('.ev-value-input')});
+ const historicalValues=await historicalZeroRows.locator('.ev-value-input').evaluateAll(inputs=>inputs.map(input=>input.value));
+ const historicalZeroIndexes=historicalValues.map((value,index)=>({value,index})).filter(({value})=>Math.abs(Number(String(value).replace(/\./g,'').replace(',','.'))||0)<0.000001);
+ expect(historicalZeroIndexes.length).toBeGreaterThan(0);
+ for(const {index} of historicalZeroIndexes.slice(0,3)) await expect(historicalZeroRows.nth(index)).toBeHidden();
+ await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const current=rows.filter({hasText:/Obra de Teste/i});
  await expect(current.locator('.portfolio-actions button')).toHaveText(['Abrir EV']);
