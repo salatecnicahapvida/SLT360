@@ -416,8 +416,8 @@ test('validation KPI removes Sala Técnica stage, preserves legacy cards and exc
  await expect(validationKpi).toContainText('Obras e Diretoria');
  await validationKpi.click();
  const metrics=page.locator('.kpi-modal-card .kpi-detail-grid .split-item');
- await expect(metrics.locator('strong')).toHaveText(['Total em validação','Equipe de Obras','Aprovação Diretoria']);
- await expect(metrics.locator('span')).toHaveText(['3','2','1']);
+ await expect(metrics.locator('strong')).toHaveText(['Total em validação','Aguardando Obras','Validado Obras','Aprovação Diretoria']);
+ await expect(metrics.locator('span')).toHaveText(['3','2','0','1']);
  await expect(page.locator('.kpi-detail-table tbody tr')).toHaveCount(3);
  expect(b.errors).toEqual([]);
 });
@@ -439,7 +439,7 @@ test('kanban reorders by displayed milestone, creation date and real completion'
  const concluded=page.locator('.kanban-column[data-column="concluido"]');
  const expectedOpen=['sort-overdue-validation','sort-validation-near-old','sort-validation-near-new','sort-validation-far','sort-no-date'];
  const expectedCompleted=['sort-completed-new','sort-completed-old'];
- await expect(page.locator('.operational-board-panel .kanban-sort-button')).toHaveCount(8);
+ await expect(page.locator('.operational-board-panel .kanban-sort-button')).toHaveCount(9);
  expect(await fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedOpen);
  expect(await concluded.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedCompleted);
  await fazer.locator('.demand-list').evaluate((list)=>{
@@ -490,7 +490,7 @@ test('kanban shows column totals and time in the current stage for every demand 
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const counts=page.locator('.operational-board-panel .kanban-count');
- await expect(counts).toHaveText(['1','1','1','1','0','0','0','0']);
+ await expect(counts).toHaveText(['1','1','1','1','0','0','0','0','0']);
  expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
  const expectedTypeBadges=new Map([
   ['stage-initial','Emissão Inicial'],['stage-revision','Rev. Orç.'],['stage-extra','Dem. Extra'],['stage-sic','SIC'],
@@ -1899,7 +1899,7 @@ test('portfolio includes works without EV, keeps the table concise and opens the
  await page.screenshot({path:'outputs/portfolio-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
-test('operational cards drag between columns and SICs enter director approval directly with Lecon visible',async({page})=>{
+test('operational cards drag between columns and SICs pass through Validado Obras with Lecon visible',async({page})=>{
  const legacySic={
   ...structuredClone(payload.state.demands[0]),
   tipo:'Solicitação de Informações',
@@ -1913,7 +1913,7 @@ test('operational cards drag between columns and SICs enter director approval di
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
- await expect(kanbanColumns).toHaveCount(8);
+ await expect(kanbanColumns).toHaveCount(9);
  const kanbanHeight=(await kanbanColumns.first().boundingBox()).height;
  expect(kanbanHeight).toBeGreaterThanOrEqual(2080);
  expect(kanbanHeight).toBeLessThanOrEqual(3040);
@@ -1928,6 +1928,8 @@ test('operational cards drag between columns and SICs enter director approval di
  await expect(nonSicStatus.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
  await page.locator('.modal-actions').getByRole('button',{name:'Fechar',exact:true}).click();
 
+ const validationColumn=page.locator('.kanban-column[data-column="validacaoObras"]');
+ const validatedColumn=page.locator('.kanban-column[data-column="validadoObras"]');
  const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
  const directorApprovedColumn=page.locator('.kanban-column[data-column="aprovadoDiretoria"]');
  const fazerColumn=page.locator('.kanban-column[data-column="fazer"]');
@@ -1962,13 +1964,28 @@ test('operational cards drag between columns and SICs enter director approval di
  await fazendoColumn.locator('article[data-id="test-demand"]').click();
  const sicStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(sicStatus).toHaveValue('fazendo');
+ await expect(sicStatus.locator('option[value="validacaoObras"]')).not.toHaveAttribute('disabled','');
+ await expect(sicStatus.locator('option[value="validadoObras"]')).not.toHaveAttribute('disabled','');
  await expect(sicStatus.locator('option[value="aprovacaoDiretoria"]')).not.toHaveAttribute('disabled','');
  await expect(sicStatus.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
  await expect(sicStatus.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
- await sicStatus.selectOption('aprovacaoDiretoria');
- await expect(sicStatus).toHaveValue('aprovacaoDiretoria');
+
+ await sicStatus.selectOption('validacaoObras');
+ await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(validationColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+
+ await validationColumn.locator('article[data-id="test-demand"]').click();
+ const validationStatus=page.locator('#demandDetailForm [name="coluna"]');
+ await validationStatus.selectOption('validadoObras');
+ await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(validatedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+
+ await validatedColumn.locator('article[data-id="test-demand"]').click();
+ const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
+ await validatedStatus.selectOption('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+
  await directorColumn.locator('article[data-id="test-demand"]').click();
  const approvedStatus=page.locator('#demandDetailForm [name="coluna"]');
  await expect(approvedStatus.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
