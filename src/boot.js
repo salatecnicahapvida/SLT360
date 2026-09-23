@@ -59,6 +59,7 @@ let lazyStore;
 let loaded = false;
 let starting = null;
 let cloudWritesEnabled = false;
+let cloudWriteSequence = 0;
 let chartLibrariesPromise = null;
 shell.inert = true;
 
@@ -142,6 +143,12 @@ function blockApp(text) {
   dialog.querySelector('button').onclick = () => location.reload();
   dialog.addEventListener('cancel', e => e.preventDefault());
   dialog.showModal();
+}
+
+function notifyBankSaved(message = 'Alteração salva no banco.') {
+  setTimeout(() => {
+    globalThis.dispatchEvent?.(new CustomEvent('slt360:bank-saved', { detail: { message } }));
+  }, 0);
 }
 
 async function clearInvalidLocalSession() {
@@ -281,6 +288,7 @@ async function startInternal() {
       });
     },
     onStatus(status, error) {
+      if (status === 'saving') cloudWriteSequence += 1;
       const node = document.querySelector('#cloudStatus');
       node.textContent = status === 'saving' ? 'Sincronizando…' : status === 'saved' ? 'Sincronizado' : 'Falha na sincronização';
       node.dataset.state = status;
@@ -345,11 +353,13 @@ async function startInternal() {
     async createAnalyst(analyst_name) {
       const r = await client.rpc('slt_admin_create_analyst', { analyst_name });
       if (r.error) throw r.error;
+      notifyBankSaved('Analista salvo no banco.');
       return r.data;
     },
     async updateAnalyst(target_id, analyst_name) {
       const r = await client.rpc('slt_admin_update_analyst', { target_id, analyst_name });
       if (r.error) throw r.error;
+      notifyBankSaved('Alteração do analista salva no banco.');
       return r.data;
     },
     async historicalEVItems(ev_id) {
@@ -360,6 +370,7 @@ async function startInternal() {
     async updateUser(target_id, details, expected_revision) {
       const r = await client.rpc('slt_admin_update_user', { target_id, details, expected_revision });
       if (r.error) throw r.error;
+      notifyBankSaved('Acesso do usuário salvo no banco.');
       return r.data;
     },
     async createUser(email, details) {
@@ -369,6 +380,7 @@ async function startInternal() {
         try { detail = await r.error.context?.json(); } catch {}
         throw new Error(detail?.error || 'Não foi possível confirmar o cadastro. Atualize a lista antes de repetir.');
       }
+      notifyBankSaved('Usuário salvo no banco.');
       return r.data;
     },
     async resetUserPassword(target_id) {
@@ -415,7 +427,9 @@ async function startInternal() {
     },
     async saveAndWait(uiModule, snapshot) {
       if (!readyForWrite(uiModule)) throw new Error('Aguarde o carregamento completo do banco antes de inserir ou alterar dados.');
+      const writeSequenceBefore = cloudWriteSequence;
       await lazyStore.saveAndWait(dataModule(uiModule), snapshot);
+      if (cloudWriteSequence > writeSequenceBefore) notifyBankSaved();
     },
     async logout() {
       try { await lazyStore.flush(); } catch { return; }

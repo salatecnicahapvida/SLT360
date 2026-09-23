@@ -17141,12 +17141,30 @@ function closeModal() {
 }
 
 function showToast(message) {
+  toast.classList.remove("is-bank-saved");
+  toast.removeAttribute("data-bank-saved-message");
   toast.textContent = message;
   toast.classList.add("is-visible");
   const haptecFace = haptecFaceForSystemMessage(message);
   if (haptecFace) haptecSystemNotice(message, haptecFace);
   setTimeout(() => toast.classList.remove("is-visible"), 2600);
 }
+
+function showBankSavedConfirmation(message = "Alteração salva no banco.") {
+  const currentMessage = String(toast.textContent || "").trim();
+  if (toast.classList.contains("is-visible") && currentMessage) {
+    if (!/\\bbanco\\b/i.test(currentMessage)) {
+      toast.dataset.bankSavedMessage = `✓ ${message}`;
+      toast.classList.add("is-bank-saved");
+    }
+    return;
+  }
+  showToast(message);
+}
+
+window.addEventListener("slt360:bank-saved", (event) => {
+  showBankSavedConfirmation(event?.detail?.message || "Alteração salva no banco.");
+});
 
 function updateEVAreaPreview(form) {
   if (!form) return;

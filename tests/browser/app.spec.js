@@ -1111,6 +1111,8 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(createdCard.locator('.demand-type-badge')).toHaveText('Emissão Inicial');
  await expect(createdCard.locator('.demand-card-labels')).toHaveText(/Urgente.*Diretoria/);
  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+ await expect(page.locator('#toast')).toHaveClass(/is-bank-saved/);
+ await expect(page.locator('#toast')).toHaveAttribute('data-bank-saved-message','✓ Alteração salva no banco.');
  const createdChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-022');
  expect(createdChange?.document?.analistaResponsavel).toBe('Técnico A');
  expect(createdChange?.document?.etiquetas).toEqual(['Urgente','Diretoria']);

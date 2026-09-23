@@ -9251,6 +9251,17 @@ button.analyst-chip {
   opacity: 1;
 }
 
+.toast.is-bank-saved::after {
+  content: attr(data-bank-saved-message);
+  display: block;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+  color: #d1fae5;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
 .empty-state {
   min-height: 120px;
   display: grid;
