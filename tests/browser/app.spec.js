@@ -1714,9 +1714,11 @@ test('portfolio includes works without EV, keeps the table concise and opens the
  await historicalWorkFormReopened.getByRole('button',{name:'Fechar',exact:true}).click();
 
  await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
- await expect(page.locator('.ev-historical-modal')).toContainText('Técnico: Técnico A');
- await expect(page.locator('.ev-historical-modal').getByRole('button',{name:'Reajustar INCC'})).toHaveCount(0);
- await page.locator('.ev-historical-modal').getByRole('button',{name:'Fechar',exact:true}).click();
+ await expect(page.locator('.ev-historical-modal')).toHaveCount(0);
+ await expect(page.locator('#evModalTitle')).toHaveText('Obra histórica Norte - AM');
+ await expect(page.locator('#evForm')).toBeVisible();
+ await expect(page.locator('#evForm [data-action="toggle-ev-zero-lines"]')).toHaveText('Exibir vazios');
+ await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
 
  const currentRow=page.locator('.portfolio-works-table tbody tr').filter({hasText:/Obra de Teste/i});
  await expect(currentRow.locator('td').nth(1)).toHaveText('TEST. Obra de Teste');
