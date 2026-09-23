@@ -254,6 +254,12 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await clearDemandFilters.click();
  await expect(page.locator('[data-operational-filter]:checked')).toHaveCount(0);
  await expect(page.locator('.operational-board-panel article[data-id="test-budget-demand"]')).toBeVisible();
+ const alignedDemandHeaders=await page.locator('.operational-board-panel article[data-id="test-demand"], .operational-board-panel article[data-id="test-budget-demand"]').evaluateAll(cards=>cards.map(card=>{
+  const type=card.querySelector('.demand-type-badge')?.getBoundingClientRect();
+  const sprint=card.querySelector('.sprint-flag')?.getBoundingClientRect();
+  return type&&sprint?Math.abs(type.top-sprint.top):999;
+ }));
+ alignedDemandHeaders.forEach(delta=>expect(delta).toBeLessThanOrEqual(3));
  const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
  await expect(analystFilter.locator('.operational-multiselect-menu span')).toHaveText(['Sem analista']);
  await analystFilter.locator('summary').click();
