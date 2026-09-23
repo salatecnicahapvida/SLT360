@@ -2411,7 +2411,7 @@ test('completion does not create EV revision when nothing changed',async({page})
  expect(b.errors).toEqual([]);
 });
 
-test('SIC approved by director also requires real delivery date before conclusion',async({page})=>{
+test('SIC like DEM-027 can be concluded by an Analyst after final fields',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-finish-demand',
@@ -2422,7 +2422,14 @@ test('SIC approved by director also requires real delivery date before conclusio
   analistaResponsavel:'Ana',
   sicIds:[],
   anexos:[],
-  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC para concluir'},
+  sicApprovalStatus:'Pendente',
+  sicMetadata:{
+   ...structuredClone(payload.state.demands[0].sicMetadata),
+   tituloSic:'CAMINHÃO PIPA e CAMINHÃO VACOL',
+   lecomNumber:'1.187.542',
+   numeroSic:'5',
+   analistaSalaTecnica:'Ana',
+  },
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -2438,11 +2445,14 @@ test('SIC approved by director also requires real delivery date before conclusio
  const completion=page.locator('#demandCompletionForm');
  await expect(completion.getByText('Valor da demanda (R$) *',{exact:true})).toBeVisible();
  await completion.locator('[name="valorGerado"]').fill('0,00');
- await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ const finishButton=completion.getByRole('button',{name:'Concluir demanda'});
+ await expect(finishButton).toHaveAttribute('data-action','save-demand-completion');
+ await finishButton.click();
  await expect(completion.locator('#formError')).toContainText('Data entrega real');
  await completion.locator('[name="dataEntregaReal"]').fill('2026-09-21');
- await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await finishButton.click();
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-finish-demand'&&change.document?.coluna==='concluido')?.document?.dataEntregaReal).toBe('2026-09-21');
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-finish-demand'&&change.document?.coluna==='concluido')?.document?.valorGerado).toBe(0);
  expect(b.errors).toEqual([]);
 });
 
