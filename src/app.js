@@ -5788,7 +5788,7 @@ function renderOperationalFilters() {
           <input type="date" data-operational-date-filter="dateTo" value="${escapeAttribute(operationalFilters.dateTo || "")}" />
         </label>
       </div>
-      <p class="muted operational-export-hint">O relatório exportado considera exatamente os filtros aplicados nesta visão.</p>
+      <p class="muted operational-export-hint">Os dados e indicadores consideram exatamente os filtros aplicados nesta visão.</p>
       <div class="operational-filter-actions">
         <button class="secondary-action" type="button" data-action="clear-operational-filters">Limpar filtros</button>
       </div>
@@ -6500,6 +6500,8 @@ function renderWorksManagement() {
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
     `)}
 
+    ${renderOperationalFilters()}
+    ${renderOperationalFilterBanner()}
     ${renderManagementStatusTabs()}
 
     <section class="kpi-grid">
@@ -6628,7 +6630,7 @@ function renderWorksManagement() {
 }
 
 function managementFilteredDemands() {
-  const demands = arrayOrFallback(state.demands);
+  const demands = filteredDemands();
   if (managementStatusFilter === "completed") return demands.filter((demand) => demand.coluna === "concluido");
   if (managementStatusFilter === "todo") return demands.filter((demand) => demand.coluna === "fazer");
   if (managementStatusFilter === "progress") return demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
@@ -6637,7 +6639,7 @@ function managementFilteredDemands() {
 }
 
 function renderManagementStatusTabs() {
-  const demands = arrayOrFallback(state.demands);
+  const demands = filteredDemands();
   const tabs = [
     { id: "completed", label: "Concluídas", count: demands.filter((demand) => demand.coluna === "concluido").length },
     { id: "todo", label: "A fazer", count: demands.filter((demand) => demand.coluna === "fazer").length },
@@ -17565,7 +17567,9 @@ async function handleEVSubmit(form, mode = "final") {
       numero: work.ev.versaoAtual,
       data: todayISO(),
       origem: revisionOrigin,
+      valorAnterior: previousTotal,
       valorTotal: totalValue,
+      impactoDemanda: Math.abs(totalValue - previousTotal),
       custoM2: work.areaEquivalente ? totalValue / Number(work.areaEquivalente) : 0,
       diffPorDisciplina: evRevisionDisciplineDiff(previousRevisionState, nextRevisionState),
     });
@@ -18638,20 +18642,48 @@ async function approveSic(id) {
   render();
 }
 
-function demandHasEVUpdateForCompletion(demand) {
+function demandCompletionEVRevision(demand) {
   const work = workById(demand?.obraId);
-  if (!work || !demand?.id) return false;
+  if (!work || !demand?.id) return null;
   const completionOrigin = `Conclusão ${demand.id}`;
-  return arrayOrFallback(work.ev?.versions).some(
-    (version) => String(version.origem || "") === completionOrigin
+  return arrayOrFallback(work.ev?.versions)
+    .filter((version) => String(version.origem || "") === completionOrigin)
+    .sort((first, second) => Number(first.numero || 0) - Number(second.numero || 0))
+    .at(-1) || null;
+}
+
+function demandHasEVUpdateForCompletion(demand) {
+  return Boolean(demandCompletionEVRevision(demand));
+}
+
+function demandCompletionEVSuggestedValue(demand) {
+  const version = demandCompletionEVRevision(demand);
+  if (!version) return null;
+  const recordedImpact = Number(version.impactoDemanda);
+  if (Number.isFinite(recordedImpact)) return Math.abs(recordedImpact);
+  const total = Number(version.valorTotal);
+  const previous = Number(version.valorAnterior);
+  if (Number.isFinite(total) && Number.isFinite(previous)) return Math.abs(total - previous);
+  const diffs = arrayOrFallback(version.diffPorDisciplina);
+  if (!diffs.length) return null;
+  const delta = diffs.reduce(
+    (sum, item) => sum + (Number(item.valorDepois || 0) - Number(item.valorAntes || 0)),
+    0
   );
+  return Math.abs(delta);
 }
 
 function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
-  const value = demandHasRecordedValue(demand) ? currencyInputValue(demand.valorGerado) : "";
+  const suggestedValue = evNoChange ? null : demandCompletionEVSuggestedValue(demand);
+  const autoFilledFromEV = !demandHasRecordedValue(demand) && suggestedValue !== null;
+  const value = demandHasRecordedValue(demand)
+    ? currencyInputValue(demand.valorGerado)
+    : autoFilledFromEV
+      ? currencyInputValue(suggestedValue)
+      : "";
   const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (pendingDemandCompletion?.demandId === demand.id) pendingDemandCompletion = null;
@@ -18686,7 +18718,11 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
               <label class="field">
                 <span>${isSicDemand ? "Valor da demanda (R$) *" : "Valor gerado (R$) *"}</span>
                 <input name="valorGerado" inputmode="decimal" required value="${escapeAttribute(value)}" placeholder="0,00" ${deliveryDate ? "autofocus" : ""} />
-                <small>${isSicDemand ? "Informe o valor da SIC. Use 0,00 quando não houver impacto financeiro." : "Informe 0,00 quando a demanda não tiver gerado impacto financeiro."}</small>
+                <small>${autoFilledFromEV
+                  ? "Preenchido automaticamente com o impacto financeiro da revisão salva no EV. Você pode ajustar antes de concluir."
+                  : isSicDemand
+                    ? "Informe o valor da SIC. Use 0,00 quando não houver impacto financeiro."
+                    : "Informe 0,00 quando a demanda não tiver gerado impacto financeiro."}</small>
               </label>
             </div>
           </section>
