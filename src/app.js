@@ -8449,6 +8449,23 @@ function formatMasterStatus(value) {
   return String(value);
 }
 
+function applyDefaultEVZeroLineVisibility(form) {
+  if (!form) return;
+  const toggle = form.querySelector('[data-action="toggle-ev-zero-lines"]');
+  const rows = [...form.querySelectorAll(".ev-zero-toggle-row")];
+  rows.forEach((row) => {
+    const value = row.classList.contains("ev-sic-posted-row")
+      ? Number(row.dataset.evStaticValue || 0)
+      : parseCurrency(row.querySelector(".ev-value-input")?.value || "");
+    row.hidden = Math.abs(value) < 0.000001;
+  });
+  if (toggle) {
+    toggle.dataset.hidden = "true";
+    toggle.setAttribute("aria-pressed", "true");
+    toggle.textContent = "Exibir vazios";
+  }
+}
+
 function openEVModal(workId, { completionDemandId = "" } = {}) {
   const work = workById(workId);
   if (!work) return;
@@ -8497,6 +8514,7 @@ function openEVModal(workId, { completionDemandId = "" } = {}) {
       </article>
     </div>
   `);
+  applyDefaultEVZeroLineVisibility(modalRoot.querySelector("#evForm"));
 }
 
 function miniMetric(label, value, modifier = "") {
