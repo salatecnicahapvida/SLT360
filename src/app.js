@@ -19608,14 +19608,20 @@ document.addEventListener("click", async (event) => {
       category,
       local: true,
     };
-    body.insertAdjacentHTML(
-      "beforeend",
-      globalThis.SLT_CLOUD.cleanHTML(
-        renderEVGroupedEditableRow(work, row, evFormTotals(form).total, { hideEmpty: false, existingLocal: false })
-      )
+    const rowMarkup = renderEVGroupedEditableRow(
+      work,
+      row,
+      evFormTotals(form).total,
+      { hideEmpty: false, existingLocal: false }
     );
-    const addedRows = [...body.querySelectorAll(".ev-line-row")];
-    const addedRow = addedRows[addedRows.length - 1];
+    const rowHost = document.createElement("div");
+    rowHost.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`<table><tbody>${rowMarkup}</tbody></table>`);
+    const addedRow = rowHost.querySelector(".ev-line-row");
+    if (!addedRow) {
+      showFormError("Não foi possível criar a nova linha do EV.", form);
+      return;
+    }
+    body.appendChild(addedRow);
     addedRow?.querySelector(".ev-local-name-input")?.focus();
     updateEVAreaPreview(form);
     return;
