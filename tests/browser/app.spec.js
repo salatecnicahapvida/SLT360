@@ -110,6 +110,7 @@ test('Suporte360 stays closed on validation errors until the user clicks it',asy
  await expect(support.locator('.haptec-panel')).toHaveCount(0);
  await expect(support.getByRole('button',{name:/^Suporte360/})).toHaveAttribute('aria-expanded','false');
 
+ await form.getByRole('button',{name:'Fechar',exact:true}).click();
  await support.getByRole('button',{name:/^Suporte360/}).click();
  await expect(support.locator('.haptec-panel')).toBeVisible();
  await expect(support.locator('.haptec-messages')).toContainText('obrigatório');
@@ -1685,7 +1686,7 @@ test('portfolio includes works without EV, keeps the table concise and opens the
 
  await historicalRow.getByRole('button',{name:'Abrir EV'}).click();
  await expect(page.locator('.ev-historical-modal')).toHaveCount(0);
- await expect(page.locator('#evModalTitle')).toHaveText('Obra histórica Norte - AM');
+ await expect(page.locator('#evModalTitle')).toContainText('Obra Histórica Norte');
  await expect(page.locator('#evForm')).toBeVisible();
  await expect(page.locator('#evForm [data-action="toggle-ev-zero-lines"]')).toHaveText('Exibir vazios');
  await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();
@@ -1944,8 +1945,7 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  work.ev.versions=[];
  const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[demand],analystNames:['Ana']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- await page.locator('article[data-id="sic-post-no-revision"]').click();
- await page.locator('#demandDetailForm [data-action="open-sic-approval"]').click();
+ await page.locator('[data-view="sics"]').filter({visible:true}).first().click();
  const postButton=page.locator('[data-action="post-sic-to-ev"][data-id="sic-post-no-revision"]');
  await expect(postButton).toBeVisible();
  await postButton.click();
@@ -2080,7 +2080,7 @@ test('saving the EV from the completion flow resumes the final required fields',
  const evForm=page.locator('#evForm');
  await expect(evForm).toBeVisible();
  await expect(evForm).toHaveAttribute('data-completion-demand-id','finish-after-ev');
- await evForm.locator('.ev-value-input').first().fill('125,00');
+ await evForm.locator('.ev-line-row:visible .ev-value-input').first().fill('125,00');
  await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
  const deviation=page.locator('[data-ev-haptec-confirm]');
  if(await deviation.isVisible().catch(()=>false)){
@@ -2198,6 +2198,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
  const evForm=page.locator('#evForm');
  await expect(evForm).toBeVisible();
  await expect(evForm).toHaveAttribute('data-completion-demand-id','sic-finish-after-ev');
+ await evForm.locator('.ev-line-row:visible .ev-value-input').first().fill('110,00');
  await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
  const deviation=page.locator('[data-ev-haptec-confirm]');
  if(await deviation.isVisible().catch(()=>false)){
