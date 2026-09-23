@@ -88,7 +88,7 @@ const columns = [
   { id: "validacaoObras", label: "Aguardando Validação Obras" },
   { id: "validadoObras", label: "Validado Obras" },
   { id: "aprovacaoDiretoria", label: "Aguardando Aprovação Diretoria" },
-  { id: "aprovadoDiretoria", label: "Aprovado Pela Diretoria" },
+  { id: "aprovadoDiretoria", label: "Aprovado Diretoria" },
   { id: "concluido", label: "Concluído" },
   { id: "cancelado", label: "Cancelado" },
 ];
@@ -18960,15 +18960,15 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   }
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
     if (demand.coluna !== "aprovacaoDiretoria") {
-      showToast("A etapa Aprovado Pela Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
+      showToast("A etapa Aprovado Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
       return false;
     }
   }
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovadoDiretoria") {
     showToast(
       demand.coluna === "aprovacaoDiretoria"
-        ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído."
-        : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
+        ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Diretoria antes de ir para Concluído."
+        : "Uma SIC só pode ser concluída depois de estar em Aprovado Diretoria."
     );
     return false;
   }
@@ -20239,8 +20239,8 @@ document.addEventListener("change", async (event) => {
     ) {
       showToast(
         demand?.coluna === "aprovacaoDiretoria"
-          ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Pela Diretoria antes de ir para Concluído."
-          : "Uma SIC só pode ser concluída depois de estar em Aprovado Pela Diretoria."
+          ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Diretoria antes de ir para Concluído."
+          : "Uma SIC só pode ser concluída depois de estar em Aprovado Diretoria."
       );
       event.target.value = demand.coluna;
       return;
