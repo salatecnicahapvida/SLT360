@@ -8031,7 +8031,7 @@ function renderEVHistoricalIntelligence({ summaryOnly = false } = {}) {
       </div>
       <div class="ev-history-grid ${summaryOnly ? "ev-history-grid--summary" : ""}">
         ${summaryOnly ? "" : `<article class="ev-history-table-card ev-history-primary-table"><div class="panel-header"><div><span class="eyebrow">Base principal</span><h3>Carteira unificada de EVs</h3><p class="panel-subtitle">Clique nos títulos das colunas: maior → menor, menor → maior e ordem original.</p></div><span class="tag">${records.length} EVs</span></div><div class="table-wrap ev-history-table-wrap"><table class="data-table ev-unified-table"><thead><tr>${evSortableHeader("Ano", "year")}${evSortableHeader("EV", "project")}${evSortableHeader("Tipologia", "typology")}${evSortableHeader("Valor", "total", true)}${evSortableHeader("Área", "area", true)}${evSortableHeader("% disciplina", "discipline", true)}<th>Ação</th></tr></thead><tbody>
-          ${sortedRecords.slice(0, 60).map((record) => { const disciplineValue = evHistoricalFilters.discipline ? Number(record.disciplines?.[evHistoricalFilters.discipline] || 0) : 0; const share = record.baseTotal ? (disciplineValue / record.baseTotal) * 100 : 0; const historical = record.sourceKind === "historical"; const openAction = historical ? "edit-historical-ev" : "open-ev-modal"; const openId = historical ? record.id : record.workId; const deleteAction = canDeleteEVRecords() ? `<button class="ghost-button compact-action danger-action" type="button" data-action="delete-ev-record" data-id="${escapeAttribute(record.id)}">Excluir</button>` : ""; return `<tr><td class="ev-year-cell"><strong>${escapeAttribute(String(record.year || "—"))}</strong><small>Elaboração</small></td><td><button class="ev-history-project-link" type="button" data-action="${openAction}" data-id="${openId}">${escapeAttribute(record.project)}</button><br /><span class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${number(record.items?.length || 0)} filhas</span><br /><span class="ev-unified-source" data-source="${record.sourceKind}">${escapeAttribute(record.sourceLabel)}</span></td><td><strong>${escapeAttribute(record.typology)}</strong><br /><button class="ev-typology-edit" type="button" data-action="edit-ev-typology" data-id="${escapeAttribute(record.id)}">Editar tipologia</button></td><td class="numeric">${moneyCompact(record.total)}</td><td class="numeric">${record.area ? `${number(record.area, 0)} m²` : "—"}</td><td class="numeric">${evHistoricalFilters.discipline ? `${number(share, 1)}%` : "Selecione"}</td><td><div class="table-actions">${historical ? `<button class="secondary-action compact-action" type="button" data-action="view-historical-composition" data-id="${record.id}">Ver composição</button><button class="primary-action compact-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button>` : `<button class="primary-action compact-action" type="button" data-action="open-ev-modal" data-id="${record.workId}">Editar EV</button>`}<button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button>${deleteAction}</div></td></tr>`; }).join("") || `<tr><td colspan="7"><div class="empty-state">Nenhum EV encontrado.</div></td></tr>`}
+          ${sortedRecords.slice(0, 60).map((record) => { const disciplineValue = evHistoricalFilters.discipline ? Number(record.disciplines?.[evHistoricalFilters.discipline] || 0) : 0; const share = record.baseTotal ? (disciplineValue / record.baseTotal) * 100 : 0; const historical = record.sourceKind === "historical"; const openAction = historical ? "edit-historical-ev" : "open-ev-modal"; const openId = historical ? record.id : record.workId; const deleteAction = canDeleteEVRecords() ? `<button class="ghost-button compact-action danger-action" type="button" data-action="delete-ev-record" data-id="${escapeAttribute(record.id)}">Excluir</button>` : ""; return `<tr><td class="ev-year-cell"><strong>${escapeAttribute(String(record.year || "—"))}</strong><small>Elaboração</small></td><td><button class="ev-history-project-link" type="button" data-action="${openAction}" data-id="${openId}">${escapeAttribute(record.project)}</button><br /><span class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${number(record.items?.length || 0)} filhas</span><br /><span class="ev-unified-source" data-source="${record.sourceKind}">${escapeAttribute(record.sourceLabel)}</span></td><td><strong>${escapeAttribute(record.typology)}</strong><br /><button class="ev-typology-edit" type="button" data-action="edit-ev-typology" data-id="${escapeAttribute(record.id)}">Editar tipologia</button></td><td class="numeric">${moneyCompact(record.total)}</td><td class="numeric">${record.area ? `${number(record.area, 0)} m²` : "—"}</td><td class="numeric">${evHistoricalFilters.discipline ? `${number(share, 1)}%` : "Selecione"}</td><td><div class="table-actions">${historical ? `<button class="primary-action compact-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Abrir EV</button>` : `<button class="primary-action compact-action" type="button" data-action="open-ev-modal" data-id="${record.workId}">Editar EV</button>`}<button class="ghost-button compact-action" type="button" data-action="load-ev-incc" data-id="${record.id}">Simular INCC</button>${deleteAction}</div></td></tr>`; }).join("") || `<tr><td colspan="7"><div class="empty-state">Nenhum EV encontrado.</div></td></tr>`}
         </tbody></table></div></article>`}
         <article class="ev-history-chart-card"><div class="panel-header"><div><span class="eyebrow">Leitura complementar</span><h3>Composição histórica</h3><p class="panel-subtitle">Percentual médio nos EVs em que a disciplina foi utilizada</p></div></div><div class="ev-history-bars">
           ${benchmarks.slice(0, 10).map((row, index) => `<div class="ev-history-bar"><span class="ev-history-rank">${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeAttribute(row.discipline.nome)}</strong><small>${row.count} EVs · mediana ${number(row.median, 1)}% · σ ${number(row.stdDev, 1)} p.p.</small></div><i><b style="width:${Math.max(3, (row.mean / maxMean) * 100)}%"></b></i><em>${number(row.mean, 1)}%</em></div>`).join("") || `<div class="empty-state">Sem dados para os filtros selecionados.</div>`}
@@ -8041,55 +8041,7 @@ function renderEVHistoricalIntelligence({ summaryOnly = false } = {}) {
 }
 
 async function openHistoricalEVModal(recordId) {
-  const record = evHistoricalSourceRecords().find((item) => item.id === recordId);
-  if (!record) return;
-  let items = Array.isArray(record.items) ? record.items : [];
-  if (!items.length && (record.itemsCount || record.itemsLazy || record.itemCount)) {
-    try { items = await globalThis.SLT_CLOUD.historicalEVItems(recordId); }
-    catch { showToast("Não foi possível carregar a composição do EV. Tente novamente."); return; }
-  }
-  const additives = evAdditiveSummary(record, items);
-  const sicTotal = additives.total;
-  const originalTotal = additives.original;
-  const sicPercentage = additives.percentage === null ? "—" : `${number(additives.percentage, 2)}%`;
-  const historicalRisk = Number(record.disciplines?.["taxa-risco"] || 0) || 0;
-  const historicalArea = Number(record.area || 0) || 0;
-  const historicalTotalWithRisk = Number(record.total || 0) || 0;
-  const historicalTotalWithoutRisk = Math.max(historicalTotalWithRisk - historicalRisk, 0);
-  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop" data-action="close-modal">
-      <article class="modal-card ev-historical-modal" aria-labelledby="historicalEVTitle">
-        <header class="ev-modal-header">
-          <div><span class="eyebrow">EV histórico · ${record.year}</span><h2 id="historicalEVTitle">${escapeAttribute(record.project)}</h2><p class="muted">${escapeAttribute(record.code || "Sem código")} · ${escapeAttribute(record.revision)} · ${escapeAttribute(record.typology)} · Técnico: ${escapeAttribute(record.technician || "Não informado")} · ${dateText(String(record.date || "").slice(0, 10))}</p></div>
-          <div class="ev-modal-status"><span class="tag">${items.length} filhas</span><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></div>
-        </header>
-        <div class="modal-body ev-modal-body">
-          <section class="ev-summary-grid ev-top-kpis">
-            ${miniMetric("Área equivalente da obra", historicalArea ? `${number(historicalArea, 2)} m²` : "—")}
-            ${miniMetric("Total da obra (sem taxa de risco)", moneyCents(historicalTotalWithoutRisk))}
-            ${miniMetric("Custo da obra por m² (sem taxa de risco)", historicalArea ? `${moneyCents(historicalTotalWithoutRisk / historicalArea)}/m²` : "—")}
-            ${miniMetric("Total da obra (com taxa de risco)", moneyCents(historicalTotalWithRisk))}
-            ${miniMetric("Custo da obra por m² (com taxa de risco)", historicalArea ? `${moneyCents(historicalTotalWithRisk / historicalArea)}/m²` : "—")}
-            ${miniMetric("Total de SIC's", moneyCents(sicTotal))}
-          </section>
-          <details class="ev-additive-audit">
-            <summary>Conferir cálculo de SICs / Aditivos (${additives.included.length} linhas)</summary>
-            <p>${additives.detailed ? "Soma das linhas identificadas como SIC, ADT ou aditivo na descrição, ou classificadas como SICs. Cada linha é contada uma vez, preservando seu sinal." : "Composição detalhada indisponível: valor limitado ao agrupamento SICs informado na base."}</p>
-            <ul>${additives.included.map((item) => `<li>Item ${escapeAttribute(item.item || "—")} · ${escapeAttribute(item.description || "SIC / Aditivo")} — <strong>${moneyCents(Number(item.value || 0))}</strong></li>`).join("")}</ul>
-            <p><strong>Total: ${moneyCents(sicTotal)}</strong> · EV original: ${moneyCents(originalTotal)} · Percentual sobre o total geral: ${sicPercentage} · Total geral: ${moneyCents(record.total)}</p>
-          </details>
-          <section class="ev-historical-source-note"><span>Coluna F</span><div><strong>Composição completa do EV</strong><small>Cada linha abaixo corresponde a uma filha da coluna “Descrição” da planilha de origem.</small></div></section>
-          <div class="table-wrap ev-historical-items-wrap">
-            <table class="data-table ev-historical-items-table">
-              <thead><tr><th>Item</th><th>Filha / descrição da coluna F</th><th>Disciplina SLT 360</th><th class="numeric">Valor</th><th class="numeric">% do EV</th><th class="numeric">R$/m²</th></tr></thead>
-              <tbody>${items.map((item) => { const share = record.total ? (Number(item.value || 0) / record.total) * 100 : 0; return `<tr><td>${escapeAttribute(item.item || "—")}</td><td><strong>${escapeAttribute(item.description || "Sem descrição")}</strong></td><td><span class="tag">${escapeAttribute(disciplineById(item.disciplineId).nome)}</span></td><td class="numeric"><strong>${moneyCents(Number(item.value || 0))}</strong></td><td class="numeric">${number(share, 2)}%</td><td class="numeric">${record.area ? money(Number(item.value || 0) / record.area) : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty-state">Este EV não possui filhas registradas.</div></td></tr>`}</tbody>
-              <tfoot><tr class="ev-total-row"><td colspan="3"><strong>Total Geral</strong></td><td class="numeric"><strong>${moneyCents(record.total)}</strong></td><td class="numeric"><strong>100%</strong></td><td class="numeric"><strong>${record.area ? money(record.total / record.area) : "—"}</strong></td></tr></tfoot>
-            </table>
-          </div>
-        </div>
-        <footer class="modal-actions"><span class="muted">Fonte: ${escapeAttribute(window.EV_HISTORICAL_DATA.source)} · Planilha1 · coluna F</span><div class="table-actions"><button class="secondary-action" type="button" data-action="close-modal">Fechar composição</button><button class="primary-action" type="button" data-action="edit-historical-ev" data-id="${record.id}">Editar EV</button></div></footer>
-      </article>
-    </div>`);
+  editHistoricalEV(recordId);
 }
 
 function ensureEditableHistoricalEV(recordId) {
@@ -19368,7 +19320,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "view-historical-composition") {
-    await openHistoricalEVModal(actionButton.dataset.id);
+    editHistoricalEV(actionButton.dataset.id);
     return;
   }
   if (action === "open-ev-reference-targets") {
