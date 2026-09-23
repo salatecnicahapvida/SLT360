@@ -9004,6 +9004,16 @@ button.analyst-chip {
   background: #fff8f1;
 }
 
+.ev-legacy-sic-fields {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.ev-legacy-sic-row .ev-value-input {
+  min-width: 126px;
+}
+
 .ev-sic-posted-title {
   display: block;
   margin-top: 3px;

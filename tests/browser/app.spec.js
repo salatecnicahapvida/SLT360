@@ -1491,6 +1491,56 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('.ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
+test('legacy consolidated SIC can be edited and deleted from the EV',async({page})=>{
+ const legacyWork=structuredClone(payload.state.works[0]);
+ legacyWork.id='legacy-sic-work';
+ legacyWork.nome='Obra com SIC legacy';
+ legacyWork.codigoOriginal='LSIC';
+ legacyWork.chaveUnica='LSIC';
+ legacyWork.ev={
+  ...legacyWork.ev,
+  id:'legacy-sic-ev',
+  lines:[
+   {disciplinaId:'adequacoes-civis',valorOrcado:100,status:'Orçado'},
+   {disciplinaId:'sics',valorOrcado:1234.56,status:'Orçado',sicDetails:[]},
+  ],
+ };
+ const b=await backend(page,'Admin',false,{workRecords:[legacyWork],demandRecords:[],evRecords:[]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'Obra com SIC legacy'});
+ await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
+
+ let legacyRow=page.locator('#evForm .ev-sic-posted-row[data-ev-legacy-sic="true"]');
+ await expect(legacyRow).toBeVisible();
+ await expect(legacyRow.locator('[data-ev-legacy-sic-value]')).toHaveValue('1.234,56');
+ await legacyRow.locator('[data-ev-legacy-sic-reference]').fill('SIC LEG 01');
+ await legacyRow.locator('[data-ev-legacy-sic-title]').fill('Ajuste histórico consolidado');
+ await legacyRow.locator('[data-ev-legacy-sic-value]').fill('2.345,67');
+ await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
+ await expect(page.locator('#toast')).toHaveText('EV salvo no banco');
+
+ legacyRow=page.locator('#evForm .ev-sic-posted-row[data-ev-legacy-sic="true"]');
+ await expect(legacyRow.locator('[data-ev-legacy-sic-reference]')).toHaveValue('SIC LEG 01');
+ await expect(legacyRow.locator('[data-ev-legacy-sic-title]')).toHaveValue('Ajuste histórico consolidado');
+ await expect(legacyRow.locator('[data-ev-legacy-sic-value]')).toHaveValue('2.345,67');
+ expect(b.requests.flatMap(request=>request.changes).some(change=>
+  change.entity==='budget_estimate_lines'
+  && change.document?.disciplinaId==='sics'
+  && Number(change.document?.valorOrcado)===2345.67
+ )).toBe(true);
+
+ await legacyRow.getByRole('button',{name:'Excluir',exact:true}).click();
+ await expect(page.locator('#evForm .ev-sic-posted-row[data-ev-legacy-sic="true"]')).toHaveCount(0);
+ await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
+ await expect(page.locator('#toast')).toHaveText('EV salvo no banco');
+ await expect(page.locator('#evForm .ev-sic-posted-row[data-ev-legacy-sic="true"]')).toHaveCount(0);
+ expect(b.requests.flatMap(request=>request.changes).some(change=>
+  change.entity==='budget_estimate_lines' && change.operation==='delete'
+ )).toBe(true);
+ expect(b.errors).toEqual([]);
+});
+
 test('EV local child line persists only in the selected work and not in global configuration',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();

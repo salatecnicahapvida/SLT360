@@ -8717,6 +8717,27 @@ function renderEVPostedSicRow(work, rawItem, baseTotal) {
   const percent = baseTotal ? (value / baseTotal) * 100 : 0;
   const unitCost = Number(work.areaEquivalente || 0) ? value / Number(work.areaEquivalente) : 0;
   const hideRow = Math.abs(value) < 0.000001;
+  const isLegacyTotal = String(item.id || "") === "legacy-sic-total";
+  if (isLegacyTotal) {
+    return `
+      <tr class="ev-sic-posted-row ev-zero-toggle-row ev-legacy-sic-row" data-ev-group="Sics" data-ev-static-value="${value}" data-ev-legacy-sic="true" ${hideRow ? "hidden" : ""}>
+        <td><span class="ev-local-chip">SIC histórica</span></td>
+        <td>
+          <div class="ev-legacy-sic-fields">
+            <input class="ev-local-name-input" data-ev-legacy-sic-reference maxlength="80" value="${escapeAttribute(item.numeroSic || item.lecomNumber || "")}" placeholder="Referência da SIC" aria-label="Referência da SIC histórica" />
+            <input class="ev-local-name-input" data-ev-legacy-sic-title maxlength="180" value="${escapeAttribute(sicDisplayTitle(item))}" placeholder="Descrição da SIC" aria-label="Descrição da SIC histórica" />
+          </div>
+        </td>
+        <td class="numeric">
+          <input class="ev-value-input ev-legacy-sic-value" data-ev-legacy-sic-value inputmode="decimal" value="${currencyInputValue(value)}" aria-label="Valor da SIC histórica" />
+        </td>
+        <td class="numeric" data-ev-row-percent>${baseTotal ? `${number(percent, 2)}%` : "—"}</td>
+        <td><span class="status-pill" data-status="Histórico">Histórico</span></td>
+        <td class="numeric" data-ev-row-unit>${unitCost ? money(unitCost) : "–"}</td>
+        <td><button class="ghost-button compact-action danger-action" type="button" data-action="remove-ev-legacy-sic">Excluir</button></td>
+      </tr>
+    `;
+  }
   return `
     <tr class="ev-sic-posted-row ev-zero-toggle-row ${item.riskExceeded ? "is-risk-alert" : ""}" data-ev-group="Sics" data-ev-static-value="${value}" ${hideRow ? "hidden" : ""}>
       <td><span class="ev-local-chip">SIC</span></td>
@@ -8747,7 +8768,8 @@ function evFormTotals(form) {
   });
 
   [...(form?.querySelectorAll(".ev-sic-posted-row") || [])].forEach((row) => {
-    groups.Sics += Number(row.dataset.evStaticValue || 0);
+    const legacyInput = row.querySelector("[data-ev-legacy-sic-value]");
+    groups.Sics += legacyInput ? parseCurrency(legacyInput.value) : Number(row.dataset.evStaticValue || 0);
   });
 
   const total = Object.values(groups).reduce((sum, value) => sum + Number(value || 0), 0);
@@ -8788,7 +8810,9 @@ function updateEVGroupTotals(form) {
       ? "Orçado"
       : normalizeEVLineStatus(row.querySelector(".ev-status-select")?.value);
     const value = isStaticSic
-      ? Number(row.dataset.evStaticValue || 0)
+      ? (row.querySelector("[data-ev-legacy-sic-value]")
+          ? parseCurrency(row.querySelector("[data-ev-legacy-sic-value]").value)
+          : Number(row.dataset.evStaticValue || 0))
       : status === "Não se aplica"
         ? 0
         : parseCurrency(row.querySelector(".ev-value-input")?.value);
@@ -17303,6 +17327,16 @@ function evRevisionComparableState(work) {
       isLocalEVLine: false,
       localName: "",
       localCategory: discipline.id === "sics" ? "Sics" : discipline.categoria,
+      sicDetails: discipline.id === "sics"
+        ? arrayOrFallback(line?.sicDetails).map((item) => ({
+            id: String(item?.id || ""),
+            numeroSic: String(item?.numeroSic || ""),
+            lecomNumber: String(item?.lecomNumber || ""),
+            titulo: String(item?.titulo || ""),
+            valor: Number(item?.valor || 0),
+            status: String(item?.status || ""),
+          }))
+        : undefined,
     };
   });
   const local = allLines
@@ -17349,6 +17383,7 @@ function evRevisionDisciplineDiff(before, after) {
         && String(previous.status || "") === String(line.status || "")
         && String(previous.localName || "") === String(line.localName || "")
         && String(previous.localCategory || "") === String(line.localCategory || "")
+        && JSON.stringify(previous.sicDetails || []) === JSON.stringify(line.sicDetails || [])
       ) return null;
       return {
         disciplinaId: line.disciplinaId,
@@ -17360,6 +17395,8 @@ function evRevisionDisciplineDiff(before, after) {
         nomeDepois: line.localName || "",
         categoriaAntes: previous.localCategory || "",
         categoriaDepois: line.localCategory || "",
+        sicDetailsAntes: previous.sicDetails || [],
+        sicDetailsDepois: line.sicDetails || [],
       };
     })
     .filter(Boolean);
@@ -17454,6 +17491,36 @@ async function handleEVSubmit(form, mode = "final") {
       line.localPosition = Number(line.localPosition || Date.now());
     }
   });
+
+  const legacySicRow = form.querySelector('.ev-sic-posted-row[data-ev-legacy-sic="true"]');
+  if (form.dataset.deletedLegacySic === "true") {
+    work.ev.lines = work.ev.lines.filter(
+      (line) => isLocalEVLine(line) || canonicalDisciplineId(line.disciplinaId) !== "sics"
+    );
+  } else if (legacySicRow) {
+    const value = parseCurrency(legacySicRow.querySelector("[data-ev-legacy-sic-value]")?.value);
+    const reference = String(legacySicRow.querySelector("[data-ev-legacy-sic-reference]")?.value || "").trim();
+    const title = String(legacySicRow.querySelector("[data-ev-legacy-sic-title]")?.value || "").trim()
+      || "SIC's consolidadas (histórico sem detalhamento)";
+    let summaryLine = work.ev.lines.find(
+      (line) => !isLocalEVLine(line) && canonicalDisciplineId(line.disciplinaId) === "sics"
+    );
+    if (!summaryLine) {
+      summaryLine = { disciplinaId: "sics", valorOrcado: 0, status: "Orçado" };
+      work.ev.lines.push(summaryLine);
+    }
+    summaryLine.disciplinaId = "sics";
+    summaryLine.valorOrcado = value;
+    summaryLine.status = value ? "Orçado" : "Não se aplica";
+    summaryLine.sicDetails = [{
+      id: "legacy-sic-total",
+      numeroSic: reference,
+      lecomNumber: "",
+      titulo: title,
+      valor: value,
+      status: "Histórico",
+    }];
+  }
 
   const groupOrder = { CustosDaObra: 0, OutrasCategorias: 1, Sics: 2 };
   work.ev.lines.sort((a, b) => {
@@ -19700,6 +19767,16 @@ document.addEventListener("click", async (event) => {
     updateEVAreaPreview(form);
     return;
   }
+  if (action === "remove-ev-legacy-sic") {
+    const row = actionButton.closest('.ev-sic-posted-row[data-ev-legacy-sic="true"]');
+    const form = row?.closest("#evForm");
+    if (!row || !form) return;
+    form.dataset.deletedLegacySic = "true";
+    row.remove();
+    updateEVAreaPreview(form);
+    showToast("SIC histórica marcada para exclusão. Clique em Salvar EV para confirmar.");
+    return;
+  }
 
   if (action === "set-ev-line-na") {
     const row = actionButton.closest(".ev-line-row");
@@ -19781,7 +19858,9 @@ document.addEventListener("click", async (event) => {
     const rows = [...form.querySelectorAll(".ev-zero-toggle-row")];
     rows.forEach((row) => {
       const value = row.classList.contains("ev-sic-posted-row")
-        ? Number(row.dataset.evStaticValue || 0)
+        ? (row.querySelector("[data-ev-legacy-sic-value]")
+            ? parseCurrency(row.querySelector("[data-ev-legacy-sic-value]").value)
+            : Number(row.dataset.evStaticValue || 0))
         : parseCurrency(row.querySelector(".ev-value-input")?.value || "");
       row.hidden = shouldHide && Math.abs(value) < 0.000001;
     });
