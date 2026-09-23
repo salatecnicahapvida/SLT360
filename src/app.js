@@ -86,12 +86,13 @@ const columns = [
   { id: "fazendo", label: "Fazendo" },
   { id: "pausado", label: "Pausado" },
   { id: "validacaoObras", label: "Aguardando Validação Obras" },
+  { id: "validadoObras", label: "Validado Obras" },
   { id: "aprovacaoDiretoria", label: "Aguardando Aprovação Diretoria" },
   { id: "aprovadoDiretoria", label: "Aprovado Pela Diretoria" },
   { id: "concluido", label: "Concluído" },
   { id: "cancelado", label: "Cancelado" },
 ];
-const demandValidationColumnIds = ["validacaoObras", "aprovacaoDiretoria"];
+const demandValidationColumnIds = ["validacaoObras", "validadoObras", "aprovacaoDiretoria"];
 
 const worksViewIds = [
   "worksOperational",
@@ -3107,7 +3108,7 @@ function haptecWorksKanbanAnswer(text) {
   }
 
   if (haptecHasAny(text, ["validacao", "validar"])) {
-    return `${validation.length} card(s) aguardam validação ${scope}: ${items.filter((item) => item.coluna === "validacaoObras").length} em Obras e ${items.filter((item) => item.coluna === "aprovacaoDiretoria").length} em aprovação da Diretoria.`;
+    return `${validation.length} card(s) estão no fluxo de validação ${scope}: ${items.filter((item) => item.coluna === "validacaoObras").length} aguardando Obras, ${items.filter((item) => item.coluna === "validadoObras").length} validado(s) por Obras e ${items.filter((item) => item.coluna === "aprovacaoDiretoria").length} em aprovação da Diretoria.`;
   }
 
   if (haptecHasAny(text, ["sic"])) {
@@ -5456,7 +5457,8 @@ function operationalKpiDetailData(key) {
   const validationMetrics = key === "opValidacao"
     ? [
         { label: "Total em validação", value: String(item.demands.length) },
-        { label: "Equipe de Obras", value: String(item.demands.filter((demand) => demand.coluna === "validacaoObras").length) },
+        { label: "Aguardando Obras", value: String(item.demands.filter((demand) => demand.coluna === "validacaoObras").length) },
+        { label: "Validado Obras", value: String(item.demands.filter((demand) => demand.coluna === "validadoObras").length) },
         { label: "Aprovação Diretoria", value: String(item.demands.filter((demand) => demand.coluna === "aprovacaoDiretoria").length) },
       ]
     : null;
@@ -6151,7 +6153,7 @@ function demandCardDateInfo(demand) {
   const validationSent = Boolean(
     demand.dataEnvioRealValidacaoObras
     || demand.dataValidacaoObras
-    || ["validacaoObras", "aprovacaoDiretoria", "aprovadoDiretoria", "concluido"].includes(demand.coluna),
+    || ["validacaoObras", "validadoObras", "aprovacaoDiretoria", "aprovadoDiretoria", "concluido"].includes(demand.coluna),
   );
   const validationDate = dateOnly(demand.dataPrevEnvioValidacaoObras);
   const validationDeadlineStillActive = Boolean(validationDate && validationDate >= todayISO());
@@ -15966,7 +15968,7 @@ function sprintOptions(selected) {
     .join("");
 }
 
-function canApproveSicDirector() {
+function canAdvanceSicToDirectorApproval() {
   return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
 }
 
@@ -18910,13 +18912,19 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     showToast("Somente demandas do tipo SIC podem usar as etapas da Diretoria.");
     return false;
   }
+  if (isSicDemand && nextColumnId === "aprovacaoDiretoria" && demand.coluna !== "aprovacaoDiretoria") {
+    if (demand.coluna !== "validadoObras") {
+      showToast("A etapa Aguardando Aprovação Diretoria só pode ser acessada a partir de Validado Obras.");
+      return false;
+    }
+    if (!canAdvanceSicToDirectorApproval()) {
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Validado Obras para Aguardando Aprovação Diretoria.");
+      return false;
+    }
+  }
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
     if (demand.coluna !== "aprovacaoDiretoria") {
       showToast("A etapa Aprovado Pela Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
-      return false;
-    }
-    if (!canApproveSicDirector()) {
-      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
       return false;
     }
   }
@@ -18928,7 +18936,7 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     );
     return false;
   }
-  if (isSicDemand && nextColumnId === "aprovacaoDiretoria" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
+  if (nextColumnId === "validadoObras" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
     demand.dataValidacaoObras = todayISO();
   }
   const normalizedMovementReason = String(movementReason || "").trim();
@@ -20180,11 +20188,11 @@ document.addEventListener("change", async (event) => {
     const selected = event.target.value;
     if (
       demandTypeKey(demand?.tipo) === "SIC"
-      && demand?.coluna === "aprovacaoDiretoria"
-      && selected === "aprovadoDiretoria"
-      && !canApproveSicDirector()
+      && demand?.coluna === "validadoObras"
+      && selected === "aprovacaoDiretoria"
+      && !canAdvanceSicToDirectorApproval()
     ) {
-      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Aguardando Aprovação Diretoria para Aprovado Pela Diretoria.");
+      showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Validado Obras para Aguardando Aprovação Diretoria.");
       event.target.value = demand.coluna;
       return;
     }
