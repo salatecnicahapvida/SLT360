@@ -6601,14 +6601,6 @@ button.alert-item {
   height: 0;
 }
 
-[data-kanban-scroll-board].is-wheel-scrolling {
-  scroll-behavior: auto;
-}
-
-[data-kanban-scroll-board].is-wheel-scrolling .kanban-column {
-  box-shadow: 0 0 0 1px rgba(0, 92, 169, 0.06);
-}
-
 .kanban-column {
   display: flex;
   flex-direction: column;
@@ -6621,7 +6613,12 @@ button.alert-item {
 }
 
 .operational-board-panel .kanban-column {
-  height: clamp(1100px, 150vh, 1600px);
+  height: clamp(520px, calc(100vh - 260px), 760px);
+}
+
+.operational-board-panel .demand-list {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .operational-board-panel .kanban-column.is-drag-over {

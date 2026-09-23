@@ -2706,38 +2706,6 @@ function mountKanbanTopScrollbars() {
     };
 
     board.addEventListener("scroll", syncTop, { passive: true });
-    board.addEventListener("wheel", (event) => {
-      if (document.body.classList.contains("demand-drag-active")) return;
-      const list = event.target.closest(".demand-list");
-      const dominantHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      const direction = dominantHorizontal ? Math.sign(event.deltaX) : Math.sign(event.deltaY);
-      const listCanScroll =
-        list &&
-        list.scrollHeight > list.clientHeight + 1 &&
-        ((direction < 0 && list.scrollTop > 0) ||
-          (direction > 0 && list.scrollTop + list.clientHeight < list.scrollHeight - 1));
-
-      if (!dominantHorizontal && listCanScroll && !event.shiftKey) {
-        return;
-      }
-
-      const delta = dominantHorizontal
-        ? event.deltaX
-        : event.shiftKey
-          ? event.deltaY
-          : event.deltaY * 0.9;
-      if (!delta || maxScroll <= 1) return;
-
-      const before = board.scrollLeft;
-      board.scrollLeft = Math.min(maxScroll, Math.max(0, before + delta));
-      if (Math.abs(board.scrollLeft - before) < 0.5) return;
-
-      event.preventDefault();
-      board.classList.add("is-wheel-scrolling");
-      clearTimeout(board._wheelScrollTimer);
-      board._wheelScrollTimer = setTimeout(() => board.classList.remove("is-wheel-scrolling"), 180);
-      syncTop();
-    }, { passive: false });
     track.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       const thumbBox = thumb.getBoundingClientRect();

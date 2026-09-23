@@ -120,16 +120,30 @@ test('refresh restores the last view only after the bank module is fully reloade
  expect(b.errors).toEqual([]);
 });
 
-test('mouse wheel over kanban cards moves horizontally when the hovered column has no vertical scroll left',async({page})=>{
- const b=await backend(page);await login(page);
+test('mouse wheel over kanban cards scrolls the hovered column vertically without moving the board sideways',async({page})=>{
+ const manyDemands=Array.from({length:12},(_,index)=>({
+  ...structuredClone(payload.state.demands[1]),
+  id:`wheel-demand-${index+1}`,
+  obraId:'test-work',
+  titulo:`Demanda vertical ${index+1}`,
+  coluna:'fazer',
+ }));
+ const b=await backend(page,'Admin',false,{demandRecords:manyDemands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
+
  const board=page.locator('.kanban-board[data-kanban-scroll-board]');
- await expect(board).toBeVisible();
- const card=page.locator('.operational-board-panel .demand-card').first();
+ const list=page.locator('.operational-board-panel .kanban-column[data-column="fazer"] .demand-list');
+ const card=list.locator('.demand-card').first();
  await expect(card).toBeVisible();
- const before=await board.evaluate(node=>node.scrollLeft);
- await card.dispatchEvent('wheel',{deltaY:240,deltaX:0,bubbles:true,cancelable:true});
- await expect.poll(()=>board.evaluate(node=>node.scrollLeft)).toBeGreaterThan(before);
+ await expect.poll(()=>list.evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
+
+ const boardLeftBefore=await board.evaluate(node=>node.scrollLeft);
+ const listTopBefore=await list.evaluate(node=>node.scrollTop);
+ await card.hover();
+ await page.mouse.wheel(0,500);
+
+ await expect.poll(()=>list.evaluate(node=>node.scrollTop)).toBeGreaterThan(listTopBefore);
+ expect(await board.evaluate(node=>node.scrollLeft)).toBe(boardLeftBefore);
  expect(b.errors).toEqual([]);
 });
 
