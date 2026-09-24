@@ -5700,6 +5700,7 @@ function filteredDemands() {
     if (operationalFilters.validationGroup && !demandValidationColumnIds.includes(demand.coluna)) return false;
     if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
     if (selectedPunctualities.length) {
+      if (demand.coluna === "pausado") return false;
       const punctuality = isDemandLate(demand) ? "late" : "onTime";
       if (!selectedPunctualities.includes(punctuality)) return false;
     }
@@ -5908,7 +5909,7 @@ function renderOperationalListRow(demand) {
       <td><span class="status-dot" data-status="${demand.coluna}"></span>${demandStatusLabel(demand)}</td>
       <td><span class="tag">${demand.prioridade}</span></td>
       <td class="numeric">${demandHasRecordedValue(demand) ? money(value) : "—"}</td>
-      <td>${isDemandLate(demand) ? `<span class="status-pill" data-status="Atrasada">Atrasada</span>` : dateText(demand.dataPrevistaEntrega)}</td>
+      <td>${demand.coluna === "pausado" ? dateText(demand.dataPrevistaEntrega) : isDemandLate(demand) ? `<span class="status-pill" data-status="Atrasada">Atrasada</span>` : dateText(demand.dataPrevistaEntrega)}</td>
     </tr>
   `;
 }
@@ -5965,10 +5966,12 @@ function renderDemandCard(demand) {
       </div>
       `}
       <span class="demand-card-date">${timing.dateLabel}</span>
+      ${demand.coluna === "pausado" ? "" : `
       <div class="demand-card-alert" data-tone="${timing.tone}">
         <i></i>
         <strong>${timing.label}</strong>
       </div>
+      `}
       ${
         demand.coluna === "concluido" && demandHasRecordedValue(demand)
           ? `<div class="demand-card-value"><span>Valor da demanda</span><strong>${money(value)}</strong></div>`
@@ -6289,7 +6292,7 @@ function demandStatusLabel(demand) {
 
 function isDemandLate(demand) {
   return (
-    !["concluido", "cancelado"].includes(demand.coluna) &&
+    !["concluido", "cancelado", "pausado"].includes(demand.coluna) &&
     demand.dataPrevistaEntrega &&
     demand.dataPrevistaEntrega < todayISO()
   );
