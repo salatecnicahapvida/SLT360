@@ -583,6 +583,7 @@ let demandPointerDragState = null;
 let demandDragSuppressClickUntil = 0;
 let pendingDemandCompletion = null;
 const unassignedAnalystFilterValue = "__sem_analista__";
+const unassignedSprintFilterValue = "__sem_sprint__";
 let operationalFilters = {
   query: "",
   sprintId: [],
@@ -5684,7 +5685,11 @@ function filteredDemands() {
     const plannedDelivery = dateOnly(demand.dataPrevistaEntrega);
     if (operationalFilters.dateFrom && (!plannedDelivery || plannedDelivery < operationalFilters.dateFrom)) return false;
     if (operationalFilters.dateTo && (!plannedDelivery || plannedDelivery > operationalFilters.dateTo)) return false;
-    if (selectedSprints.length && !selectedSprints.includes(demand.sprintId)) return false;
+    if (selectedSprints.length) {
+      const matchesUnassignedSprint = selectedSprints.includes(unassignedSprintFilterValue) && !sprint;
+      const matchesSprint = Boolean(sprint && selectedSprints.includes(sprint.id));
+      if (!matchesUnassignedSprint && !matchesSprint) return false;
+    }
     if (selectedAnalysts.length) {
       const demandAnalysts = demandAnalystNames(demand);
       const matchesUnassigned = selectedAnalysts.includes(unassignedAnalystFilterValue) && !demandAnalysts.length;
@@ -5698,7 +5703,6 @@ function filteredDemands() {
       const punctuality = isDemandLate(demand) ? "late" : "onTime";
       if (!selectedPunctualities.includes(punctuality)) return false;
     }
-    if (selectedSprints.length && !sprint) return false;
     return true;
   }).sort(compareOperationalDemandsByDelivery);
 }
@@ -5783,7 +5787,10 @@ function renderOperationalFilters() {
         <input data-operational-search value="${escapeAttribute(operationalFilters.query)}" placeholder="Buscar por código, obra ou descrição..." />
       </label>
       <div class="filter-grid">
-        ${renderOperationalMultiFilter("sprintId", "Sprint", (state.sprints || []).map((sprint) => ({ value: sprint.id, label: sprint.nome })), "Todas")}
+        ${renderOperationalMultiFilter("sprintId", "Sprint", [
+          { value: unassignedSprintFilterValue, label: "Sem sprint" },
+          ...(state.sprints || []).map((sprint) => ({ value: sprint.id, label: sprint.nome })),
+        ], "Todas")}
         ${renderOperationalMultiFilter("analyst", "Analista", [
           { value: unassignedAnalystFilterValue, label: "Sem analista" },
           ...uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })),
@@ -9374,7 +9381,10 @@ function analystFilterOptions(selected = "") {
 
 function maintenanceSprintFilterOptions(selected = "") {
   const selectedSprintId = sprintByReference(selected)?.id || "";
-  return [`<option value="">Todas</option>`]
+  return [
+    `<option value="">Todas</option>`,
+    `<option value="${unassignedSprintFilterValue}" ${selected === unassignedSprintFilterValue ? "selected" : ""}>Sem sprint</option>`,
+  ]
     .concat((state.sprints || []).map((sprint) => `<option value="${sprint.id}" ${sprint.id === selectedSprintId ? "selected" : ""}>${sprint.nome}${sprint.status === "Ativa" ? " (ativa)" : ""}</option>`))
     .join("");
 }
@@ -9384,7 +9394,11 @@ function filteredMaintenanceDemands() {
   return maintenanceItems().filter((item) => {
     const query = normalizeSearchText([searchTerm, filters.query].filter(Boolean).join(" ")).trim();
     if (query && !query.split(/\s+/).every((term) => maintenanceSearchText(item).includes(term))) return false;
-    if (filters.sprint && maintenanceSprintId(item) !== (sprintByReference(filters.sprint)?.id || filters.sprint)) return false;
+    if (filters.sprint) {
+      const sprintId = maintenanceSprintId(item);
+      const wantsUnassigned = filters.sprint === unassignedSprintFilterValue;
+      if (wantsUnassigned ? Boolean(sprintId) : sprintId !== (sprintByReference(filters.sprint)?.id || filters.sprint)) return false;
+    }
     if (filters.analyst) {
       const analysts = demandAnalystNames(item);
       if (filters.analyst === unassignedAnalystFilterValue ? analysts.length : !analysts.includes(filters.analyst)) return false;
