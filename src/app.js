@@ -15178,9 +15178,12 @@ function renderSprintsTable() {
                   <td><span class="status-pill" data-status="${sprint.status === "Ativa" ? "Completo" : "Aguardando"}">${sprint.status}</span></td>
                   <td><span class="tag">Todos os módulos</span></td>
                   <td>
-                    ${sprint.status === "Ativa"
-                      ? `<span class="tag">Atual</span>`
-                      : `<button class="secondary-action compact-action" type="button" data-action="update-sprint-status" data-id="${escapeAttribute(sprint.id)}" aria-label="Tornar atual — ${escapeAttribute(sprint.nome)}">Tornar atual</button>`}
+                    <div class="inline-actions">
+                      <button class="secondary-action compact-action" type="button" data-action="edit-sprint" data-id="${escapeAttribute(sprint.id)}" aria-label="Editar — ${escapeAttribute(sprint.nome)}">Editar</button>
+                      ${sprint.status === "Ativa"
+                        ? `<span class="tag">Atual</span>`
+                        : `<button class="secondary-action compact-action" type="button" data-action="update-sprint-status" data-id="${escapeAttribute(sprint.id)}" aria-label="Tornar atual — ${escapeAttribute(sprint.nome)}">Tornar atual</button>`}
+                    </div>
                   </td>
                 </tr>
               `
@@ -16165,42 +16168,45 @@ function renderDemandHistory(histories) {
   `;
 }
 
-function openSprintModal() {
+function openSprintModal(sprintId = "") {
+  const sprint = (state.sprints || []).find((item) => String(item.id) === String(sprintId)) || null;
+  const isEditing = Boolean(sprint);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card" id="sprintForm" aria-labelledby="sprintTitle">
+        <input type="hidden" name="sprintId" value="${escapeAttribute(sprint?.id || "")}" />
         <header>
-          <h2 id="sprintTitle">Nova sprint global</h2>
-          <p class="muted">Use períodos quinzenais para organizar as esteiras operacionais de todos os módulos.</p>
+          <h2 id="sprintTitle">${isEditing ? "Editar sprint global" : "Nova sprint global"}</h2>
+          <p class="muted">${isEditing ? "Atualize nome, período ou status sem perder os vínculos existentes." : "Use períodos quinzenais para organizar as esteiras operacionais de todos os módulos."}</p>
         </header>
         <div class="modal-body">
           <div class="error-box" id="formError" data-form-error></div>
           <div class="form-grid">
             <label class="field">
               <span>Nome da sprint</span>
-              <input name="nome" required placeholder="Sprint 14" />
+              <input name="nome" required placeholder="Sprint 14" value="${escapeAttribute(sprint?.nome || "")}" />
             </label>
             <label class="field">
               <span>Status</span>
               <select name="status">
-                <option value="Ativa">Ativa</option>
-                <option value="Planejada">Planejada</option>
-                <option value="Encerrada">Encerrada</option>
+                <option value="Ativa" ${sprint?.status === "Ativa" ? "selected" : ""}>Ativa</option>
+                <option value="Planejada" ${!sprint || sprint?.status === "Planejada" ? "selected" : ""}>Planejada</option>
+                <option value="Encerrada" ${sprint?.status === "Encerrada" ? "selected" : ""}>Encerrada</option>
               </select>
             </label>
             <label class="field">
               <span>Data início</span>
-              <input name="dataInicio" type="date" required />
+              <input name="dataInicio" type="date" required value="${escapeAttribute(sprint?.dataInicio || "")}" />
             </label>
             <label class="field">
               <span>Data fim</span>
-              <input name="dataFim" type="date" required />
+              <input name="dataFim" type="date" required value="${escapeAttribute(sprint?.dataFim || "")}" />
             </label>
           </div>
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
-          <button class="primary-action" type="submit">Cadastrar sprint global</button>
+          <button class="primary-action" type="submit">${isEditing ? "Salvar alterações" : "Cadastrar sprint global"}</button>
         </footer>
       </form>
     </div>
@@ -17742,6 +17748,8 @@ function deriveEVStatus(work) {
 
 async function handleSprintSubmit(form) {
   const formData = new FormData(form);
+  const sprintId = String(formData.get("sprintId") || "").trim();
+  const existing = sprintId ? (state.sprints || []).find((sprint) => String(sprint.id) === sprintId) : null;
   const nome = String(formData.get("nome") || "").trim();
   const dataInicio = formData.get("dataInicio");
   const dataFim = formData.get("dataFim");
@@ -17754,37 +17762,64 @@ async function handleSprintSubmit(form) {
     showFormError("Informe um período válido para a sprint.", form);
     return;
   }
-  const duplicated = (state.sprints || []).some((sprint) => normalizeSearchText(sprint.nome) === normalizeSearchText(nome));
+  const duplicated = (state.sprints || []).some((sprint) =>
+    String(sprint.id) !== String(existing?.id || "") &&
+    normalizeSearchText(sprint.nome) === normalizeSearchText(nome)
+  );
   if (duplicated) {
     showFormError("Já existe uma sprint com esse nome. Ajuste o nome antes de salvar.", form);
     form.querySelector('[name="nome"]')?.focus();
     return;
   }
-  const status = formData.get("status");
+
+  const rawStatus = String(formData.get("status") || "");
+  const status = ["Ativa", "Planejada", "Encerrada"].includes(rawStatus) ? rawStatus : "Planejada";
+  const sprintsSnapshot = clone(state.sprints || []);
+  const historySnapshot = clone(state.history || []);
+
   if (status === "Ativa") {
     state.sprints = (state.sprints || []).map((sprint) => ({
       ...sprint,
-      status: sprint.status === "Ativa" ? "Encerrada" : sprint.status,
+      status: String(sprint.id) !== String(existing?.id || "") && sprint.status === "Ativa" ? "Encerrada" : sprint.status,
     }));
   }
+
   const sprint = {
-    id: nextCode("sprint", state.sprints || []),
+    ...(existing || {}),
+    id: existing?.id || nextCode("sprint", state.sprints || []),
     nome,
     dataInicio,
     dataFim,
     status,
   };
-  state.sprints = [...(state.sprints || []), sprint];
-  addHistory({
-    entidade: "sprint",
-    entidadeId: sprint.id,
-    campo: "criação",
-    valorAnterior: "Não existia",
-    valorNovo: `${sprint.nome} | ${dateText(dataInicio)} a ${dateText(dataFim)}`,
-  });
-  if (!await saveState()) return false;
+
+  if (existing) {
+    state.sprints = (state.sprints || []).map((item) => String(item.id) === String(existing.id) ? sprint : item);
+    addHistory({
+      entidade: "sprint",
+      entidadeId: sprint.id,
+      campo: "edição",
+      valorAnterior: `${existing.nome} | ${dateText(existing.dataInicio)} a ${dateText(existing.dataFim)} | ${existing.status}`,
+      valorNovo: `${sprint.nome} | ${dateText(dataInicio)} a ${dateText(dataFim)} | ${status}`,
+    });
+  } else {
+    state.sprints = [...(state.sprints || []), sprint];
+    addHistory({
+      entidade: "sprint",
+      entidadeId: sprint.id,
+      campo: "criação",
+      valorAnterior: "Não existia",
+      valorNovo: `${sprint.nome} | ${dateText(dataInicio)} a ${dateText(dataFim)}`,
+    });
+  }
+
+  if (!await saveState()) {
+    state.sprints = sprintsSnapshot;
+    state.history = historySnapshot;
+    return false;
+  }
   if (form.closest(".modal-card")) closeModal();
-  showToast("Sprint global cadastrada para todos os módulos.");
+  showToast(existing ? "Sprint global atualizada." : "Sprint global cadastrada para todos os módulos.");
   render();
 }
 
@@ -19585,6 +19620,10 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "open-contract") openContractModal();
   if (action === "open-sprint") openSprintModal();
+  if (action === "edit-sprint") {
+    openSprintModal(actionButton.dataset.id);
+    return;
+  }
   if (action === "update-sprint-status") {
     await activateSprint(actionButton.dataset.id);
     return;
