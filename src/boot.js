@@ -497,7 +497,9 @@ async function startInternal() {
       if (!readyForWrite(uiModule)) throw new Error('Aguarde o carregamento completo do banco antes de inserir ou alterar dados.');
       const writeSequenceBefore = cloudWriteSequence;
       await lazyStore.saveAndWait(dataModule(uiModule), snapshot);
-      if (cloudWriteSequence > writeSequenceBefore) notifyBankSaved();
+      const confirmedWrite = cloudWriteSequence > writeSequenceBefore;
+      if (confirmedWrite) notifyBankSaved();
+      return confirmedWrite;
     },
     async logout() {
       try { await lazyStore.flush(); } catch { return; }
