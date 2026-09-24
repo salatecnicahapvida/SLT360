@@ -16720,8 +16720,16 @@ function demandWorkCatalog() {
 }
 
 function isDemandWorkEligible(work) {
-  const year = demandWorkYear(work);
-  return /^\d{4}$/.test(year) && Number(year) >= 2025;
+  const record = work?._historicalBudgetWork
+    ? arrayOrFallback(state.evs).find((item) => String(item.id) === String(work.historicalRecordId))
+    : null;
+  const year = String(work?.anoObra || record?.year || "").slice(0, 4);
+  if (/^\d{4}$/.test(year)) return Number(year) >= 2025;
+  const isManualPortfolioWork =
+    /^OBR-\d+$/i.test(String(work?.id || "")) &&
+    !work?._historicalBudgetWork &&
+    !work?.sourceHistoricalRecordId;
+  return isManualPortfolioWork && new Date().getFullYear() >= 2025;
 }
 
 function eligibleDemandWorkCatalog() {
