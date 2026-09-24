@@ -15172,18 +15172,20 @@ function renderSprintsTable() {
                   .map(
                     (sprint) => `
                 <tr>
-                  <td><strong>${sprint.nome}</strong></td>
+                  <td>
+                    <div class="inline-actions">
+                      <strong>${sprint.nome}</strong>
+                      <button class="secondary-action compact-action" type="button" data-action="edit-sprint" data-id="${escapeAttribute(sprint.id)}" aria-label="Editar — ${escapeAttribute(sprint.nome)}">Editar</button>
+                    </div>
+                  </td>
                   <td>${dateText(sprint.dataInicio)}</td>
                   <td>${dateText(sprint.dataFim)}</td>
                   <td><span class="status-pill" data-status="${sprint.status === "Ativa" ? "Completo" : "Aguardando"}">${sprint.status}</span></td>
                   <td><span class="tag">Todos os módulos</span></td>
                   <td>
-                    <div class="inline-actions">
-                      <button class="secondary-action compact-action" type="button" data-action="edit-sprint" data-id="${escapeAttribute(sprint.id)}" aria-label="Editar — ${escapeAttribute(sprint.nome)}">Editar</button>
-                      ${sprint.status === "Ativa"
-                        ? `<span class="tag">Atual</span>`
-                        : `<button class="secondary-action compact-action" type="button" data-action="update-sprint-status" data-id="${escapeAttribute(sprint.id)}" aria-label="Tornar atual — ${escapeAttribute(sprint.nome)}">Tornar atual</button>`}
-                    </div>
+                    ${sprint.status === "Ativa"
+                      ? `<span class="tag">Atual</span>`
+                      : `<button class="secondary-action compact-action" type="button" data-action="update-sprint-status" data-id="${escapeAttribute(sprint.id)}" aria-label="Tornar atual — ${escapeAttribute(sprint.nome)}">Tornar atual</button>`}
                   </td>
                 </tr>
               `
