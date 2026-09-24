@@ -16295,7 +16295,7 @@ function openWorkModal(workId = "", { historicalRecordId = "" } = {}) {
             </label>
             <label class="field">
               <span>Ano da obra</span>
-              <input name="anoObra" list="anoObraOptions" inputmode="numeric" maxlength="4" placeholder="2026" value="${fieldValue("anoObra")}" />
+              <input name="anoObra" list="anoObraOptions" inputmode="numeric" maxlength="4" placeholder="2026" value="${fieldValue("anoObra", isEditing ? "" : String(new Date().getFullYear()))}" />
             </label>
             <label class="field">
               <span>Classificação</span>
@@ -16720,7 +16720,7 @@ function demandWorkCatalog() {
 }
 
 function isDemandWorkEligible(work) {
-  const year = String(work?.anoObra || "").slice(0, 4);
+  const year = demandWorkYear(work);
   return /^\d{4}$/.test(year) && Number(year) >= 2025;
 }
 
@@ -16733,7 +16733,13 @@ function demandWorkYear(work) {
     ? arrayOrFallback(state.evs).find((item) => String(item.id) === String(work.historicalRecordId))
     : null;
   const latestVersion = arrayOrFallback(work?.ev?.versions).at(-1);
-  return String(work?.anoObra || record?.year || latestVersion?.data || "").slice(0, 4);
+  const explicitYear = String(work?.anoObra || record?.year || latestVersion?.data || "").slice(0, 4);
+  if (/^\d{4}$/.test(explicitYear)) return explicitYear;
+  const isManualPortfolioWork =
+    /^OBR-\d+$/i.test(String(work?.id || "")) &&
+    !work?._historicalBudgetWork &&
+    !work?.sourceHistoricalRecordId;
+  return isManualPortfolioWork ? String(new Date().getFullYear()) : "";
 }
 
 function historicalRecordForWork(work) {
@@ -17864,7 +17870,8 @@ async function handleWorkSubmit(form) {
   const areaEquivalente = parseCurrency(formData.get("areaEquivalente"));
   const areaConstruida = parseCurrency(formData.get("areaConstruida"));
   const prazoDias = Number(String(formData.get("prazoDias") || "").replace(/[^\d]/g, ""));
-  const anoObra = String(formData.get("anoObra") || "").replace(/[^\d]/g, "").slice(0, 4);
+  const anoObraInformado = String(formData.get("anoObra") || "").replace(/[^\d]/g, "").slice(0, 4);
+  const anoObra = anoObraInformado.length === 4 ? anoObraInformado : String(new Date().getFullYear());
   const codigoOriginal = String(formData.get("codigoOriginal") || "").trim().replace(/[.\s]+$/g, "") || "0000";
   const tipoVerba = String(formData.get("tipoVerba") || "").trim().toUpperCase();
   const ordemInternaSAP = String(formData.get("ordemInternaSAP") || "").trim();
