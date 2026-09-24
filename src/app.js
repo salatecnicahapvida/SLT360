@@ -508,7 +508,7 @@ const defaultState = {
   sprints: [], history: [], funds: [], fundMovements: [], budgetRevisions: [],
   maintenanceDemands: [], projectDemands: [], capexManualOiRows: [], clinicalAssets: [],
   workRevisions: [], evs: [], projectStatusOverrides: {}, evTypologyOverrides: {},
-  evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: [], configurationCatalog: []
+  evReferenceTargets: {}, strategicTargetOverrides: {}, deletedEVRecordIds: [], deletedEVArchive: [], configurationCatalog: []
 };
 
 function importSignature(imported = {}) {
@@ -1159,6 +1159,7 @@ function persistedStatePayload() {
       strategicTargetOverrides: state.strategicTargetOverrides || {},
       configurationCatalog: arrayOrFallback(state.configurationCatalog),
       deletedEVRecordIds: arrayOrFallback(state.deletedEVRecordIds),
+      deletedEVArchive: arrayOrFallback(state.deletedEVArchive),
     sicApprovalWorks: arrayOrFallback(state.sicApprovalWorks),
     sicApprovalWeeks: arrayOrFallback(state.sicApprovalWeeks),
     sicApprovalSnapshots: arrayOrFallback(state.sicApprovalSnapshots),
@@ -8188,7 +8189,7 @@ async function handleEVTypologySubmit(form) {
 }
 
 function canDeleteEVRecords() {
-  return activeRole() === "Admin";
+  return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
 }
 
 function canDeleteWorks() {
@@ -8308,7 +8309,7 @@ function evDeleteDependencies(record) {
 
 function openDeleteEVRecordModal(recordId) {
   if (!canDeleteEVRecords()) {
-    showToast("Somente o perfil Admin pode excluir EVs.");
+    showToast("Somente perfis Gestor e Admin podem excluir EVs.");
     return;
   }
   const record = evUnifiedRecords().find((item) => item.id === recordId);
@@ -8317,50 +8318,132 @@ function openDeleteEVRecordModal(recordId) {
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <article class="modal-card compact-modal ev-delete-modal" aria-labelledby="deleteEVTitle">
-        <header class="modal-header"><div><span class="eyebrow">Ação exclusiva do Admin</span><h2 id="deleteEVTitle">Excluir EV de toda a base?</h2><p class="muted">${escapeAttribute(record.year)} · ${escapeAttribute(record.project)}</p></div><button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button></header>
-        <div class="modal-body">
-          <div class="danger-callout"><strong>Esta exclusão é permanente neste navegador.</strong><span>O EV será removido da carteira unificada, Estratégica, SICs, indicadores e pesquisas. Seus vínculos cadastrados também serão excluídos.</span></div>
-          <div class="kpi-detail-grid">
-            ${splitItem("Demandas vinculadas", String(dependencies.demands))}
-            ${splitItem("SICs vinculadas", String(dependencies.sics))}
-            ${splitItem("Contratos vinculados", String(dependencies.contracts))}
-            ${splitItem("Verbas vinculadas", String(dependencies.funds))}
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow">Gestão / Admin</span>
+            <h2 id="deleteEVTitle">Excluir este EV?</h2>
+            <p class="muted">${escapeAttribute(record.year)} · ${escapeAttribute(record.project)}</p>
           </div>
-          <label class="ev-delete-confirm"><input type="checkbox" data-ev-delete-check /><span>Confirmo que desejo excluir este EV e todos os seus dados relacionados.</span></label>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="danger-callout">
+            <strong>Somente o EV será excluído.</strong>
+            <span>A obra permanecerá cadastrada como “Sem EV”. Demandas, SICs, contratos e verbas vinculados não serão apagados.</span>
+          </div>
+          <div class="kpi-detail-grid">
+            ${splitItem("Demandas preservadas", String(dependencies.demands))}
+            ${splitItem("SICs preservadas", String(dependencies.sics))}
+            ${splitItem("Contratos preservados", String(dependencies.contracts))}
+            ${splitItem("Verbas preservadas", String(dependencies.funds))}
+          </div>
+          <label class="field">
+            <span>Justificativa da exclusão *</span>
+            <textarea data-ev-delete-reason rows="3" maxlength="500" required placeholder="Informe por que este EV está sendo excluído"></textarea>
+          </label>
+          <label class="ev-delete-confirm">
+            <input type="checkbox" data-ev-delete-check />
+            <span>Confirmo que desejo excluir somente este EV e manter a obra e seus vínculos.</span>
+          </label>
         </div>
-        <footer class="modal-actions"><button class="secondary-action" type="button" data-action="close-modal">Cancelar</button><button class="primary-action danger-action" type="button" data-action="confirm-delete-ev-record" data-id="${escapeAttribute(record.id)}" disabled>Excluir definitivamente</button></footer>
+        <footer class="modal-actions">
+          <button class="secondary-action" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action danger-action" type="button" data-action="confirm-delete-ev-record" data-id="${escapeAttribute(record.id)}" disabled>Excluir EV</button>
+        </footer>
       </article>
     </div>`);
 }
 
 async function deleteEVRecordEverywhere(recordId) {
   if (!canDeleteEVRecords()) {
-    showToast("Somente o perfil Admin pode excluir EVs.");
+    showToast("Somente perfis Gestor e Admin podem excluir EVs.");
     return;
   }
   const record = evUnifiedRecords().find((item) => item.id === recordId);
   if (!record) return;
-  const dependencies = evDeleteDependencies(record);
-  const workId = dependencies.work?.id || "";
-  if (record.sourceKind === "historical") state.deletedEVRecordIds = [...new Set([...arrayOrFallback(state.deletedEVRecordIds), record.id])];
-  if (workId) {
-    state.works = state.works.filter((item) => item.id !== workId);
-    state.demands = state.demands.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.sics = state.sics.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.contracts = state.contracts.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.funds = state.funds.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.fundMovements = state.fundMovements.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.budgetRevisions = state.budgetRevisions.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.capexManualOiRows = state.capexManualOiRows.filter((item) => item.obraId !== workId && item.workId !== workId);
-    state.history = state.history.filter((item) => item.obraId !== workId && item.workId !== workId);
-    if (state.projectStatusOverrides) delete state.projectStatusOverrides[workId];
+
+  const reason = String(modalRoot.querySelector("[data-ev-delete-reason]")?.value || "").trim();
+  const confirmed = Boolean(modalRoot.querySelector("[data-ev-delete-check]")?.checked);
+  if (!reason) {
+    showToast("Informe a justificativa da exclusão do EV.");
+    modalRoot.querySelector("[data-ev-delete-reason]")?.focus();
+    return;
   }
-  if (state.evTypologyOverrides) delete state.evTypologyOverrides[record.id];
-  if (selectedWorkId === workId) selectedWorkId = "all";
-  if (!await saveState()) return false;
+  if (!confirmed) {
+    showToast("Confirme a exclusão do EV.");
+    return;
+  }
+
+  const dependencies = evDeleteDependencies(record);
+  const work = dependencies.work;
+  const workId = work?.id || "";
+  const actor = currentUser() || {};
+  const previous = {
+    works: clone(state.works),
+    deletedEVRecordIds: clone(arrayOrFallback(state.deletedEVRecordIds)),
+    deletedEVArchive: clone(arrayOrFallback(state.deletedEVArchive)),
+    evTypologyOverrides: clone(state.evTypologyOverrides || {}),
+  };
+
+  const archivedEV = work?.ev && !work.ev._virtualEmptyEV ? clone(work.ev) : null;
+  state.deletedEVArchive = [{
+    id: `EVDEL-${Date.now()}-${String(record.id || "ev").replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    recordId: record.id,
+    sourceKind: record.sourceKind,
+    code: record.code || "",
+    project: record.project || work?.nome || "",
+    workId,
+    reason,
+    deletedAt: new Date().toISOString(),
+    deletedBy: {
+      id: actor.id || "",
+      nome: actor.nome || "",
+      email: actor.email || "",
+      perfil: activeRole(),
+    },
+    dependencies: {
+      demands: dependencies.demands,
+      sics: dependencies.sics,
+      contracts: dependencies.contracts,
+      funds: dependencies.funds,
+    },
+    evSnapshot: archivedEV,
+    recordSnapshot: clone(record),
+  }, ...arrayOrFallback(state.deletedEVArchive)].slice(0, 500);
+
+  if (record.sourceKind === "historical") {
+    state.deletedEVRecordIds = [...new Set([...arrayOrFallback(state.deletedEVRecordIds), record.id])];
+  }
+
+  if (workId) {
+    const workIndex = state.works.findIndex((item) => item.id === workId);
+    if (workIndex >= 0) {
+      state.works[workIndex] = {
+        ...state.works[workIndex],
+        ev: virtualEmptyEV(state.works[workIndex]),
+      };
+    }
+  }
+
+  if (state.evTypologyOverrides) {
+    delete state.evTypologyOverrides[record.id];
+    if (workId) delete state.evTypologyOverrides[`current-${workId}`];
+  }
+
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    state.works = previous.works;
+    state.deletedEVRecordIds = previous.deletedEVRecordIds;
+    state.deletedEVArchive = previous.deletedEVArchive;
+    state.evTypologyOverrides = previous.evTypologyOverrides;
+    showToast(error?.message || "Não foi possível confirmar a exclusão do EV no banco.");
+    return;
+  }
+
   closeModal();
   render();
-  showToast(`EV ${record.code || record.project} excluído de toda a base.`);
+  showToast(`EV ${record.code || record.project} excluído. A obra foi mantida como Sem EV.`);
 }
 
 const sltINCCData = Object.freeze({
@@ -20619,10 +20702,12 @@ document.addEventListener("input", (event) => {
     scheduleInputRender("[data-strategic-decision-search]", value);
     return;
   }
-  if (event.target.matches("[data-ev-delete-check]")) {
+  if (event.target.matches("[data-ev-delete-check], [data-ev-delete-reason]")) {
     const modal = event.target.closest(".ev-delete-modal");
     const button = modal?.querySelector('[data-action="confirm-delete-ev-record"]');
-    if (button) button.disabled = !event.target.checked;
+    const checked = Boolean(modal?.querySelector("[data-ev-delete-check]")?.checked);
+    const reason = String(modal?.querySelector("[data-ev-delete-reason]")?.value || "").trim();
+    if (button) button.disabled = !checked || !reason;
     return;
   }
   if (event.target.matches("[data-work-delete-check]")) {
@@ -20826,7 +20911,7 @@ function historicalBudgetWorkFromRecord(record, linkedWork = null) {
 }
 
 function historicalBudgetWorks() {
-  return arrayOrFallback(state.evs).map((record) => {
+  return evHistoricalSourceRecords().map((record) => {
     const linkedWork = evUnifiedWorkForHistorical(record);
     return historicalBudgetWorkFromRecord(record, linkedWork);
   });
