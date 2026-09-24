@@ -1594,6 +1594,63 @@ test('portfolio rows expose EV and work-detail actions',async({page})=>{
  await expect(page.locator('.ev-modal-card .ev-master-panel, .ev-modal-card .ev-area-panel, .ev-modal-card .ev-attachments')).toHaveCount(0);
  expect(b.errors).toEqual([]);
 });
+test('historical EV opened from Portfolio persists after save and reload',async({page})=>{
+ const historical={
+  id:'evh-detached-save',
+  code:'HIST-SAVE',
+  project:'EV Histórico Persistência - CE',
+  year:2026,
+  date:'2026-08-01',
+  revision:'REV01',
+  typology:'Hospital',
+  technician:'Técnico Persistência',
+  area:250,
+  total:1000,
+  baseTotal:1000,
+  disciplines:{'adequacoes-civis':1000},
+  items:[],
+ };
+ const work=structuredClone(payload.state.works[0]);
+ work.id='unrelated-work';
+ work.nome='Obra sem relação com EV histórico';
+ work.codigoOriginal='UNRELATED';
+ work.chaveUnica='UNRELATED';
+ const b=await backend(page,'Admin',false,{workRecords:[work],demandRecords:[],evRecords:[historical]});
+ await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+
+ let row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'EV Histórico Persistência'});
+ await expect(row).toBeVisible();
+ await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
+
+ const value=page.locator('#evForm .ev-line-row[data-discipline-id="adequacoes-civis"] .ev-value-input');
+ await expect(value).toHaveValue('1.000,00');
+ await value.fill('1.234,56');
+ await page.locator('#evForm').getByRole('button',{name:'Salvar EV',exact:true}).click();
+ await expect(page.locator('#toast')).toHaveText('EV salvo no banco');
+
+ const changes=b.requests.flatMap(request=>request.changes);
+ expect(changes.some(change=>
+  change.entity==='projects_works'
+  && change.document?.sourceHistoricalRecordId==='evh-detached-save'
+ )).toBe(true);
+ expect(changes.some(change=>change.entity==='budget_estimates')).toBe(true);
+ expect(changes.some(change=>
+  change.entity==='budget_estimate_lines'
+  && change.document?.disciplinaId==='adequacoes-civis'
+  && Number(change.document?.valorOrcado)===1234.56
+ )).toBe(true);
+
+ await page.reload({waitUntil:'domcontentloaded'});
+ await expect(page.getByRole('heading',{name:'Portfólio de Obras e EVs',exact:true})).toBeVisible();
+ row=page.locator('.portfolio-works-table tbody tr').filter({hasText:'EV Histórico Persistência'});
+ await expect(row).toBeVisible();
+ await row.getByRole('button',{name:'Abrir EV',exact:true}).click();
+ await expect(page.locator('#evForm .ev-line-row[data-discipline-id="adequacoes-civis"] .ev-value-input')).toHaveValue('1.234,56');
+ expect(b.errors).toEqual([]);
+});
+
 test('legacy consolidated SIC can be edited and deleted from the EV',async({page})=>{
  const legacyWork=structuredClone(payload.state.works[0]);
  legacyWork.id='legacy-sic-work';
