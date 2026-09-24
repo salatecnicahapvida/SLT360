@@ -1120,7 +1120,7 @@ async function saveState() {
 async function saveStateAndWait() {
   const module = dataUIModuleForView(currentView);
   if (!globalThis.SLT_CLOUD.canWrite(module)) throw new Error("Aguarde o carregamento completo do banco ou confira sua permissão de edição.");
-  await globalThis.SLT_CLOUD.saveAndWait(module, persistedStatePayload());
+  return await globalThis.SLT_CLOUD.saveAndWait(module, persistedStatePayload());
 }
 
 function persistedStatePayload() {
@@ -8564,7 +8564,12 @@ function applyDefaultEVZeroLineVisibility(form) {
 }
 
 function openEVModal(workId, { completionDemandId = "" } = {}) {
-  const work = workById(workId);
+  let work = workById(workId);
+  const historicalPrefix = "historical-budget-";
+  if (work?._historicalBudgetWork && String(work.id || "").startsWith(historicalPrefix)) {
+    const historicalRecordId = work.historicalRecordId || String(work.id).slice(historicalPrefix.length);
+    work = ensureEditableHistoricalEV(historicalRecordId);
+  }
   if (!work) return;
   selectedWorkId = work.id;
   const kpis = evTopKpiReading(work);
@@ -17742,9 +17747,16 @@ async function handleEVSubmit(form, mode = "final") {
   }
 
   try {
-    await saveStateAndWait();
+    const confirmedWrite = await saveStateAndWait();
+    if (!confirmedWrite) {
+      throw new Error("O banco não recebeu nenhuma alteração deste EV. O salvamento foi interrompido para evitar uma confirmação falsa.");
+    }
   } catch (error) {
-    if (workIndex >= 0) state.works[workIndex] = workSnapshot;
+    const currentIndex = state.works.findIndex((item) => item.id === work.id);
+    if (currentIndex >= 0) {
+      if (workIndex >= 0) state.works[currentIndex] = workSnapshot;
+      else state.works.splice(currentIndex, 1);
+    }
     state.history = historySnapshot;
     showFormError(error?.message || "O EV não foi confirmado pelo banco. Recarregue os dados antes de tentar novamente.", form);
     return;
