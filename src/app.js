@@ -5930,6 +5930,9 @@ function renderDemandCard(demand) {
   const lecomNumber = sicInfo?.lecomNumber || "";
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandProducedValue(demand);
+  const timingAlert = demand.coluna === "pausado"
+    ? ""
+    : '<div class="demand-card-alert" data-tone="' + escapeAttribute(timing.tone) + '"><i></i><strong>' + escapeAttribute(timing.label) + '</strong></div>';
   return `
     <article class="demand-card ${isSic ? "is-sic" : ""}" data-status="${demand.coluna}" data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <div class="demand-card-top">
@@ -5966,12 +5969,7 @@ function renderDemandCard(demand) {
       </div>
       `}
       <span class="demand-card-date">${timing.dateLabel}</span>
-      ${demand.coluna === "pausado" ? "" : `
-      <div class="demand-card-alert" data-tone="${timing.tone}">
-        <i></i>
-        <strong>${timing.label}</strong>
-      </div>
-      `}
+      ${timingAlert}
       ${
         demand.coluna === "concluido" && demandHasRecordedValue(demand)
           ? `<div class="demand-card-value"><span>Valor da demanda</span><strong>${money(value)}</strong></div>`
