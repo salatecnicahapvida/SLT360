@@ -1,3 +1,5 @@
+import { decoratePayloadWithPortfolioAlerts, stripLivePortfolioAlerts } from './sic-director-queue.js';
+
 const KEYS = new Set([
   'sic-approval:obras',
   'sic-approval:weeks',
@@ -12,7 +14,7 @@ const FIELDS = {
 };
 const CHANNEL = 'slt360-sic-approvals-v1';
 
-export function mountSicApprovals(target, cloud) {
+export function mountSicApprovals(target, cloud, portfolioWorks = []) {
   if (!target || !cloud?.canRead('works')) return () => {};
   let active = true;
   const frame = document.createElement('iframe');
@@ -21,6 +23,7 @@ export function mountSicApprovals(target, cloud) {
   frame.style.cssText = 'display:block;width:100%;height:calc(100vh - 215px);min-height:720px;border:0;border-radius:12px;background:#f4f6fa';
   frame.setAttribute('sandbox', 'allow-scripts allow-downloads allow-modals');
   let snapshot;
+  let displayPayload;
   let fetching;
   let writing = Promise.resolve();
   let checking = false;
@@ -29,7 +32,8 @@ export function mountSicApprovals(target, cloud) {
       if (!Array.isArray(row?.payload?.obras) || !Array.isArray(row?.payload?.weeks) || !Array.isArray(row?.payload?.snapshots)) {
         throw new Error('A base compartilhada de Aprovação de SIC’s está incompleta.');
       }
-      snapshot = row;
+      snapshot = { ...row, payload: stripLivePortfolioAlerts(row.payload) };
+      displayPayload = decoratePayloadWithPortfolioAlerts(snapshot.payload, portfolioWorks);
       return row;
     }).finally(() => { fetching = null; });
     return fetching;
@@ -40,10 +44,11 @@ export function mountSicApprovals(target, cloud) {
   };
   async function write(changes) {
     if (!cloud.canWrite('works')) throw new Error('Seu perfil não permite editar Obras.');
-    const payload = { ...snapshot.payload, ...changes };
+    const payload = stripLivePortfolioAlerts({ ...displayPayload, ...changes });
     const saved = await cloud.saveSicApprovalSnapshot(payload, snapshot.revision);
     if (!saved) throw new Error('CONFLITO_SIC: Outro usuário alterou estes dados. Recarregue para ver a versão atual antes de editar novamente.');
     snapshot = { payload, revision: saved.revision };
+    displayPayload = decoratePayloadWithPortfolioAlerts(payload, portfolioWorks);
     return true;
   }
   async function onMessage(event) {
@@ -54,7 +59,7 @@ export function mountSicApprovals(target, cloud) {
       if (!active) return;
       if (action === 'ready') return reply(id, true);
       if ((action === 'get' || action === 'set') && !KEYS.has(key)) throw new Error('Chave de armazenamento inválida.');
-      if (action === 'get') return reply(id, JSON.stringify(snapshot.payload[FIELDS[key]] ?? (key.endsWith('notification-reads') ? {} : [])));
+      if (action === 'get') return reply(id, JSON.stringify(displayPayload[FIELDS[key]] ?? (key.endsWith('notification-reads') ? {} : [])));
       if (action === 'set') {
         if (typeof value !== 'string' || value.length > 3000000) throw new Error('Dados de SIC inválidos ou grandes demais.');
         const data = JSON.parse(value);

@@ -866,6 +866,9 @@ function ensureDataSchema(obras, weeks, snapshots){
     if(!('fingerprint' in w)) w.fingerprint = null;
     if(typeof w.placeholder!=='boolean') w.placeholder=false;
     if(typeof w.createdByPostpone!=='boolean') w.createdByPostpone=false;
+    if(!['open','provisional','closed'].includes(String(w.status||'').toLowerCase())){
+      w.status=w.placeholder?'provisional':'open';
+    }
   });
   (snapshots||[]).forEach(s=>{ s.alerts=Array.isArray(s.alerts)?s.alerts:[]; });
   return {obras:obras||[], weeks:weeks||[], snapshots:snapshots||[]};
@@ -1439,7 +1442,8 @@ function ensureNextWeekForPostpone(currentWeek){
     importedAt:now,
     fingerprint:null,
     placeholder:true,
-    createdByPostpone:true
+    createdByPostpone:true,
+    status:'provisional'
   };
   state.weeks.push(target);
   return {week:target,created:true};
@@ -3229,7 +3233,8 @@ function movementNotificationTitle(evt){
     incremental_import:'Acréscimo na semana vigente',
     card_excluded:'Card excluído da apresentação',
     card_restored:'Card restaurado na apresentação',
-    card_postponed:'Card adiado para a próxima semana'
+    card_postponed:'Card adiado para a próxima semana',
+    sic_queued:'SIC incluída para aprovação da Diretoria'
   };
   return labels[evt?.type]||'Movimentação da obra';
 }
@@ -3693,7 +3698,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
       const result=await addRowsToWeek(addCurrentRows,week,{sourceLabel:'importação manual'});
       // Se a semana nasceu provisoriamente por um adiamento, uma importação manual nela
       // confirma que ela já é uma semana operacional real.
-      if(week.placeholder){ week.placeholder=false; week.createdByPostpone=false; week.importedAt=new Date().toISOString(); }
+      if(week.placeholder){ week.placeholder=false; week.createdByPostpone=false; week.status='open'; week.importedAt=new Date().toISOString(); }
       const ok=await persistAll(state.obras,state.weeks,state.snapshots);
       if(!ok) throw new Error('Falha ao salvar os dados no navegador.');
       state.selectedWeekId=week.id;
@@ -3852,9 +3857,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
       mergePlaceholder.label=label; mergePlaceholder.start=start; mergePlaceholder.end=end;
       mergePlaceholder.importedAt=nowIso; mergePlaceholder.fingerprint=fp;
       mergePlaceholder.auditSummary={critical:importCritical,warnings:importWarnings};
-      mergePlaceholder.placeholder=false; mergePlaceholder.createdByPostpone=false;
+      mergePlaceholder.placeholder=false; mergePlaceholder.createdByPostpone=false; mergePlaceholder.status='open';
     }else{
-      state.weeks.push({id:weekId,label,start,end,importedAt:nowIso,fingerprint:fp,auditSummary:{critical:importCritical,warnings:importWarnings},placeholder:false,createdByPostpone:false});
+      state.weeks.push({id:weekId,label,start,end,importedAt:nowIso,fingerprint:fp,auditSummary:{critical:importCritical,warnings:importWarnings},placeholder:false,createdByPostpone:false,status:'open'});
     }
 
     const ok = await persistAll(state.obras, state.weeks, state.snapshots);

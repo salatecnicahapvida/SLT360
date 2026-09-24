@@ -48,6 +48,28 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   },datasets:{}});
   const migrations=(await fs.readdir(new URL('../supabase/migrations/',import.meta.url))).filter(n=>n>='202608310005').sort();
   for(const name of migrations)await db.exec(await fs.readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  await db.query(`insert into slt_budget_sic_approval_initial_state(id,payload,source_checksum)
+    values(1,$1,'test')`,[JSON.stringify({
+      obras:[{id:'approval-w',portfolioWorkId:'w',descricao:'Test',ev:{total:100,semAditivos:90,aditivosAprovados:10,areaM2:10,valorM2:10},sap:{faturasAnosAnteriores:5},sics:[],historyEvents:[]}],
+      weeks:[{id:'week-6',label:'Semana 6',start:'2026-09-21',end:'2026-09-25',status:'open',placeholder:false}],
+      snapshots:[],notificationReads:{},
+    })]);
+  await db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'");
+  await db.query(`update slt_budget_demands
+    set phase='aprovacaoDiretoria',
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicMetadata:{lecomNumber:'1.234.567',descricaoSic:'SIC criada pelo Kanban'},
+      sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:12.34,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
+    })]);
+  let queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].ev.total,100,'preserva o EV histórico correto do card');
+  assert.equal(queued.obras[0].sics.length,1);
+  assert.equal(queued.obras[0].sics[0].demandId,'d');
+  assert.equal(queued.snapshots[0].sap.saldoAtual,50);
+  await db.query("update slt_budget_demands set notes='sem nova transição' where record_key='d'");
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].sics.length,1,'não retroalimenta nem duplica demanda já na etapa');
   assert.equal((await db.query("select extra->>'classificacaoObra' category from slt_projects_works where record_key='w'")).rows[0].category,'');
   assert.equal((await db.query("select sprint_id from slt_budget_demands where record_key='d'")).rows[0].sprint_id,'sprint-017');
   const skarthAssignment=(await db.query("select assignee,assignee_id from slt_budget_demands where record_key='skart-demand'")).rows[0];

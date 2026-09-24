@@ -4,6 +4,14 @@ import { businessDate } from './dates.js';
 import { renderUsersPanel, mountUsersAdmin } from './users-admin.js';
 import { renderBackupsPanel, mountBackups } from './backups-ui.js';
 import { mountSicApprovals } from './sic-approvals.js';
+import {
+  approvalSnapshotFor,
+  approvalWeekStatus,
+  matchApprovalCard,
+  portfolioApprovedAdditives,
+  portfolioEVWithoutRisk,
+  selectableApprovalWeeks,
+} from './sic-director-queue.js';
 let unmountSicApprovals = () => {};
 const STORAGE_KEY = "slt360-state-v8-full-ev-project-reset";
 const LAST_VIEW_STORAGE_KEY = "slt360-last-view-v1";
@@ -2656,7 +2664,7 @@ function render() {
   };
   unmountSicApprovals();
   app.innerHTML = globalThis.SLT_CLOUD.cleanHTML((views[currentView] || renderDashboard)());
-  if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD);
+  if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD, state.works);
   refreshHaptecAssistant();
   applyRolePermissions();
   enhanceSortableTables();
@@ -19072,6 +19080,194 @@ async function handleDemandCompletionSubmit(form) {
   showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
 }
 
+let sicDirectorQueueContext = null;
+
+function approvalWeekOptionLabel(week) {
+  const period = week?.start && week?.end ? `${dateText(week.start)} a ${dateText(week.end)}` : "datas a definir";
+  const status = approvalWeekStatus(week) === "provisional" ? " · Provisória" : "";
+  return `${week?.label || "Semana"} — ${period}${status}`;
+}
+
+function approvalCardForQueue(form) {
+  const selected = String(new FormData(form).get("approvalCardId") || "");
+  if (!selected || selected === "__new__") return null;
+  return sicDirectorQueueContext?.payload?.obras?.find((card) => String(card.id) === selected) || null;
+}
+
+function queueFinancialValue(value) {
+  const raw = String(value ?? "").trim();
+  return raw ? parseCurrency(raw) : null;
+}
+
+function refreshSicDirectorQueueForm(form) {
+  if (!form || !sicDirectorQueueContext) return;
+  const data = new FormData(form);
+  const weekId = String(data.get("approvalWeekId") || "");
+  const card = approvalCardForQueue(form);
+  const isNewCard = String(data.get("approvalCardId") || "") === "__new__";
+  const snapshot = card && weekId ? approvalSnapshotFor(sicDirectorQueueContext.payload, card.id, weekId) : null;
+  const work = sicDirectorQueueContext.work;
+  const portfolioTotal = portfolioEVWithoutRisk(work);
+  const portfolioAdditives = portfolioApprovedAdditives(work);
+  const cardTotal = Number(card?.ev?.total ?? portfolioTotal) || 0;
+  const difference = Math.round((portfolioTotal - cardTotal) * 100) / 100;
+  const priorInvoices = Number(card?.sap?.faturasAnosAnteriores);
+  const classification = String(work?.classificacaoObra || card?.classificacao || "").trim();
+  const area = Number(card?.ev?.areaM2 ?? work?.areaEquivalente ?? work?.areaConstruida ?? work?.area) || 0;
+  const dynamic = form.querySelector("[data-sic-director-dynamic]");
+  if (!dynamic) return;
+  dynamic.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    ${card && Math.abs(difference) >= 0.01 ? `
+      <div class="warning-banner" role="alert">
+        <strong>EV divergente do portfólio</strong>
+        <span>Card: ${money(cardTotal)} · Portfólio sem risco: ${money(portfolioTotal)} · Diferença: ${money(difference)}. O EV correto do card será preservado e o alerta ficará ativo.</span>
+      </div>
+    ` : ""}
+    <div class="kpi-grid compact-grid">
+      <article class="kpi-card"><span>EV s/ aditivos</span><strong>${money(card?.ev?.semAditivos ?? (portfolioTotal - portfolioAdditives))}</strong></article>
+      <article class="kpi-card"><span>Aditivos aprovados</span><strong>${money(card?.ev?.aditivosAprovados ?? portfolioAdditives)}</strong></article>
+      <article class="kpi-card"><span>EV atual sem risco</span><strong>${money(cardTotal)}</strong></article>
+      <article class="kpi-card"><span>R$/m²</span><strong>${area ? money(cardTotal / area) : "Não disponível"}</strong></article>
+    </div>
+    ${isNewCard ? `
+      <div class="form-grid two-columns">
+        <label class="field"><span>OI(s) da obra *</span><input name="approvalOis" required placeholder="Ex.: 50157220; 50158036"></label>
+        <label class="field"><span>Classificação *</span><input name="approvalClassification" required value="${escapeAttribute(classification)}" placeholder="Classificação da obra"></label>
+      </div>
+    ` : ""}
+    ${snapshot ? `
+      <div class="info-box">
+        <strong>Valores semanais já preenchidos</strong>
+        <span>Atribuído: ${money(snapshot.sap?.atribuidoAtual)} · Compromissado: ${money(snapshot.sap?.comprometidoAtual)} · Saldo: ${money(snapshot.sap?.saldoAtual)}.</span>
+        <small>Como esta obra já possui SIC nesta semana, esses valores serão reutilizados automaticamente.</small>
+      </div>
+    ` : `
+      <div class="form-grid ${Number.isFinite(priorInvoices) ? "two-columns" : "three-columns"}">
+        ${Number.isFinite(priorInvoices) ? "" : `<label class="field"><span>Faturas em anos anteriores *</span><input name="approvalPriorInvoices" inputmode="decimal" required placeholder="R$ 0,00"></label>`}
+        <label class="field"><span>Atribuído atual *</span><input name="approvalAssigned" inputmode="decimal" required placeholder="R$ 0,00"></label>
+        <label class="field"><span>Compromissado atual *</span><input name="approvalCommitted" inputmode="decimal" required placeholder="R$ 0,00"></label>
+      </div>
+      ${Number.isFinite(priorInvoices) ? `<small class="muted">Faturas em anos anteriores reutilizadas do card: ${money(priorInvoices)}.</small>` : ""}
+    `}
+  `);
+}
+
+async function openSicDirectorQueueModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = workById(demand?.obraId);
+  if (!demand || !work) {
+    showToast("A SIC precisa estar vinculada a uma obra válida do portfólio.");
+    return;
+  }
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop"><div class="modal-card"><header><div><span class="eyebrow">${escapeAttribute(demand.id)}</span><h2>Preparando Aprovação da Diretoria</h2><p class="muted">Carregando semanas e dados compartilhados…</p></div></header></div></div>
+  `);
+  try {
+    const row = await globalThis.SLT_CLOUD.sicApprovalSnapshot();
+    const payload = row?.payload;
+    const weeks = selectableApprovalWeeks(payload?.weeks);
+    if (!weeks.length) throw new Error("Não existe semana aberta ou provisória para receber esta SIC.");
+    const match = matchApprovalCard(payload?.obras, work);
+    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision };
+    const info = demandSicInfo(demand) || {};
+    const linkedCard = match.card;
+    const cardOptions = (payload.obras || [])
+      .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
+      .sort((a, b) => String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR"))
+      .map((card) => `<option value="${escapeAttribute(card.id)}">${escapeAttribute(card.descricao || card.id)}</option>`)
+      .join("");
+    const cardSelector = linkedCard
+      ? `<input type="hidden" name="approvalCardId" value="${escapeAttribute(linkedCard.id)}"><div class="info-box"><strong>Card identificado automaticamente</strong><span>${escapeAttribute(linkedCard.descricao)}</span></div>`
+      : `<label class="field"><span>Card da obra *</span><select name="approvalCardId" required><option value="">Selecione o vínculo correto</option><option value="__new__">Criar novo card para esta obra</option>${cardOptions}</select><small>${match.ambiguous ? "Há mais de um card compatível. Confirme o vínculo antes de continuar." : "Nenhum vínculo único foi encontrado. Confirme um card existente ou crie um novo."}</small></label>`;
+    modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+      <div class="modal-backdrop">
+        <form class="modal-card" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
+          <header>
+            <div><span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span><h2 id="sicDirectorQueueTitle">Enviar para Aprovação da Diretoria</h2><p class="muted">${escapeAttribute(work.nome)}. A semana deve ser escolhida manualmente.</p></div>
+            <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+          </header>
+          <div class="modal-body">
+            <div class="error-box" id="formError"></div>
+            <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}</select><small>Semanas encerradas não aceitam novas SICs.</small></label>
+            ${cardSelector}
+            <label class="field"><span>Valor desta SIC *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" placeholder="R$ 0,00"><small>O valor pertence somente à SIC ${escapeAttribute(info.lecomNumber || demand.id)}.</small></label>
+            <div data-sic-director-dynamic></div>
+          </div>
+          <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Confirmar e mover</button></footer>
+        </form>
+      </div>
+    `);
+    refreshSicDirectorQueueForm(modalRoot.querySelector("#sicDirectorQueueForm"));
+  } catch (error) {
+    sicDirectorQueueContext = null;
+    closeModal();
+    showToast(error?.message || "Não foi possível carregar as semanas de Aprovação de SICs.");
+  }
+}
+
+async function handleSicDirectorQueueSubmit(form) {
+  const context = sicDirectorQueueContext;
+  const demand = state.demands.find((item) => item.id === form.dataset.id);
+  if (!context || !demand || context.demandId !== demand.id) return;
+  const data = new FormData(form);
+  const weekId = String(data.get("approvalWeekId") || "");
+  const week = selectableApprovalWeeks(context.payload.weeks).find((item) => String(item.id) === weekId);
+  const cardIdValue = String(data.get("approvalCardId") || "");
+  const card = approvalCardForQueue(form);
+  if (!week || !cardIdValue) {
+    showFormError("Escolha a semana e confirme o card da obra.", form);
+    return;
+  }
+  const sicValueRaw = String(data.get("approvalSicValue") || "").trim();
+  if (!sicValueRaw) {
+    showFormError("Informe o valor desta SIC.", form);
+    return;
+  }
+  const weekly = card ? approvalSnapshotFor(context.payload, card.id, week.id) : null;
+  const priorInvoices = weekly
+    ? Number(weekly.sap?.faturasAnosAnteriores || 0)
+    : Number.isFinite(Number(card?.sap?.faturasAnosAnteriores))
+      ? Number(card.sap.faturasAnosAnteriores)
+      : queueFinancialValue(data.get("approvalPriorInvoices"));
+  const assigned = weekly ? Number(weekly.sap?.atribuidoAtual || 0) : queueFinancialValue(data.get("approvalAssigned"));
+  const committed = weekly ? Number(weekly.sap?.comprometidoAtual || 0) : queueFinancialValue(data.get("approvalCommitted"));
+  if ([priorInvoices, assigned, committed].some((value) => value === null || !Number.isFinite(value))) {
+    showFormError("Preencha Faturas em anos anteriores, Atribuído atual e Compromissado atual.", form);
+    return;
+  }
+  const oiList = card
+    ? (card.oiList || [])
+    : String(data.get("approvalOis") || "").split(/[;,\n]+/).map((value) => value.trim()).filter(Boolean);
+  if (!card && !oiList.length) {
+    showFormError("Informe pelo menos uma OI para criar o novo card.", form);
+    return;
+  }
+  const classification = card?.classificacao || String(data.get("approvalClassification") || "").trim();
+  if (!classification) {
+    showFormError("Informe a classificação da obra.", form);
+    return;
+  }
+  const updated = await updateDemandColumn(demand.id, "aprovacaoDiretoria", {
+    directorApprovalData: {
+      version: 1,
+      weekId: week.id,
+      approvalCardId: card?.id || "",
+      sicValue: parseCurrency(sicValueRaw),
+      priorInvoices,
+      assignedAmount: assigned,
+      committedAmount: committed,
+      oiList: [...new Set(oiList)],
+      classification,
+      queuedAt: new Date().toISOString(),
+    },
+  });
+  if (!updated) return;
+  sicDirectorQueueContext = null;
+  closeModal();
+  render();
+  showToast(`SIC incluída em ${week.label} e movida para Aguardando Aprovação Diretoria.`);
+}
+
 function openDemandStatusReasonModal(id, nextColumnId) {
   const demand = state.demands.find((item) => item.id === id);
   const column = columnById(nextColumnId);
@@ -19122,7 +19318,7 @@ async function handleDemandStatusReasonSubmit(form) {
   showToast(`Card movido para ${demandStatusLabel(updated)} com motivo registrado.`);
 }
 
-async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false, movementReason = "" } = {}) {
+async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false, movementReason = "", directorApprovalData = null } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
@@ -19139,6 +19335,10 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
     }
     if (!canAdvanceSicToDirectorApproval()) {
       showToast("Somente usuários Gestor ou Admin podem mover uma SIC de Validado Obras para Aguardando Aprovação Diretoria.");
+      return false;
+    }
+    if (!directorApprovalData) {
+      await openSicDirectorQueueModal(demand.id);
       return false;
     }
   }
@@ -19180,6 +19380,7 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   const transitionedAt = new Date().toISOString();
   const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
+  if (directorApprovalData) demand.sicDirectorApproval = clone(directorApprovalData);
   demand.phaseHistory = [
     ...arrayOrFallback(demand.phaseHistory),
     {
@@ -20423,6 +20624,10 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches('#sicDirectorQueueForm [name="approvalWeekId"], #sicDirectorQueueForm [name="approvalCardId"]')) {
+    refreshSicDirectorQueueForm(event.target.closest("#sicDirectorQueueForm"));
+    return;
+  }
   if (event.target.matches('#demandDetailForm [name="coluna"]')) {
     const form = event.target.closest("#demandDetailForm");
     const demand = state.demands.find((item) => item.id === form?.dataset.id);
@@ -20726,6 +20931,10 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "demandStatusReasonForm") {
     event.preventDefault();
     await handleDemandStatusReasonSubmit(event.target);
+  }
+  if (event.target.id === "sicDirectorQueueForm") {
+    event.preventDefault();
+    await handleSicDirectorQueueSubmit(event.target);
   }
   if (event.target.id === "demandCompletionForm") {
     event.preventDefault();

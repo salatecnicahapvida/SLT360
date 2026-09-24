@@ -2328,7 +2328,7 @@ test('Analista can validate Obras but cannot send a SIC to Diretoria',async({pag
  expect(b.errors).toEqual([]);
 });
 
-test('Gestor sends validated SIC to Diretoria',async({page})=>{
+test('Gestor chooses the week and queues only the new validated SIC for Diretoria',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-validation-manager',
@@ -2345,7 +2345,18 @@ test('Gestor sends validated SIC to Diretoria',async({page})=>{
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await status.selectOption('aprovacaoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ const queue=page.locator('#sicDirectorQueueForm');
+ await expect(queue).toBeVisible();
+ await expect(queue.locator('[name="approvalWeekId"]')).toHaveValue('');
+ await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
+ await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
+ await queue.locator('[name="approvalSicValue"]').fill('12,34');
+ await queue.locator('[name="approvalAssigned"]').fill('120,00');
+ await queue.locator('[name="approvalCommitted"]').fill('80,00');
+ await queue.getByRole('button',{name:'Confirmar e mover'}).click();
  await expect(page.locator('.kanban-column[data-column="aprovacaoDiretoria"] article[data-id="sic-validation-manager"]')).toBeVisible();
+ const demandChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-manager');
+ expect(demandChange.document.sicDirectorApproval).toMatchObject({version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:12.34,priorInvoices:0,assignedAmount:120,committedAmount:80});
  expect(b.errors).toEqual([]);
 });
 
