@@ -2483,9 +2483,12 @@ function ensureDemandLifecycleAllowed(form = null) {
 
 function canMutateUI(action) {
   if (analystDemandLifecycleBlocked(action)) return false;
-  const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-demand","open-global-demand","open-maintenance-demand","open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets","open-config-catalog"].includes(action);
-  if (!writeAction) return true;
   const module = /sprint|supplier/.test(action) ? "settings" : dataUIModuleForView(currentView);
+  if (["open-demand", "open-global-demand", "open-maintenance-demand"].includes(action)) {
+    return globalThis.SLT_CLOUD.canWritePermission?.(module) ?? globalThis.SLT_CLOUD.canWrite(module);
+  }
+  const writeAction = /^(save-|delete-|approve-|reject-|post-|move-|update-|create-|edit-)/.test(action) || ["open-work","open-contract","open-sprint","open-delete-demand","open-ev-reference-targets","open-strategic-targets","open-config-catalog"].includes(action);
+  if (!writeAction) return true;
   return globalThis.SLT_CLOUD.canWrite(module);
 }
 
