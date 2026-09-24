@@ -5804,6 +5804,7 @@ function renderOperationalFilters() {
           ...uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })),
         ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
+        ${renderOperationalMultiFilter("status", "Status", columns.map((column) => ({ value: column.id, label: column.label })), "Todos")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [
           { value: "late", label: "Atrasadas" },
           { value: "onTime", label: "No prazo" },
