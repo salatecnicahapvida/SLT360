@@ -291,7 +291,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('#globalSearch')).toHaveCount(0);
  await expect(page.locator('[data-operational-search]')).toBeVisible();
  await expect(page.getByRole('button',{name:'Exportar relatório filtrado',exact:true})).toBeVisible();
- await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(0);
+ await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(1);
  await expect(page.locator('[data-operational-date-filter]')).toHaveCount(2);
  await expect(page.locator('.operational-export-hint')).toContainText('considera exatamente os filtros aplicados');
  await expect(page.locator('[data-kpi="opTotal"]')).toContainText('Total no Filtro');
@@ -350,7 +350,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await analystFilter.locator('[data-operational-filter="analyst"][value="__sem_analista__"]').check();
  await expect(page.locator('.operational-board-panel article')).toHaveCount(2);
  await clearDemandFilters.click();
- await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(0);
+ await expect(page.locator('[data-operational-filter-group="status"]')).toHaveCount(1);
  await expect(page.locator('[data-operational-date-filter="dateFrom"]')).toHaveValue('');
  await expect(page.locator('[data-operational-date-filter="dateTo"]')).toHaveValue('');
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
@@ -957,7 +957,7 @@ test('management view recalculates every indicator and analyst row from the filt
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
 
  await expect(page.locator('[data-operational-search]')).toBeVisible();
- await expect(page.locator('[data-operational-filter-group]')).toHaveCount(4);
+ await expect(page.locator('[data-operational-filter-group]')).toHaveCount(5);
  await expect(page.locator('[data-operational-date-filter]')).toHaveCount(2);
 
  const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
