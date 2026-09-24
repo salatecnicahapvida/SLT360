@@ -5703,8 +5703,12 @@ function filteredDemands() {
     if (operationalFilters.validationGroup && !demandValidationColumnIds.includes(demand.coluna)) return false;
     if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
     if (selectedPunctualities.length) {
-      if (demand.coluna === "pausado") return false;
-      const punctuality = isDemandLate(demand) ? "late" : "onTime";
+      const punctuality =
+        demand.coluna === "pausado" || !plannedDelivery
+          ? "noDeadline"
+          : isDemandLate(demand)
+            ? "late"
+            : "onTime";
       if (!selectedPunctualities.includes(punctuality)) return false;
     }
     return true;
@@ -5800,8 +5804,11 @@ function renderOperationalFilters() {
           ...uniqueAnalysts().map((analyst) => ({ value: analyst, label: analyst })),
         ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
-        ${renderOperationalMultiFilter("status", "Status", columns.map((column) => ({ value: column.id, label: column.label })), "Todos")}
-        ${renderOperationalMultiFilter("punctuality", "Prazo", [{ value: "late", label: "Atrasadas" }, { value: "onTime", label: "No prazo" }], "Todos")}
+        ${renderOperationalMultiFilter("punctuality", "Prazo", [
+          { value: "late", label: "Atrasadas" },
+          { value: "onTime", label: "No prazo" },
+          { value: "noDeadline", label: "Sem prazo" },
+        ], "Todos")}
         <label class="field operational-date-filter">
           <span>Entrega prevista de</span>
           <input type="date" data-operational-date-filter="dateFrom" value="${escapeAttribute(operationalFilters.dateFrom || "")}" />
@@ -6347,7 +6354,7 @@ function operationalActiveFilterText() {
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
   if (operationalFilters.validationGroup) active.push("validação Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
-  if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : "no prazo").join(", "));
+  if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : value === "noDeadline" ? "sem prazo" : "no prazo").join(", "));
   if (operationalFilters.dateFrom || operationalFilters.dateTo) {
     const from = operationalFilters.dateFrom ? dateText(operationalFilters.dateFrom) : "início";
     const to = operationalFilters.dateTo ? dateText(operationalFilters.dateTo) : "sem limite";
@@ -19454,6 +19461,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  document.querySelectorAll("details.operational-multiselect[open]").forEach((details) => {
+    if (!details.contains(event.target)) details.removeAttribute("open");
+  });
   if (Date.now() < demandDragSuppressClickUntil && event.target.closest(".operational-board-panel .demand-card")) {
     event.preventDefault();
     event.stopPropagation();
