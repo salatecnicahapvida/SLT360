@@ -353,6 +353,10 @@ async function startInternal() {
     team,
     cleanHTML,
     canRead: uiModule => moduleAllowed(currentProfile, MODULE_OPTIONS.find(m => m.ui === uiModule)?.id || 'core'),
+    canWritePermission: uiModule => {
+      const module = dataModule(uiModule);
+      return Boolean(module && moduleAllowed(currentProfile, module, true));
+    },
     canWrite: readyForWrite,
     readyForWrites: uiModule => readyForWrite(uiModule),
     isModuleLoaded(uiModule) {
