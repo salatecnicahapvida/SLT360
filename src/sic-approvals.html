@@ -796,7 +796,9 @@ window.addEventListener('message', event => {
   if(event.data.error){
     if(event.data.error.startsWith('CONFLITO_SIC:')){
       window.alert(event.data.error.slice('CONFLITO_SIC:'.length).trim());
-      window.location.reload();
+      pending.reject(new Error(event.data.error));
+      setTimeout(() => window.location.reload(), 0);
+      return;
     }
     pending.reject(new Error(event.data.error));
   }
