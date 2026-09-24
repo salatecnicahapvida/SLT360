@@ -2144,6 +2144,14 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
  await validatedStatus.selectOption('aprovacaoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ const queue=page.locator('#sicDirectorQueueForm');
+ await expect(queue).toBeVisible();
+ await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
+ await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
+ await queue.locator('[name="approvalSicValue"]').fill('20,00');
+ await queue.locator('[name="approvalAssigned"]').fill('120,00');
+ await queue.locator('[name="approvalCommitted"]').fill('80,00');
+ await queue.getByRole('button',{name:'Confirmar e mover'}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
 
  await directorColumn.locator('article[data-id="test-demand"]').click();
