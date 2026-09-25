@@ -19263,6 +19263,79 @@ function approvalCardForQueue(form) {
   return sicDirectorQueueContext?.payload?.obras?.find((card) => String(card.id) === selected) || null;
 }
 
+function approvalCardSearchDetails(card) {
+  const identifiers = [
+    ...(Array.isArray(card?.oiList) ? card.oiList : []),
+    ...(Array.isArray(card?.oiAliases) ? card.oiAliases : []),
+    card?.oiRaw,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  return [...new Set(identifiers)];
+}
+
+function approvalCardMatchesSearch(card, query) {
+  const normalized = normalizeSearchText(query).trim();
+  if (!normalized) return true;
+  const details = approvalCardSearchDetails(card);
+  const searchable = normalizeSearchText(`${card?.descricao || ""} ${card?.id || ""} ${card?.portfolioWorkId || ""} ${details.join(" ")}`);
+  const terms = normalized.split(/\s+/).filter(Boolean);
+  const initials = normalizeSearchText(card?.descricao || "")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("");
+  return terms.every((term) => searchable.includes(term)) || initials.includes(normalized.replace(/\s+/g, ""));
+}
+
+function closeApprovalCardSearch(form) {
+  const search = form?.querySelector("[data-sic-card-search]");
+  const results = form?.querySelector("[data-sic-card-results]");
+  if (search) search.setAttribute("aria-expanded", "false");
+  if (results) results.hidden = true;
+}
+
+function renderApprovalCardSearchResults(form) {
+  const search = form?.querySelector("[data-sic-card-search]");
+  const results = form?.querySelector("[data-sic-card-results]");
+  const helper = form?.querySelector("[data-sic-card-search-help]");
+  if (!search || !results || !sicDirectorQueueContext) return;
+  const query = search.value.trim();
+  const available = sicDirectorQueueContext.eligibleCards || [];
+  const matches = available.filter((card) => approvalCardMatchesSearch(card, query));
+  const visible = matches.slice(0, 20);
+  const resultHtml = visible.map((card) => {
+    const details = approvalCardSearchDetails(card);
+    return `<button class="sic-card-search-option" type="button" role="option" data-action="select-sic-approval-card" data-card-id="${escapeAttribute(card.id)}"><strong>${escapeAttribute(card.descricao || card.id)}</strong><small>${details.length ? `OI/código: ${escapeAttribute(details.join(" · "))}` : "Card existente na Aprovação de SICs"}</small></button>`;
+  }).join("");
+  results.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="sic-card-search-summary">${query ? `${matches.length} card${matches.length === 1 ? "" : "s"} encontrado${matches.length === 1 ? "" : "s"}` : `${available.length} cards disponíveis · digite para filtrar`}</div>
+    ${resultHtml || `<div class="sic-card-search-empty">Nenhum card existente corresponde à busca.</div>`}
+    <button class="sic-card-search-option sic-card-search-create" type="button" role="option" data-action="select-sic-approval-card" data-card-id="__new__"><strong>Criar novo card para esta obra</strong><small>Use somente depois de confirmar que nenhum card existente corresponde à obra.</small></button>
+  `);
+  results.hidden = false;
+  search.setAttribute("aria-expanded", "true");
+  if (helper) helper.textContent = query
+    ? `${matches.length} correspondência${matches.length === 1 ? "" : "s"}. Pesquise pelo nome, número do EV, código ou OI.`
+    : "Pesquise pelo nome da obra, número do EV, código ou OI.";
+}
+
+function selectApprovalCardFromSearch(form, cardId) {
+  const select = form?.querySelector('[name="approvalCardId"]');
+  const search = form?.querySelector("[data-sic-card-search]");
+  const helper = form?.querySelector("[data-sic-card-search-help]");
+  if (!select || !search) return;
+  select.value = cardId;
+  const card = cardId === "__new__"
+    ? null
+    : (sicDirectorQueueContext?.eligibleCards || []).find((item) => String(item.id) === String(cardId));
+  search.value = card ? String(card.descricao || card.id) : "Criar novo card para esta obra";
+  search.dataset.selectedCardId = cardId;
+  if (helper) helper.textContent = card
+    ? `Card selecionado: ${card.descricao || card.id}.`
+    : "Novo card selecionado. Confirme antes se realmente não existe um card para esta obra.";
+  closeApprovalCardSearch(form);
+  refreshSicDirectorQueueForm(form);
+}
+
 function queueFinancialValue(value) {
   const raw = String(value ?? "").trim();
   return raw ? parseCurrency(raw) : null;
@@ -19337,18 +19410,19 @@ async function openSicDirectorQueueModal(id) {
     const weeks = selectableApprovalWeeks(payload?.weeks);
     if (!weeks.length) throw new Error("Não existe semana aberta ou provisória para receber esta SIC.");
     const match = matchApprovalCard(payload?.obras, work);
-    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision };
+    const eligibleCards = (payload.obras || [])
+      .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
+      .sort((a, b) => String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR"));
+    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision, eligibleCards };
     const info = demandSicInfo(demand) || {};
     const validatedAmount = sicWorksValidatedAmount(demand);
     const linkedCard = match.card;
-    const cardOptions = (payload.obras || [])
-      .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
-      .sort((a, b) => String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR"))
+    const cardOptions = eligibleCards
       .map((card) => `<option value="${escapeAttribute(card.id)}">${escapeAttribute(card.descricao || card.id)}</option>`)
       .join("");
     const cardSelector = linkedCard
       ? `<input type="hidden" name="approvalCardId" value="${escapeAttribute(linkedCard.id)}"><div class="info-box"><strong>Card identificado automaticamente</strong><span>${escapeAttribute(linkedCard.descricao)}</span></div>`
-      : `<label class="field"><span>Card da obra *</span><select name="approvalCardId" required><option value="">Selecione o vínculo correto</option><option value="__new__">Criar novo card para esta obra</option>${cardOptions}</select><small>${match.ambiguous ? "Há mais de um card compatível. Confirme o vínculo antes de continuar." : "Nenhum vínculo único foi encontrado. Confirme um card existente ou crie um novo."}</small></label>`;
+      : `<div class="field sic-card-search-field"><span>Card da obra *</span><div class="sic-card-combobox" data-sic-card-combobox><input type="search" data-sic-card-search role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sicApprovalCardSearchResults" autocomplete="off" placeholder="Digite o nome da obra, número, código ou OI"><select name="approvalCardId" hidden><option value="">Nenhum card selecionado</option><option value="__new__">Criar novo card para esta obra</option>${cardOptions}</select><div class="sic-card-search-results" id="sicApprovalCardSearchResults" data-sic-card-results role="listbox" hidden></div></div><small data-sic-card-search-help>${match.ambiguous ? "Há mais de um card compatível. Pesquise e confirme o vínculo correto." : "Pesquise para confirmar um card existente ou criar um novo."}</small></div>`;
     modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
       <div class="modal-backdrop">
         <form class="modal-card sic-director-queue-modal" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
@@ -19879,6 +19953,19 @@ function openWorkFromInvestmentPlan(rowNumber) {
 }
 
 document.addEventListener("keydown", (event) => {
+  if (event.target.matches?.("[data-sic-card-search]")) {
+    const form = event.target.closest("#sicDirectorQueueForm");
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      renderApprovalCardSearchResults(form);
+      form?.querySelector("[data-sic-card-results] .sic-card-search-option")?.focus();
+      return;
+    }
+    if (event.key === "Escape") {
+      closeApprovalCardSearch(form);
+      return;
+    }
+  }
   const row = event.target.closest?.(".portfolio-work-row[data-action=\"open-portfolio-work\"]");
   if (!row || event.target !== row || !["Enter", " "].includes(event.key)) return;
   event.preventDefault();
@@ -19888,6 +19975,9 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", async (event) => {
   document.querySelectorAll("details.operational-multiselect[open]").forEach((details) => {
     if (!details.contains(event.target)) details.removeAttribute("open");
+  });
+  document.querySelectorAll("[data-sic-card-combobox]").forEach((combobox) => {
+    if (!combobox.contains(event.target)) closeApprovalCardSearch(combobox.closest("form"));
   });
   if (Date.now() < demandDragSuppressClickUntil && event.target.closest(".operational-board-panel .demand-card")) {
     event.preventDefault();
@@ -19949,6 +20039,10 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "feature-soon") {
     showToast("Esta ação entrará na próxima etapa do cadastro mestre.");
+    return;
+  }
+  if (action === "select-sic-approval-card") {
+    selectApprovalCardFromSearch(actionButton.closest("#sicDirectorQueueForm"), actionButton.dataset.cardId || "");
     return;
   }
   if (action === "submit-demand-step") {
@@ -21208,6 +21302,15 @@ function scheduleInputRender(focusSelector = "", value = "", delay = 180) {
 }
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-sic-card-search]")) {
+    const form = event.target.closest("#sicDirectorQueueForm");
+    const select = form?.querySelector('[name="approvalCardId"]');
+    if (select) select.value = "";
+    delete event.target.dataset.selectedCardId;
+    renderApprovalCardSearchResults(form);
+    refreshSicDirectorQueueForm(form);
+    return;
+  }
   if (event.target.matches("[data-demand-work-search]")) {
     const works = event.target.closest("#demandWizardStep1") ? eligibleDemandWorkCatalog() : demandWorkCatalog();
     const work = findWorkByExactTypedSearch(event.target.value, works);
@@ -21398,6 +21501,12 @@ document.addEventListener("input", (event) => {
   const value = event.target.value;
   portfolioFilters[field] = value;
   scheduleInputRender(`[data-filter-field="${field}"]`, value);
+});
+
+document.addEventListener("focusin", (event) => {
+  if (event.target.matches?.("[data-sic-card-search]")) {
+    renderApprovalCardSearchResults(event.target.closest("#sicDirectorQueueForm"));
+  }
 });
 
 function historicalBudgetWorkFromRecord(record, linkedWork = null) {

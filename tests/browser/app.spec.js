@@ -2159,7 +2159,13 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  const queue=page.locator('#sicDirectorQueueForm');
  await expect(queue).toBeVisible();
  await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
- await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
+ const cardSearch=queue.locator('[data-sic-card-search]');
+ await cardSearch.fill('TEST');
+ await expect(queue.locator('[data-sic-card-results]')).toBeVisible();
+ await expect(queue.locator('[data-sic-card-results] [data-card-id="approval-test"]')).toContainText('Obra SIC de teste');
+ await queue.locator('[data-sic-card-results] [data-card-id="approval-test"]').click();
+ await expect(queue.locator('[name="approvalCardId"]')).toHaveValue('approval-test');
+ await expect(cardSearch).toHaveValue('Obra SIC de teste');
  await expect(queue.locator('[name="approvalSicValue"]')).toHaveValue('20,00');
  await expect(queue.locator('[name="approvalSicValue"]')).toHaveAttribute('readonly','');
  await queue.locator('[name="approvalAssigned"]').fill('120,00');
@@ -2385,7 +2391,9 @@ test('Gestor chooses the week and queues only the new validated SIC for Diretori
  expect(Math.max(...kpiHeights)).toBeLessThan(120);
  await expect(queue.locator('[name="approvalWeekId"]')).toHaveValue('');
  await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
- await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
+ await queue.locator('[data-sic-card-search]').fill('obra sic');
+ await expect(queue.locator('[data-sic-card-results] [data-card-id="approval-test"]')).toBeVisible();
+ await queue.locator('[data-sic-card-results] [data-card-id="approval-test"]').click();
  await queue.locator('[name="approvalSicValue"]').fill('12,34');
  await queue.locator('[name="approvalAssigned"]').fill('120,00');
  await queue.locator('[name="approvalCommitted"]').fill('80,00');

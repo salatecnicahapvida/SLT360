@@ -8085,6 +8085,95 @@ button.alert-item {
   overflow-x: hidden;
 }
 
+.sic-card-combobox {
+  position: relative;
+}
+
+.sic-card-combobox > input[type="search"] {
+  padding-right: 38px;
+}
+
+.sic-card-combobox::after {
+  content: "⌕";
+  position: absolute;
+  top: 9px;
+  right: 13px;
+  color: var(--blue);
+  font-size: 1.1rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.sic-card-search-results {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 34px rgba(15, 42, 76, 0.2);
+}
+
+.sic-card-search-results[hidden] {
+  display: none;
+}
+
+.sic-card-search-summary,
+.sic-card-search-empty {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.sic-card-search-option {
+  width: 100%;
+  display: block;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sic-card-search-option:hover,
+.sic-card-search-option:focus-visible {
+  background: #edf4ff;
+  outline: none;
+}
+
+.sic-card-search-option strong,
+.sic-card-search-option small {
+  display: block;
+}
+
+.sic-card-search-option strong {
+  color: var(--navy);
+  font-size: 0.86rem;
+}
+
+.sic-card-search-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sic-card-search-create {
+  margin-top: 5px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+}
+
+.sic-card-search-create strong {
+  color: var(--orange);
+}
+
 .sic-director-kpi-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
