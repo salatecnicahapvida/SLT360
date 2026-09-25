@@ -73,8 +73,10 @@
   }
   .mf-info { font-size: 11px; color: var(--texto-suave); white-space: nowrap; margin-left: auto; }
 
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-  .kpi-grid.all-weeks { grid-template-columns: repeat(3, 1fr); }
+  .kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .kpi-grid.all-weeks { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .kpi-grid.all-weeks .kpi-card { grid-column: span 3; }
+  .kpi-grid.all-weeks .kpi-card:nth-child(n+5) { grid-column: span 4; }
   .kpi-card {
     background: var(--branco); border-radius: 12px; padding: 20px 24px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-left: 5px solid var(--azul-claro);
@@ -550,8 +552,12 @@
   footer.foot { max-width: 1440px; margin: 8px auto 0; padding: 14px 24px 0; border-top: 1px solid var(--cinza-borda); font-size: 11px; color: var(--texto-suave); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 
   @media (max-width: 1180px) { .obra-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 1180px) {
+    .kpi-grid, .kpi-grid.all-weeks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .kpi-grid.all-weeks .kpi-card, .kpi-grid.all-weeks .kpi-card:nth-child(n+5) { grid-column: span 1; }
+  }
   @media (max-width: 900px) {
-    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .kpi-grid, .kpi-grid.all-weeks { grid-template-columns: 1fr 1fr; }
     .panel-kpis.ev-kpis, .panel-kpis.sap-kpis { grid-template-columns: 1fr 1fr; }
     .full-edit-grid { grid-template-columns:1fr; }
     .obra-panel { width: 100%; right: -100%; }
@@ -1225,6 +1231,11 @@ function renderKPIs(){
       <p class="kpi-label">Valor total reprovado</p>
       <div class="kpi-value">${fmtBRL(valorReprovado)}</div>
       <p class="kpi-sub">${esc(scopeLabel)} · ${reprovadas.length} SIC${reprovadas.length===1?'':'s'} reprovada${reprovadas.length===1?'':'s'}</p>
+    </div>
+    <div class="kpi-card" data-kpi="sic-count">
+      <p class="kpi-label">Quantidade de SICs</p>
+      <div class="kpi-value">${fmtNum(scopedSics.length,0)}</div>
+      <p class="kpi-sub">${esc(scopeLabel)} · ${pendentes.length} pendente${pendentes.length===1?'':'s'} · ${aprovadas.length} aprovada${aprovadas.length===1?'':'s'} · ${reprovadas.length} reprovada${reprovadas.length===1?'':'s'}</p>
     </div>
     <div class="kpi-card">
       <p class="kpi-label">Quantidade de obras</p>

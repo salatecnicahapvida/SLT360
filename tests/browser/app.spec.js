@@ -119,6 +119,13 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await expect(frame.getByRole('button',{name:/Backup completo \(Excel\)/})).toBeVisible();
  await expect(frame.getByRole('button',{name:/Restaurar backup/})).toBeVisible();
  await expect(frame.locator('#weekChips')).toContainText('Semana teste');
+ await expect(frame.locator('[data-kpi="sic-count"]')).toContainText('Quantidade de SICs');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
+ await frame.locator('#weekSelect').selectOption('w-test');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Semana teste');
+ await frame.locator('#weekSelect').selectOption('all');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Todas as semanas');
  expect(await page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBeNull();
  page.on('dialog',dialog=>dialog.accept());
  const [download]=await Promise.all([
