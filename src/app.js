@@ -5990,8 +5990,8 @@ function renderDemandCard(demand) {
       <span class="demand-card-date">${timing.dateLabel}</span>
       ${timingAlert}
       ${
-        demand.coluna === "concluido" && demandHasRecordedValue(demand)
-          ? `<div class="demand-card-value"><span>Valor da demanda</span><strong>${money(value)}</strong></div>`
+        demandHasRecordedValue(demand) && (demand.coluna === "concluido" || (isSic && ["validadoObras", "aprovacaoDiretoria", "aprovadoDiretoria"].includes(demand.coluna)))
+          ? `<div class="demand-card-value"><span>${demand.coluna === "aprovadoDiretoria" ? "Valor aprovado pela Diretoria" : demand.coluna === "concluido" ? "Valor da demanda" : "Valor validado por Obras"}</span><strong>${money(value)}</strong></div>`
           : ""
       }
     </article>
@@ -15773,7 +15773,7 @@ function openDemandDetailModal(id) {
               <span>Buscar obra</span>
               <input name="obraBusca" data-demand-work-search list="demandWorkOptions" value="${escapeAttribute(work?.nome || "")}" placeholder="Digite o nome da obra..." autocomplete="off" required />
             </label>
-            ${demandWorkDatalist()}
+            ${demandWorkDatalist({ includeHistorical: true })}
           </section>
 
           ${renderDemandSicMetadata(demand)}
@@ -16728,10 +16728,11 @@ function demandWizardHiddenFields(draft) {
   `;
 }
 
-function demandWorkDatalist() {
+function demandWorkDatalist({ includeHistorical = false } = {}) {
+  const works = includeHistorical ? demandWorkCatalog() : eligibleDemandWorkCatalog();
   return `
     <datalist id="demandWorkOptions">
-      ${eligibleDemandWorkCatalog().map((work) => `<option value="${escapeAttribute(work.nome)}">${escapeAttribute(demandWorkYear(work))}</option>`).join("")}
+      ${works.map((work) => `<option value="${escapeAttribute(work.nome)}">${escapeAttribute(demandWorkYear(work))}</option>`).join("")}
     </datalist>
   `;
 }
@@ -19080,6 +19081,174 @@ async function handleDemandCompletionSubmit(form) {
   showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
 }
 
+function sicWorksValidatedAmount(demand) {
+  const recorded = Number(demand?.sicWorksValidation?.amount);
+  if (Number.isFinite(recorded)) return Math.abs(recorded);
+  return demandHasRecordedValue(demand) ? demandProducedValue(demand) : null;
+}
+
+function sicDirectorReferenceAmount(demand) {
+  const queued = Number(demand?.sicDirectorApproval?.sicValue);
+  if (Number.isFinite(queued)) return Math.abs(queued);
+  return sicWorksValidatedAmount(demand);
+}
+
+function openSicWorksValidationModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) {
+    showToast("A SIC precisa estar vinculada a uma obra válida antes da validação.");
+    return;
+  }
+  const currentAmount = sicWorksValidatedAmount(demand);
+  const info = demandSicInfo(demand) || {};
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop">
+      <form class="modal-card sic-value-modal" id="sicWorksValidationForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicWorksValidationTitle">
+        <header>
+          <div>
+            <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
+            <h2 id="sicWorksValidationTitle">Validar valor da SIC em Obras</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · o valor ficará visível no card e seguirá automaticamente para a apresentação da Diretoria.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <label class="field sic-primary-value-field">
+            <span>Valor validado por Obras (R$) *</span>
+            <input name="sicWorksAmount" inputmode="decimal" required autocomplete="off" value="${currentAmount === null ? "" : escapeAttribute(currencyInputValue(currentAmount))}" placeholder="0,00" autofocus>
+            <small>Use 0,00 somente quando a SIC não tiver impacto financeiro.</small>
+          </label>
+          <div class="info-box">
+            <strong>Rastreabilidade</strong>
+            <span>O valor, o usuário e a data desta validação serão registrados no histórico da demanda.</span>
+          </div>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">Confirmar validação</button>
+        </footer>
+      </form>
+    </div>
+  `);
+}
+
+async function handleSicWorksValidationSubmit(form) {
+  const demand = state.demands.find((item) => item.id === form.dataset.id);
+  if (!demand) return;
+  const rawValue = String(new FormData(form).get("sicWorksAmount") || "").trim();
+  if (!rawValue) {
+    showFormError("Informe o valor validado por Obras.", form);
+    return;
+  }
+  const amount = parseCurrency(rawValue);
+  if (amount < 0) {
+    showFormError("O valor da SIC deve ser zero ou positivo.", form);
+    return;
+  }
+  const updated = await updateDemandColumn(demand.id, "validadoObras", {
+    worksValidationData: {
+      version: 1,
+      amount,
+      validatedAt: new Date().toISOString(),
+      validatedBy: currentUser()?.nome || "Usuário SLT360",
+    },
+  });
+  if (!updated) return;
+  closeModal();
+  render();
+  showToast(`SIC validada por Obras com valor de ${money(amount)}.`);
+}
+
+function openSicDirectorDecisionModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work) return;
+  const referenceAmount = sicDirectorReferenceAmount(demand);
+  const info = demandSicInfo(demand) || {};
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop">
+      <form class="modal-card sic-value-modal" id="sicDirectorDecisionForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorDecisionTitle">
+        <header>
+          <div>
+            <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
+            <h2 id="sicDirectorDecisionTitle">Confirmar valor aprovado pela Diretoria</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · confirme se a Diretoria manteve o valor apresentado ou aprovou uma revisão.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <div class="sic-reference-value">
+            <span>Valor apresentado à Diretoria</span>
+            <strong>${referenceAmount === null ? "Não registrado" : money(referenceAmount)}</strong>
+          </div>
+          <fieldset class="sic-value-decision-options">
+            <legend>Resultado da aprovação *</legend>
+            <label class="sic-value-decision-option ${referenceAmount === null ? "is-disabled" : ""}">
+              <input type="radio" name="directorValueDecision" value="keep" required ${referenceAmount === null ? "disabled" : ""}>
+              <span><strong>Manter o valor apresentado</strong><small>O valor aprovado será ${referenceAmount === null ? "o valor registrado anteriormente" : money(referenceAmount)}.</small></span>
+            </label>
+            <label class="sic-value-decision-option">
+              <input type="radio" name="directorValueDecision" value="revise" required>
+              <span><strong>Informar valor revisado</strong><small>Use quando a Diretoria aprovar um valor diferente.</small></span>
+            </label>
+          </fieldset>
+          <label class="field sic-revised-value-field" hidden>
+            <span>Valor revisado aprovado (R$) *</span>
+            <input name="sicDirectorAmount" inputmode="decimal" autocomplete="off" placeholder="0,00">
+            <small>Este valor substituirá o valor apresentado e ficará registrado no histórico.</small>
+          </label>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">Confirmar e aprovar</button>
+        </footer>
+      </form>
+    </div>
+  `);
+}
+
+async function handleSicDirectorDecisionSubmit(form) {
+  const demand = state.demands.find((item) => item.id === form.dataset.id);
+  if (!demand) return;
+  const data = new FormData(form);
+  const decision = String(data.get("directorValueDecision") || "");
+  const referenceAmount = sicDirectorReferenceAmount(demand);
+  if (!decision) {
+    showFormError("Confirme se o valor foi mantido ou revisado pela Diretoria.", form);
+    return;
+  }
+  let finalAmount = referenceAmount;
+  if (decision === "revise") {
+    const rawValue = String(data.get("sicDirectorAmount") || "").trim();
+    if (!rawValue) {
+      showFormError("Informe o valor revisado aprovado pela Diretoria.", form);
+      return;
+    }
+    finalAmount = parseCurrency(rawValue);
+  }
+  if (finalAmount === null || !Number.isFinite(finalAmount) || finalAmount < 0) {
+    showFormError("Informe um valor aprovado válido, igual ou maior que zero.", form);
+    return;
+  }
+  const updated = await updateDemandColumn(demand.id, "aprovadoDiretoria", {
+    directorDecisionData: {
+      version: 1,
+      presentedAmount: referenceAmount,
+      finalAmount,
+      revised: decision === "revise",
+      decidedAt: new Date().toISOString(),
+      decidedBy: currentUser()?.nome || "Usuário SLT360",
+    },
+  });
+  if (!updated) return;
+  closeModal();
+  render();
+  showToast(`SIC aprovada pela Diretoria com valor de ${money(finalAmount)}.`);
+}
+
 let sicDirectorQueueContext = null;
 
 function approvalWeekOptionLabel(week) {
@@ -19123,7 +19292,7 @@ function refreshSicDirectorQueueForm(form) {
         <span>Card: ${money(cardTotal)} · Portfólio sem risco: ${money(portfolioTotal)} · Diferença: ${money(difference)}. O EV correto do card será preservado e o alerta ficará ativo.</span>
       </div>
     ` : ""}
-    <div class="kpi-grid compact-grid">
+    <div class="kpi-grid compact-grid sic-director-kpi-grid">
       <article class="kpi-card"><span>EV s/ aditivos</span><strong>${money(card?.ev?.semAditivos ?? (portfolioTotal - portfolioAdditives))}</strong></article>
       <article class="kpi-card"><span>Aditivos aprovados</span><strong>${money(card?.ev?.aditivosAprovados ?? portfolioAdditives)}</strong></article>
       <article class="kpi-card"><span>EV atual sem risco</span><strong>${money(cardTotal)}</strong></article>
@@ -19160,7 +19329,7 @@ async function openSicDirectorQueueModal(id) {
     return;
   }
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
-    <div class="modal-backdrop"><div class="modal-card"><header><div><span class="eyebrow">${escapeAttribute(demand.id)}</span><h2>Preparando Aprovação da Diretoria</h2><p class="muted">Carregando semanas e dados compartilhados…</p></div></header></div></div>
+    <div class="modal-backdrop"><div class="modal-card sic-director-queue-modal"><header><div><span class="eyebrow">${escapeAttribute(demand.id)}</span><h2>Preparando Aprovação da Diretoria</h2><p class="muted">Carregando semanas e dados compartilhados…</p></div></header></div></div>
   `);
   try {
     const row = await globalThis.SLT_CLOUD.sicApprovalSnapshot();
@@ -19170,6 +19339,7 @@ async function openSicDirectorQueueModal(id) {
     const match = matchApprovalCard(payload?.obras, work);
     sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision };
     const info = demandSicInfo(demand) || {};
+    const validatedAmount = sicWorksValidatedAmount(demand);
     const linkedCard = match.card;
     const cardOptions = (payload.obras || [])
       .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
@@ -19181,7 +19351,7 @@ async function openSicDirectorQueueModal(id) {
       : `<label class="field"><span>Card da obra *</span><select name="approvalCardId" required><option value="">Selecione o vínculo correto</option><option value="__new__">Criar novo card para esta obra</option>${cardOptions}</select><small>${match.ambiguous ? "Há mais de um card compatível. Confirme o vínculo antes de continuar." : "Nenhum vínculo único foi encontrado. Confirme um card existente ou crie um novo."}</small></label>`;
     modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
       <div class="modal-backdrop">
-        <form class="modal-card" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
+        <form class="modal-card sic-director-queue-modal" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
           <header>
             <div><span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span><h2 id="sicDirectorQueueTitle">Enviar para Aprovação da Diretoria</h2><p class="muted">${escapeAttribute(work.nome)}. A semana deve ser escolhida manualmente.</p></div>
             <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
@@ -19190,7 +19360,7 @@ async function openSicDirectorQueueModal(id) {
             <div class="error-box" id="formError"></div>
             <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}</select><small>Semanas encerradas não aceitam novas SICs.</small></label>
             ${cardSelector}
-            <label class="field"><span>Valor desta SIC *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" placeholder="R$ 0,00"><small>O valor pertence somente à SIC ${escapeAttribute(info.lecomNumber || demand.id)}.</small></label>
+            <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
             <div data-sic-director-dynamic></div>
           </div>
           <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Confirmar e mover</button></footer>
@@ -19318,7 +19488,14 @@ async function handleDemandStatusReasonSubmit(form) {
   showToast(`Card movido para ${demandStatusLabel(updated)} com motivo registrado.`);
 }
 
-async function updateDemandColumn(id, nextColumnId, { persist = true, skipCompletionGate = false, movementReason = "", directorApprovalData = null } = {}) {
+async function updateDemandColumn(id, nextColumnId, {
+  persist = true,
+  skipCompletionGate = false,
+  movementReason = "",
+  worksValidationData = null,
+  directorApprovalData = null,
+  directorDecisionData = null,
+} = {}) {
   const demand = state.demands.find((item) => item.id === id);
   let nextColumn = columnById(nextColumnId);
   if (!demand || !nextColumn) return false;
@@ -19326,6 +19503,10 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   if (["aprovacaoDiretoria", "aprovadoDiretoria"].includes(nextColumnId) && !isSicDemand) {
     showToast("Somente demandas do tipo SIC podem usar as etapas da Diretoria.");
+    return false;
+  }
+  if (isSicDemand && nextColumnId === "validadoObras" && demand.coluna === "validacaoObras" && !worksValidationData) {
+    openSicWorksValidationModal(demand.id);
     return false;
   }
   if (isSicDemand && nextColumnId === "aprovacaoDiretoria" && demand.coluna !== "aprovacaoDiretoria") {
@@ -19345,6 +19526,10 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
     if (demand.coluna !== "aprovacaoDiretoria") {
       showToast("A etapa Aprovado Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
+      return false;
+    }
+    if (!directorDecisionData) {
+      openSicDirectorDecisionModal(demand.id);
       return false;
     }
   }
@@ -19380,7 +19565,33 @@ async function updateDemandColumn(id, nextColumnId, { persist = true, skipComple
   const transitionedAt = new Date().toISOString();
   const currentIndex = columns.findIndex((column) => column.id === demand.coluna);
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
+  if (worksValidationData) {
+    const previousAmount = sicWorksValidatedAmount(demand);
+    demand.sicWorksValidation = clone(worksValidationData);
+    demand.valorGerado = Number(worksValidationData.amount) || 0;
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "valor validado por Obras",
+      valorAnterior: previousAmount === null ? "Não informado" : money(previousAmount),
+      valorNovo: money(demand.valorGerado),
+    });
+  }
   if (directorApprovalData) demand.sicDirectorApproval = clone(directorApprovalData);
+  if (directorDecisionData) {
+    const presentedAmount = sicDirectorReferenceAmount(demand);
+    const finalAmount = Number(directorDecisionData.finalAmount) || 0;
+    demand.sicDirectorDecision = clone(directorDecisionData);
+    demand.valorGerado = finalAmount;
+    if (demand.sicDirectorApproval) demand.sicDirectorApproval.sicValue = finalAmount;
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "valor aprovado pela Diretoria",
+      valorAnterior: presentedAmount === null ? "Não informado" : money(presentedAmount),
+      valorNovo: `${money(finalAmount)}${directorDecisionData.revised ? " (revisado)" : " (mantido)"}`,
+    });
+  }
   demand.phaseHistory = [
     ...arrayOrFallback(demand.phaseHistory),
     {
@@ -20624,6 +20835,16 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches('#sicDirectorDecisionForm [name="directorValueDecision"]')) {
+    const form = event.target.closest("#sicDirectorDecisionForm");
+    const revisedField = form?.querySelector(".sic-revised-value-field");
+    const revisedInput = revisedField?.querySelector('[name="sicDirectorAmount"]');
+    const revised = event.target.value === "revise";
+    if (revisedField) revisedField.hidden = !revised;
+    if (revisedInput) revisedInput.required = revised;
+    if (revised) revisedInput?.focus();
+    return;
+  }
   if (event.target.matches('#sicDirectorQueueForm [name="approvalWeekId"], #sicDirectorQueueForm [name="approvalCardId"]')) {
     refreshSicDirectorQueueForm(event.target.closest("#sicDirectorQueueForm"));
     return;
@@ -20932,9 +21153,17 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     await handleDemandStatusReasonSubmit(event.target);
   }
+  if (event.target.id === "sicWorksValidationForm") {
+    event.preventDefault();
+    await handleSicWorksValidationSubmit(event.target);
+  }
   if (event.target.id === "sicDirectorQueueForm") {
     event.preventDefault();
     await handleSicDirectorQueueSubmit(event.target);
+  }
+  if (event.target.id === "sicDirectorDecisionForm") {
+    event.preventDefault();
+    await handleSicDirectorDecisionSubmit(event.target);
   }
   if (event.target.id === "demandCompletionForm") {
     event.preventDefault();

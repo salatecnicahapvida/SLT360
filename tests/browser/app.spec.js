@@ -908,7 +908,7 @@ test('existing demands linked to older works can still be edited',async({page})=
  await page.locator('article[data-id="older-demand"]').click();
  const detail=page.locator('#demandDetailForm');
  await expect(detail.locator('[name="obraId"]')).toHaveValue(older.id);
- await expect(detail.locator('#demandWorkOptions option[value="Obra de 2024"]')).toHaveCount(0);
+ await expect(detail.locator('#demandWorkOptions option[value="Obra de 2024"]')).toHaveCount(1);
  await detail.locator('[name="nota"]').fill('Ajuste em demanda histórica');
  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect.poll(()=>b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key===demand.id)?.document?.obraId).toBe(older.id);
@@ -2138,7 +2138,12 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  const validationStatus=page.locator('#demandDetailForm [name="coluna"]');
  await validationStatus.selectOption('validadoObras');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ const worksValue=page.locator('#sicWorksValidationForm');
+ await expect(worksValue).toBeVisible();
+ await worksValue.locator('[name="sicWorksAmount"]').fill('20,00');
+ await worksValue.getByRole('button',{name:'Confirmar validação'}).click();
  await expect(validatedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await expect(validatedColumn.locator('article[data-id="test-demand"] .demand-card-value')).toContainText('R$ 20,00');
 
  await validatedColumn.locator('article[data-id="test-demand"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -2148,7 +2153,8 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  await expect(queue).toBeVisible();
  await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
  await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
- await queue.locator('[name="approvalSicValue"]').fill('20,00');
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveValue('20,00');
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveAttribute('readonly','');
  await queue.locator('[name="approvalAssigned"]').fill('120,00');
  await queue.locator('[name="approvalCommitted"]').fill('80,00');
  await queue.getByRole('button',{name:'Confirmar e mover'}).click();
@@ -2160,7 +2166,12 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  await expect(approvedStatus.locator('option[value="concluido"]')).not.toHaveAttribute('disabled','');
  await approvedStatus.selectOption('aprovadoDiretoria');
  await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+ const directorDecision=page.locator('#sicDirectorDecisionForm');
+ await expect(directorDecision).toBeVisible();
+ await directorDecision.locator('[name="directorValueDecision"][value="keep"]').check();
+ await directorDecision.getByRole('button',{name:'Confirmar e aprovar'}).click();
  await expect(directorApprovedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+ await expect(directorApprovedColumn.locator('article[data-id="test-demand"] .demand-card-value')).toContainText('R$ 20,00');
  await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
  expect(b.errors).toEqual([]);
 });
@@ -2324,6 +2335,10 @@ test('Analista can validate Obras but cannot send a SIC to Diretoria',async({pag
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await status.selectOption('validadoObras');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ const validationValue=page.locator('#sicWorksValidationForm');
+ await expect(validationValue).toBeVisible();
+ await validationValue.locator('[name="sicWorksAmount"]').fill('37,50');
+ await validationValue.getByRole('button',{name:'Confirmar validação'}).click();
  await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]')).toBeVisible();
 
  await page.locator('article[data-id="sic-validation-analyst"]').click();
@@ -2355,6 +2370,12 @@ test('Gestor chooses the week and queues only the new validated SIC for Diretori
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const queue=page.locator('#sicDirectorQueueForm');
  await expect(queue).toBeVisible();
+ const queueBox=await queue.boundingBox();
+ expect(queueBox.width).toBeGreaterThan(850);
+ expect(await queue.locator('.modal-body').evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
+ await expect(queue.locator('.sic-director-kpi-grid .kpi-card')).toHaveCount(4);
+ const kpiHeights=await queue.locator('.sic-director-kpi-grid .kpi-card').evaluateAll(elements=>elements.map(element=>element.getBoundingClientRect().height));
+ expect(Math.max(...kpiHeights)).toBeLessThan(120);
  await expect(queue.locator('[name="approvalWeekId"]')).toHaveValue('');
  await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
  await queue.locator('[name="approvalCardId"]').selectOption('approval-test');
@@ -2376,6 +2397,9 @@ test('Analista can move SIC from director approval to director approved',async({
   tipo:'SIC',
   coluna:'aprovacaoDiretoria',
   analistaResponsavel:'Ana',
+  valorGerado:25,
+  sicWorksValidation:{version:1,amount:25,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
+  sicDirectorApproval:{version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:25},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovação de diretoria'},
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
@@ -2384,7 +2408,15 @@ test('Analista can move SIC from director approval to director approved',async({
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ const decision=page.locator('#sicDirectorDecisionForm');
+ await expect(decision).toContainText('R$ 25,00');
+ await decision.locator('[name="directorValueDecision"][value="revise"]').check();
+ await decision.locator('[name="sicDirectorAmount"]').fill('22,50');
+ await decision.getByRole('button',{name:'Confirmar e aprovar'}).click();
  await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-analyst"]')).toBeVisible();
+ await expect(page.locator('article[data-id="sic-director-analyst"] .demand-card-value')).toContainText('R$ 22,50');
+ const approvedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-director-analyst'&&change.document?.coluna==='aprovadoDiretoria');
+ expect(approvedChange.document).toMatchObject({valorGerado:22.5,sicDirectorDecision:{presentedAmount:25,finalAmount:22.5,revised:true}});
  expect(b.errors).toEqual([]);
 });
 
