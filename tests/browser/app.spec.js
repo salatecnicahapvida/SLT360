@@ -2510,6 +2510,67 @@ test('Gestor records an audited Director waiver before concluding a SIC',async({
  expect(b.errors).toEqual([]);
 });
 
+test('any user confirms whether Diretoria is required before moving a validated SIC to Concluído',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-direct-completion',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validadoObras',
+  analistaResponsavel:'Ana',
+  valorGerado:25,
+  dataValidacaoObras:'2026-09-28',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC sem aprovação da Diretoria'},
+ };
+ const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+
+ const requestDirectCompletion=async()=>{
+  const card=page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-direct-completion"]');
+  await expect(card).toBeVisible();
+  await card.click();
+  const detail=page.locator('#demandDetailForm');
+  await detail.locator('[name="coluna"]').selectOption('concluido');
+  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ };
+
+ await requestDirectCompletion();
+ let confirmation=page.locator('#sicDirectorRequirementForm');
+ await expect(confirmation.getByRole('heading',{name:'Necessária aprovação da Diretoria?'})).toBeVisible();
+ await confirmation.locator('[name="directorApprovalRequired"][value="yes"]').check();
+ await confirmation.getByRole('button',{name:'Confirmar decisão'}).click();
+ await expect(page.locator('#toast')).toHaveText('Movimentação cancelada. A SIC deve seguir para Aguardando Aprovação Diretoria.');
+ await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-direct-completion"]')).toBeVisible();
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.key==='sic-direct-completion')).toBe(false);
+
+ await requestDirectCompletion();
+ confirmation=page.locator('#sicDirectorRequirementForm');
+ await confirmation.locator('[name="directorApprovalRequired"][value="no"]').check();
+ const amount=confirmation.locator('[name="sicDirectCompletionAmount"]');
+ await expect(amount).toBeVisible();
+ await expect(amount).toHaveValue('25,00');
+ await amount.fill('27,50');
+ await confirmation.getByRole('button',{name:'Confirmar decisão'}).click();
+
+ await expect(page.locator('.kanban-column[data-column="concluido"] article[data-id="sic-direct-completion"]')).toBeVisible();
+ const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-direct-completion'&&change.document?.coluna==='concluido');
+ expect(completed.document).toMatchObject({
+  valorGerado:27.5,
+  evSemMudanca:true,
+  sicDirectorWaiver:{
+   version:2,
+   required:false,
+   sourcePhase:'validadoObras',
+   confirmedAmount:27.5,
+   waivedBy:'Usuário teste',
+   waivedById:id,
+  },
+ });
+ expect(completed.document.dataEntregaReal).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+ expect(completed.document.sicDirectorDecision).toBeUndefined();
+ expect(b.errors).toEqual([]);
+});
+
 
 test('operational completion requires real delivery date, EV decision and generated amount',async({page})=>{
  const demand={...structuredClone(payload.state.demands[1]),id:'finish-demand',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};

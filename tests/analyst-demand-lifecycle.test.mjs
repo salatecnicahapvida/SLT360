@@ -19,6 +19,9 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
         { id: 'sic-approval', titulo: 'SIC aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'aprovacaoDiretoria' },
         { id: 'sic-waiver', titulo: 'SIC com dispensa', obraId: 'work-1', tipo: 'SIC', coluna: 'aprovacaoDiretoria' },
         { id: 'sic-unapproved', titulo: 'SIC sem aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'fazendo' },
+        { id: 'sic-direct', titulo: 'SIC sem Diretoria', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
+        { id: 'sic-direct-required', titulo: 'SIC com Diretoria', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
+        { id: 'sic-direct-forged', titulo: 'SIC com usuário inválido', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
       ],
       maintenanceDemands: [
         { id: 'maintenance-1', titulo: 'Predial', centroCusto: 'Manutenção predial', coluna: 'naoIniciado', historico: [] },
@@ -35,6 +38,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260925130000_relink_tea_aracaju_and_require_sic_values.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260925151000_allow_audited_sic_director_waiver.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260928182951_relax_sic_works_validation_and_lock_director_approval.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260928203000_allow_confirmed_sic_completion_without_director.sql', import.meta.url), 'utf8'));
     await db.query('insert into auth.users(id) values($1),($2)', [analyst, manager]);
     await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false),($2,'Gestor teste','Gestor',false)", [analyst, manager]);
     for (const module of ['budget', 'maintenance', 'clinical']) {
@@ -93,6 +97,67 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await assert.rejects(commit([
       change('budget_demands', 'sic-waiver', { ...payload.state.demands[4], sicDirectorWaiver: { ...directorWaiver, waivedBy: 'Analista teste', waivedById: analyst } }),
     ]), { code: '42501' });
+
+    await assert.rejects(commit([
+      change('budget_demands', 'sic-direct-required', {
+        ...payload.state.demands[7],
+        coluna: 'concluido',
+        dataEntregaReal: '2026-09-28',
+        evSemMudanca: true,
+        sicDirectorWaiver: {
+          version: 2,
+          required: true,
+          sourcePhase: 'validadoObras',
+          confirmedAmount: 25,
+          waivedAt: '2026-09-28T12:00:00.000Z',
+          waivedBy: 'Analista teste',
+          waivedById: analyst,
+        },
+      }),
+    ]), { code: '23514' });
+
+    await assert.rejects(commit([
+      change('budget_demands', 'sic-direct-forged', {
+        ...payload.state.demands[8],
+        coluna: 'concluido',
+        dataEntregaReal: '2026-09-28',
+        evSemMudanca: true,
+        sicDirectorWaiver: {
+          version: 2,
+          required: false,
+          sourcePhase: 'validadoObras',
+          confirmedAmount: 25,
+          waivedAt: '2026-09-28T12:00:00.000Z',
+          waivedBy: 'Gestor teste',
+          waivedById: manager,
+        },
+      }),
+    ]), { code: '23514' });
+
+    const directCompletion = {
+      version: 2,
+      required: false,
+      reason: 'Aprovação da Diretoria não necessária',
+      sourcePhase: 'validadoObras',
+      confirmedAmount: 27.5,
+      waivedAt: '2026-09-28T12:00:00.000Z',
+      waivedBy: 'Analista teste',
+      waivedById: analyst,
+    };
+    await commit([
+      change('budget_demands', 'sic-direct', {
+        ...payload.state.demands[6],
+        coluna: 'concluido',
+        dataEntregaReal: '2026-09-28',
+        valorGerado: 27.5,
+        evSemMudanca: true,
+        sicDirectorWaiver: directCompletion,
+      }),
+    ]);
+    assert.deepEqual(
+      (await db.query("select phase, generated_amount, extra->'sicDirectorWaiver' as waiver from slt_budget_demands where record_key='sic-direct'")).rows[0],
+      { phase: 'concluido', generated_amount: '27.5', waiver: directCompletion },
+    );
 
     await as('authenticated', manager);
     await commit([change('budget_demands', 'budget-manager', { id: 'budget-manager', titulo: 'Criado pelo Gestor', obraId: 'work-1' }, 0)]);
