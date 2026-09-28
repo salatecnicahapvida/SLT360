@@ -111,7 +111,9 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
 async function login(page){await page.goto('./');await page.locator('#cloudLogin [name=email]').fill('admin@example.test');await page.locator('#cloudLogin [name=password]').fill('TestPassword123!');await page.locator('#cloudLogin button').click();await expect(page.locator('#legacyShell')).toBeVisible();}
 
 test('Aprovação de SICs keeps the supplied dashboard and round-trips its full Excel backup',async({page})=>{
- const b=await backend(page);await login(page);
+ const approval={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ approval.payload.obras[0].descricao='0000. Pronto atendimento e clínica Botafogo com descrição extensa';
+ const b=await backend(page,'Admin',false,{sicApprovalStore:approval});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
  const frame=page.frameLocator('iframe.sic-approvals-frame');
@@ -124,6 +126,12 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await frame.locator('#weekSelect').selectOption('w-test');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Semana teste');
+ const approvalCard=frame.locator('.obra-card').first();
+ const deleteButton=approvalCard.locator('[data-card-delete]');
+ await expect(deleteButton).toBeVisible();
+ const [cardBox,deleteBox]=await Promise.all([approvalCard.boundingBox(),deleteButton.boundingBox()]);
+ expect(deleteBox.x).toBeGreaterThanOrEqual(cardBox.x);
+ expect(deleteBox.x+deleteBox.width).toBeLessThanOrEqual(cardBox.x+cardBox.width+1);
  await frame.locator('#weekSelect').selectOption('all');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Todas as semanas');
  expect(await page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBeNull();
@@ -137,6 +145,25 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await expect(frame.locator('#backupRestorePreview')).toContainText('Backup íntegro');
  await frame.locator('#btnConfirmBackupRestore').click();
  await expect(frame.locator('#toast')).toContainText('Restauração concluída');
+ expect(b.errors).toEqual([]);
+});
+
+test('removing a SIC approval card only removes it from the weekly agenda',async({page})=>{
+ const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ const b=await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const frame=page.frameLocator('iframe.sic-approvals-frame');
+ await frame.locator('#weekSelect').selectOption('w-test');
+ let confirmation='';
+ page.once('dialog',dialog=>{confirmation=dialog.message();dialog.accept();});
+ await frame.locator('[data-card-delete="approval-test"]').click();
+ expect(confirmation).toContain('A demanda operacional permanecerá no Kanban');
+ await expect(frame.locator('#toast')).toContainText('A demanda continua no Kanban');
+ expect(shared.payload.obras[0].excludedWeekIds).toContain('w-test');
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='budget_demands')).toBe(false);
+ await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
+ await expect(page.locator('article[data-id="test-demand"]')).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 
@@ -2420,6 +2447,7 @@ test('Analista can move SIC from director approval to director approved',async({
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-director-analyst"]').click();
+ await expect(page.locator('#demandDetailForm').getByRole('button',{name:'Dispensar Diretoria e concluir'})).toHaveCount(0);
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
@@ -2432,6 +2460,53 @@ test('Analista can move SIC from director approval to director approved',async({
  await expect(page.locator('article[data-id="sic-director-analyst"] .demand-card-value')).toContainText('R$ 22,50');
  const approvedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-director-analyst'&&change.document?.coluna==='aprovadoDiretoria');
  expect(approvedChange.document).toMatchObject({valorGerado:22.5,sicDirectorDecision:{presentedAmount:25,finalAmount:22.5,revised:true}});
+ expect(b.errors).toEqual([]);
+});
+
+test('Gestor records an audited Director waiver before concluding a SIC',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-director-waiver',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'aprovacaoDiretoria',
+  analistaResponsavel:'Ana',
+  valorGerado:25,
+  evSemMudanca:true,
+  sicWorksValidation:{version:1,amount:25,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
+  sicDirectorApproval:{version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:25},
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovada sem reunião'},
+ };
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-director-waiver"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.getByRole('button',{name:'Dispensar Diretoria e concluir'}).click();
+ const waiver=page.locator('#sicDirectorWaiverForm');
+ await expect(waiver).toContainText('Esta ação não registra aprovação da Diretoria');
+ await waiver.locator('[name="waiverReason"]').fill('SIC aprovada diretamente sem necessidade de reunião da Diretoria.');
+ await waiver.locator('[name="confirmWaiver"]').check();
+ await waiver.getByRole('button',{name:'Registrar dispensa e continuar'}).click();
+
+ await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await page.getByRole('button',{name:/Continuar para os dados finais/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-09-25');
+ await completion.locator('[name="valorGerado"]').fill('25,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+
+ const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='sic-director-waiver');
+ const waiverChange=changes.find(change=>change.document?.sicDirectorWaiver&&change.document?.coluna==='aprovacaoDiretoria');
+ expect(waiverChange.document.sicDirectorWaiver).toMatchObject({
+  version:1,
+  reason:'SIC aprovada diretamente sem necessidade de reunião da Diretoria.',
+  waivedBy:'Usuário teste',
+  waivedById:id,
+ });
+ const completedChange=changes.find(change=>change.document?.coluna==='concluido');
+ expect(completedChange.document.sicDirectorWaiver).toMatchObject({version:1,waivedById:id});
+ expect(completedChange.document.sicDirectorDecision).toBeUndefined();
+ expect(completedChange.document.dataEntregaReal).toBe('2026-09-25');
  expect(b.errors).toEqual([]);
 });
 

@@ -15713,6 +15713,11 @@ function openDemandDetailModal(id) {
   const sprint = sprintById(demand.sprintId);
   const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
   const stageTime = demandStageTimeInfo(demand);
+  const directorWaiver = sicDirectorWaiverData(demand);
+  const directorWaiverDate = directorWaiver ? new Date(directorWaiver.waivedAt) : null;
+  const directorWaiverDateText = directorWaiverDate && !Number.isNaN(directorWaiverDate.getTime())
+    ? directorWaiverDate.toLocaleString("pt-BR")
+    : "data não informada";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
       <form class="modal-card demand-modal-card demand-detail-form" id="demandDetailForm" data-id="${demand.id}" aria-labelledby="demandDetailTitle">
@@ -15791,6 +15796,16 @@ function openDemandDetailModal(id) {
               <small class="muted">Obrigatório ao pausar ou cancelar. O motivo fica salvo no card e no histórico.</small>
             </label>
           </section>
+
+          ${directorWaiver ? `
+          <section class="modal-section">
+            <div class="info-box">
+              <strong>Aprovação da Diretoria dispensada</strong>
+              <span>${escapeAttribute(directorWaiver.reason)}</span>
+              <small>Registrado por ${escapeAttribute(directorWaiver.waivedBy)} em ${escapeAttribute(directorWaiverDateText)}. A dispensa não equivale a uma aprovação da Diretoria.</small>
+            </div>
+          </section>
+          ` : ""}
 
           ${demand.coluna === "concluido" ? `
           <section class="modal-section demand-produced-value-section">
@@ -15891,6 +15906,9 @@ function openDemandDetailModal(id) {
         </div>
         <footer class="modal-actions">
           ${canDeleteDemand() ? `<button class="ghost-button danger-action" type="button" data-action="open-delete-demand" data-id="${demand.id}">Excluir demanda</button>` : ""}
+          ${demandTypeKey(demand.tipo) === "SIC" && demand.coluna === "aprovacaoDiretoria" && canWaiveSicDirectorApproval()
+            ? `<button class="secondary-action" type="button" data-action="waive-sic-director-approval" data-id="${escapeAttribute(demand.id)}">${directorWaiver ? "Continuar conclusão com dispensa" : "Dispensar Diretoria e concluir"}</button>`
+            : ""}
           ${work ? `<button class="secondary-action" type="button" data-action="open-work-ev" data-id="${escapeAttribute(work.id)}">Abrir EV</button>` : ""}
           <button class="ghost-button" type="button" data-action="close-modal">Fechar</button>
           <button class="primary-action" type="submit">Salvar</button>
@@ -16109,6 +16127,18 @@ function sprintOptions(selected) {
 }
 
 function canAdvanceSicToDirectorApproval() {
+  return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
+}
+
+function sicDirectorWaiverData(demand) {
+  const waiver = demand?.sicDirectorWaiver;
+  if (!waiver || waiver.version !== 1) return null;
+  if (String(waiver.reason || "").trim().length < 10) return null;
+  if (!String(waiver.waivedAt || "").trim() || !String(waiver.waivedBy || "").trim() || !String(waiver.waivedById || "").trim()) return null;
+  return waiver;
+}
+
+function canWaiveSicDirectorApproval() {
   return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
 }
 
@@ -19249,6 +19279,110 @@ async function handleSicDirectorDecisionSubmit(form) {
   showToast(`SIC aprovada pela Diretoria com valor de ${money(finalAmount)}.`);
 }
 
+function openSicDirectorWaiverModal(id) {
+  const demand = state.demands.find((item) => item.id === id);
+  const work = demand && workById(demand.obraId);
+  if (!demand || !work || demandTypeKey(demand.tipo) !== "SIC" || demand.coluna !== "aprovacaoDiretoria") {
+    showToast("A dispensa só pode ser registrada para uma SIC em Aguardando Aprovação Diretoria.");
+    return;
+  }
+  if (!canWaiveSicDirectorApproval()) {
+    showToast("Somente usuários Gestor ou Admin podem dispensar a aprovação da Diretoria.");
+    return;
+  }
+  if (sicDirectorWaiverData(demand)) {
+    openDemandCompletionModal(demand.id);
+    return;
+  }
+  const info = demandSicInfo(demand) || {};
+  modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="modal-backdrop">
+      <form class="modal-card sic-value-modal" id="sicDirectorWaiverForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorWaiverTitle">
+        <header>
+          <div>
+            <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
+            <h2 id="sicDirectorWaiverTitle">Dispensar aprovação da Diretoria</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · use somente quando esta SIC puder ser concluída sem ser apresentada à Diretoria.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="error-box" id="formError"></div>
+          <div class="info-box">
+            <strong>Exceção auditada</strong>
+            <span>Esta ação não registra aprovação da Diretoria. Ela registra formalmente a dispensa e mantém o fluxo de conclusão, incluindo a conferência do EV, da data e do valor final.</span>
+          </div>
+          <label class="field">
+            <span>Justificativa da dispensa *</span>
+            <textarea name="waiverReason" rows="4" minlength="10" required placeholder="Ex.: SIC aprovada diretamente, sem necessidade de apresentação à Diretoria." autofocus></textarea>
+            <small class="muted">A justificativa, o usuário e a data ficarão no histórico da demanda.</small>
+          </label>
+          <label class="validation-skip">
+            <input name="confirmWaiver" type="checkbox" value="true" required>
+            <span>Confirmo que esta SIC não precisa ser apresentada à Diretoria e deve seguir para o checklist de conclusão.</span>
+          </label>
+          <p class="muted">O card da pauta semanal não será removido automaticamente. Use “Excluir da semana” na aba Aprovação de SIC's quando ele ainda estiver visível.</p>
+        </div>
+        <footer class="modal-actions">
+          <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
+          <button class="primary-action" type="submit">Registrar dispensa e continuar</button>
+        </footer>
+      </form>
+    </div>
+  `);
+}
+
+async function handleSicDirectorWaiverSubmit(form) {
+  const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
+  const demand = state.demands[demandIndex];
+  if (!demand) return;
+  if (!canWaiveSicDirectorApproval()) {
+    showFormError("Somente usuários Gestor ou Admin podem dispensar a aprovação da Diretoria.", form);
+    return;
+  }
+  if (demandTypeKey(demand.tipo) !== "SIC" || demand.coluna !== "aprovacaoDiretoria") {
+    showFormError("A SIC não está mais em Aguardando Aprovação Diretoria. Recarregue os dados.", form);
+    return;
+  }
+  const data = new FormData(form);
+  const reason = String(data.get("waiverReason") || "").trim();
+  if (reason.length < 10) {
+    showFormError("Informe uma justificativa com pelo menos 10 caracteres.", form);
+    form.querySelector('[name="waiverReason"]')?.focus();
+    return;
+  }
+  if (data.get("confirmWaiver") !== "true") {
+    showFormError("Confirme que a aprovação da Diretoria foi dispensada.", form);
+    return;
+  }
+  const actor = currentUser() || {};
+  const demandSnapshot = clone(demand);
+  const historySnapshot = clone(state.history || []);
+  demand.sicDirectorWaiver = {
+    version: 1,
+    reason,
+    waivedAt: new Date().toISOString(),
+    waivedBy: actor.nome || "Usuário SLT360",
+    waivedById: actor.id || "",
+  };
+  addHistory({
+    entidade: "demanda",
+    entidadeId: demand.id,
+    campo: "aprovação da Diretoria",
+    valorAnterior: "Aguardando apresentação",
+    valorNovo: `Dispensada — ${reason}`,
+  });
+  try {
+    await saveStateAndWait();
+  } catch (error) {
+    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    state.history = historySnapshot;
+    showFormError(error?.message || "A dispensa não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
+    return;
+  }
+  openDemandCompletionModal(demand.id);
+}
+
 let sicDirectorQueueContext = null;
 
 function approvalWeekOptionLabel(week) {
@@ -19608,12 +19742,15 @@ async function updateDemandColumn(id, nextColumnId, {
     }
   }
   if (isSicDemand && nextColumnId === "concluido" && demand.coluna !== "aprovadoDiretoria") {
-    showToast(
-      demand.coluna === "aprovacaoDiretoria"
-        ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Diretoria antes de ir para Concluído."
-        : "Uma SIC só pode ser concluída depois de estar em Aprovado Diretoria."
-    );
-    return false;
+    const validWaiver = demand.coluna === "aprovacaoDiretoria" && sicDirectorWaiverData(demand);
+    if (!validWaiver || !canWaiveSicDirectorApproval()) {
+      showToast(
+        demand.coluna === "aprovacaoDiretoria"
+          ? "Esta SIC precisa ser aprovada pela Diretoria ou ter uma dispensa registrada por Gestor/Admin antes de ir para Concluído."
+          : "Uma SIC só pode ser concluída depois de estar em Aprovado Diretoria."
+      );
+      return false;
+    }
   }
   if (nextColumnId === "validadoObras" && demand.coluna === "validacaoObras" && !demand.dataValidacaoObras) {
     demand.dataValidacaoObras = todayISO();
@@ -20592,6 +20729,10 @@ document.addEventListener("click", async (event) => {
     openDemandCompletionModal(demand.id);
     return;
   }
+  if (action === "waive-sic-director-approval") {
+    openSicDirectorWaiverModal(actionButton.dataset.id);
+    return;
+  }
   if (action === "toggle-ev-zero-lines") {
     const form = actionButton.closest("#evForm");
     if (!form) return;
@@ -20967,7 +21108,9 @@ document.addEventListener("change", async (event) => {
     ) {
       showToast(
         demand?.coluna === "aprovacaoDiretoria"
-          ? "Esta SIC está em Aguardando Aprovação Diretoria. Ela precisa ser movida para Aprovado Diretoria antes de ir para Concluído."
+          ? canWaiveSicDirectorApproval()
+            ? "Use “Dispensar Diretoria e concluir” para registrar a exceção antes de concluir esta SIC."
+            : "Esta SIC precisa ser aprovada pela Diretoria antes de ir para Concluído."
           : "Uma SIC só pode ser concluída depois de estar em Aprovado Diretoria."
       );
       event.target.value = demand.coluna;
@@ -21258,6 +21401,10 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "sicDirectorDecisionForm") {
     event.preventDefault();
     await handleSicDirectorDecisionSubmit(event.target);
+  }
+  if (event.target.id === "sicDirectorWaiverForm") {
+    event.preventDefault();
+    await handleSicDirectorWaiverSubmit(event.target);
   }
   if (event.target.id === "demandCompletionForm") {
     event.preventDefault();
