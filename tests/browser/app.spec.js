@@ -2556,7 +2556,6 @@ test('any user confirms whether Diretoria is required before moving a validated 
  const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-direct-completion'&&change.document?.coluna==='concluido');
  expect(completed.document).toMatchObject({
   valorGerado:27.5,
-  evSemMudanca:true,
   sicDirectorWaiver:{
    version:2,
    required:false,
@@ -2566,6 +2565,7 @@ test('any user confirms whether Diretoria is required before moving a validated 
    waivedById:id,
   },
  });
+ expect(completed.document.evSemMudanca).toBeUndefined();
  expect(completed.document.dataEntregaReal).toMatch(/^\d{4}-\d{2}-\d{2}$/);
  expect(completed.document.sicDirectorDecision).toBeUndefined();
  expect(b.errors).toEqual([]);
