@@ -41,6 +41,10 @@ function createPersistentAuthStorage() {
 
 const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   global: { headers: { 'x-client-info': 'unified-1' } },
+  // As gravações já usam request_id idempotente e uma repetição controlada em
+  // retryTransientCloud. Evita empilhar as tentativas automáticas do PostgREST
+  // com as do aplicativo quando o banco devolve 504.
+  db: { retry: false },
   auth: {
     storage: createPersistentAuthStorage(),
     persistSession: true,
