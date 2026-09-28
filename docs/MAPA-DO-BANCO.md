@@ -2,10 +2,12 @@
 
 Cada linha abaixo representa uma tabela física no Supabase. Dados operacionais ficam somente no banco privado.
 
-| Módulo | Tabelas |
+> **Nota sobre Projetos:** `projects` está descontinuado como módulo operacional da aplicação. As tabelas `slt_projects_*` permanecem no banco como **legado técnico/compatibilidade histórica**. Quando uma dessas estruturas ainda sustenta um fluxo vigente — principalmente `slt_projects_works` — a regra funcional pertence a **Obras**.
+
+| Domínio físico | Tabelas |
 |---|---:|
 | Cadastros compartilhados | 5 |
-| Projetos | 8 |
+| Projetos — legado técnico | 8 |
 | Obras | 20 |
 | Manutenção | 7 |
 | Engenharia Clínica | 5 |
@@ -21,7 +23,9 @@ Cada linha abaixo representa uma tabela física no Supabase. Dados operacionais 
 | `slt_core_history` | id, entity_type, entity_id, field_name, actor_name, occurred_at | — |
 | `slt_core_source_unit_registry_data` | Metadados da origem / atributos do registro | — |
 
-## Projetos
+## Projetos — legado técnico
+
+Estas tabelas são preservadas para histórico, reconstrução e compatibilidade com o modelo físico existente. **Não representam um módulo navegável nem uma permissão operacional ativa.** `slt_projects_works` continua sendo a relação física compartilhada de obras e é consumida pelos fluxos vigentes de Obras, EV, SIC e Controle de Verbas; sua edição na aplicação herda a permissão de escrita de **Obras**. As demais entidades específicas de Projetos permanecem preservadas como legado e não recebem novos fluxos operacionais pela interface.
 
 | Tabela | Campos principais | Vínculos |
 |---|---|---|
@@ -99,4 +103,4 @@ Em 08/09/2026 foram acrescentadas sete entidades; o catálogo totaliza 61. São 
 
 Todas as entidades têm chave primária, revisão por registro, data de criação/alteração, responsável pela alteração e exclusão lógica. Tabelas de origem preservam registros importados e são somente leitura para o aplicativo. As tabelas de operação recebem novas gravações. A ausência de registros em uma tabela significa que a fonte não tinha esse cadastro; não são criados dados fictícios.
 
-Acessos por módulo: `slt_core_module_access`. Auditoria imutável: `slt_core_change_log`. Autenticação: Supabase Auth e `slt360_profiles`. Anexos: metadados em `slt360_attachments` e arquivos em bucket privado.
+Acessos por módulo: `slt_core_module_access`. Grants legados com `module='projects'` podem permanecer para rastreabilidade, mas são ignorados pela camada de acesso da aplicação. Auditoria imutável: `slt_core_change_log`. Autenticação: Supabase Auth e `slt360_profiles`. Anexos: metadados em `slt360_attachments` e arquivos em bucket privado.
