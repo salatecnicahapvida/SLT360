@@ -74,7 +74,7 @@ test('contas: primeiro acesso, vínculo histórico, escopo, revisão e proteçã
 test('permissões vazias negam acesso; gravação não apaga filhos de módulo não carregado',async()=>{
  const p=decorateProfile({ativo:true,perfil:'Analista',must_change_password:false,access:[]});
  assert.deepEqual(p.accessModules,[]);assert.equal(moduleAllowed(p,'finance'),false);
- p.access=[{module:'projects',can_read:true,can_write:true}];
+ p.access=[{module:'budget',can_read:true,can_write:true}];
  const records=flattenPayload({state:{works:[{id:'w',nome:'Obra',ev:null}],history:[]}}).map(r=>({...r,revision:1}));
  let changes=[];
  const store=createModuleStore({records,canWrite:e=>entityWritable(p,e),commit:async(_,c)=>{changes=c;return c.map(r=>({...r,revision:2}));}});
