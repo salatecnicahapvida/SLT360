@@ -124,9 +124,9 @@
   .obra-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(13,43,78,.16); border-color: #9fb7da; }
   .obra-card:focus-visible { outline: 3px solid rgba(46,107,191,.28); outline-offset: 3px; }
   .obra-card-head { padding: 18px 16px 14px; background: linear-gradient(135deg, #f8fbff 0%, var(--azul-suave) 100%); border-bottom: 1.5px solid var(--cinza-borda); }
-  .obra-card-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-  .obra-card-title { font-size: 13.5px; line-height: 1.42; color: var(--azul); font-weight: 800; min-height: 38px; }
-  .obra-card-actions { display:flex; align-items:flex-start; justify-content:flex-end; gap:7px; flex-shrink:0; }
+  .obra-card-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap:wrap; }
+  .obra-card-title { flex:1 1 190px; min-width:0; font-size: 13.5px; line-height: 1.42; color: var(--azul); font-weight: 800; min-height: 38px; overflow-wrap:anywhere; }
+  .obra-card-actions { display:flex; align-items:flex-start; justify-content:flex-end; gap:7px; flex:1 0 auto; min-width:0; margin-left:auto; flex-wrap:wrap; }
   .card-delete-btn {
     width:28px; height:28px; border-radius:8px; border:1px solid #efc3bd; background:#fff; color:var(--vermelho);
     cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1;
@@ -1518,12 +1518,12 @@ async function excludeCardFromSelectedWeek(obraId){
   const week=state.weeks.find(w=>w.id===state.selectedWeekId);
   if(!obra||!week) return;
   if(isObraExcludedInWeek(obra,week.id)) return;
-  const okConfirm=window.confirm(`Excluir este card de ${week.label}?\n\n${obra.descricao}\n\nOs dados e o histórico da obra serão preservados. Você poderá restaurar o card pela central de notificações.`);
+  const okConfirm=window.confirm(`Remover este card somente da pauta de ${week.label}?\n\n${obra.descricao}\n\nA demanda operacional permanecerá no Kanban e não será cancelada nem excluída. Os dados e o histórico da obra serão preservados, e você poderá restaurar o card pela central de notificações.`);
   if(!okConfirm) return;
   obra.excludedWeekIds=Array.isArray(obra.excludedWeekIds)?obra.excludedWeekIds:[];
   obra.excludedWeekIds.push(String(week.id));
   obra.excludedWeekIds=[...new Set(obra.excludedWeekIds)];
-  addHistoryEvent(obra,'card_excluded',`Card removido da apresentação de ${week.label}. Os dados da obra foram preservados.`,{weekId:week.id,weekLabel:week.label});
+  addHistoryEvent(obra,'card_excluded',`Card removido somente da apresentação de ${week.label}. A demanda operacional no Kanban e os dados da obra foram preservados.`,{weekId:week.id,weekLabel:week.label});
   const ok=await persistAll(state.obras,state.weeks,state.snapshots);
   if(!ok){
     obra.excludedWeekIds=obra.excludedWeekIds.filter(id=>id!==String(week.id));
@@ -1531,7 +1531,7 @@ async function excludeCardFromSelectedWeek(obraId){
     return;
   }
   render(); renderNotificationCenter();
-  showToast(`Card removido de ${week.label}.`, 'ok');
+  showToast(`Card removido somente da pauta de ${week.label}. A demanda continua no Kanban.`, 'ok');
 }
 
 async function restoreCardForWeek(obraId,weekId){

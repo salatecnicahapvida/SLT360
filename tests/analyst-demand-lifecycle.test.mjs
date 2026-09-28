@@ -16,6 +16,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
         { id: 'budget-1', titulo: 'Orçamento', obraId: 'work-1', coluna: 'fazer' },
         { id: 'sic-validated', titulo: 'SIC validada', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras' },
         { id: 'sic-approval', titulo: 'SIC aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'aprovacaoDiretoria' },
+        { id: 'sic-waiver', titulo: 'SIC com dispensa', obraId: 'work-1', tipo: 'SIC', coluna: 'aprovacaoDiretoria' },
         { id: 'sic-unapproved', titulo: 'SIC sem aprovação', obraId: 'work-1', tipo: 'SIC', coluna: 'fazendo' },
       ],
       maintenanceDemands: [
@@ -27,8 +28,11 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await db.exec(await fs.readFile(new URL('../supabase/migrations/202608310005_users_team.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260909174742_restrict_analyst_demand_lifecycle.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260910143000_reassert_gestor_demand_permissions.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260915132500_demand_completion_and_server_audit.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922084500_enforce_sic_director_flow.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260923170000_shift_sic_director_gate_to_validated_works.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260925130000_relink_tea_aracaju_and_require_sic_values.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260925151000_allow_audited_sic_director_waiver.sql', import.meta.url), 'utf8'));
     await db.query('insert into auth.users(id) values($1),($2)', [analyst, manager]);
     await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false),($2,'Gestor teste','Gestor',false)", [analyst, manager]);
     for (const module of ['projects', 'budget', 'maintenance', 'clinical']) {
@@ -69,8 +73,19 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       change('budget_demands', 'sic-validated', { ...payload.state.demands[1], coluna: 'aprovacaoDiretoria' }),
     ]), { code: '42501' });
 
+    const directorWaiver = {
+      version: 1,
+      reason: 'SIC aprovada diretamente sem reunião da Diretoria.',
+      waivedAt: '2026-09-25T15:00:00.000Z',
+      waivedBy: 'Gestor teste',
+      waivedById: manager,
+    };
+    await assert.rejects(commit([
+      change('budget_demands', 'sic-waiver', { ...payload.state.demands[3], sicDirectorWaiver: { ...directorWaiver, waivedBy: 'Analista teste', waivedById: analyst } }),
+    ]), { code: '42501' });
+
     await commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[2], coluna: 'aprovadoDiretoria' }),
+      change('budget_demands', 'sic-approval', { ...payload.state.demands[2], coluna: 'aprovadoDiretoria', valorGerado: 0, sicDirectorDecision: { version: 1, finalAmount: 0 } }),
     ]);
 
     await as('authenticated', manager);
@@ -78,11 +93,14 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     assert.equal((await db.query("select count(*)::integer as count from slt_budget_demands where record_key='budget-manager' and deleted_at is null")).rows[0].count, 1);
 
     await assert.rejects(commit([
-      change('budget_demands', 'sic-unapproved', { ...payload.state.demands[3], coluna: 'concluido', dataEntregaReal: '2026-09-22' }),
+      change('budget_demands', 'sic-unapproved', { ...payload.state.demands[4], coluna: 'concluido', dataEntregaReal: '2026-09-22' }),
     ]), { code: '42501' });
 
     await commit([
       change('budget_demands', 'sic-validated', { ...payload.state.demands[1], coluna: 'aprovacaoDiretoria' }),
+    ]);
+    await commit([
+      change('budget_demands', 'sic-waiver', { ...payload.state.demands[3], sicDirectorWaiver: directorWaiver }),
     ]);
 
     // Depois de entrar na aprovação da Diretoria, a passagem para "Aprovado" não
@@ -93,6 +111,10 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     ]);
     assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-approval'")).rows[0].phase, 'concluido');
 
+    await assert.rejects(commit([
+      change('budget_demands', 'sic-waiver', { ...payload.state.demands[3], sicDirectorWaiver: directorWaiver, coluna: 'concluido', dataEntregaReal: '2026-09-25' }, 2),
+    ]), { code: '42501' });
+
     await assert.rejects(commit([change('projects_demands', 'project-1', {}, 2, 'delete')]), { code: '42501' });
     await assert.rejects(commit([
       change('budget_demands', 'budget-1', {}, 2, 'delete'),
@@ -100,6 +122,12 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     ]), { code: '42501' });
     await assert.rejects(commit([change('maintenance_orders', 'maintenance-1', {}, 2, 'delete')]), { code: '42501' });
     await assert.rejects(commit([change('clinical_orders', 'clinical-1', {}, 2, 'delete')]), { code: '42501' });
+
+    await as('authenticated', manager);
+    await commit([
+      change('budget_demands', 'sic-waiver', { ...payload.state.demands[3], sicDirectorWaiver: directorWaiver, coluna: 'concluido', dataEntregaReal: '2026-09-25' }, 2),
+    ]);
+    assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-waiver'")).rows[0].phase, 'concluido');
 
     await as('authenticated', admin);
     await commit([change('projects_demands', 'project-admin', { id: 'project-admin', titulo: 'Criado pela gestão', obraId: 'work-1' }, 0)]);
