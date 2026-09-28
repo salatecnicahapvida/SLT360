@@ -48,6 +48,14 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   },datasets:{}});
   const migrations=(await fs.readdir(new URL('../supabase/migrations/',import.meta.url))).filter(n=>n>='202608310005').sort();
   for(const name of migrations)await db.exec(await fs.readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  const backupCapture=(await db.query("select provolatile,pg_get_functiondef(oid) definition from pg_proc where oid='slt_private.capture_app_snapshot()'::regprocedure")).rows[0];
+  assert.equal(backupCapture.provolatile,'s','o snapshot de backup usa uma visão estável');
+  assert.doesNotMatch(backupCapture.definition,/pg_advisory_xact_lock\(hashtextextended\('slt360\/state-consistency'/,'o snapshot não pode segurar lock exclusivo contra gravações');
+  const dailyBackupDefinition=(await db.query("select pg_get_functiondef('public.slt_backup_daily()'::regprocedure) definition")).rows[0].definition;
+  assert.match(dailyBackupDefinition,/pg_try_advisory_xact_lock/,'logins simultâneos não formam fila de backups');
+  assert.match(dailyBackupDefinition,/pg_advisory_xact_lock_shared/,'backup e gravação compartilham o lock de consistência');
+  const commitSettings=(await db.query("select proconfig from pg_proc where oid='public.slt_commit_changes(uuid,jsonb)'::regprocedure")).rows[0].proconfig;
+  assert.ok(commitSettings.includes('lock_timeout=3s'),'gravação falha rápido em vez de ficar indefinidamente em espera');
   await db.query(`insert into slt_budget_sic_approval_initial_state(id,payload,source_checksum)
     values(1,$1,'test')`,[JSON.stringify({
       obras:[{id:'approval-w',portfolioWorkId:'w',descricao:'Test',ev:{total:100,semAditivos:90,aditivosAprovados:10,areaM2:10,valorM2:10},sap:{faturasAnosAnteriores:5},sics:[],historyEvents:[]}],
