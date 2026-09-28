@@ -13,12 +13,12 @@ for (const file of ['index.html','styles.css','cloud.css','assets']) await fs.cp
 await fs.cp(path.join(root,'src','sic-approvals.html'),path.join(dest,'sic-approvals.html'));
 await fs.cp(path.join(root,'node_modules','xlsx','dist','xlsx.full.min.js'),path.join(dest,'xlsx.full.min.js'));
 const result = await build({
-  entryPoints:['src/boot.js'], outdir:dest, bundle:true, splitting:true, format:'esm',
+  entryPoints:['src/boot-entry.js'], outdir:dest, bundle:true, splitting:true, format:'esm',
   platform:'browser', target:'es2022', minify:true, sourcemap:false,
   loader:{'.css':'text','.html':'text'},
   entryNames:'boot-[hash]', chunkNames:'chunk-[hash]', legalComments:'eof', metafile:true,
 });
-const entry = Object.entries(result.metafile.outputs).find(([,info]) => info.entryPoint === 'src/boot.js');
+const entry = Object.entries(result.metafile.outputs).find(([,info]) => info.entryPoint === 'src/boot-entry.js');
 if (!entry) throw new Error('Entrada do aplicativo não encontrada');
 let html = await fs.readFile(path.join(dest,'index.html'),'utf8');
 if (!html.includes('src="boot.js"')) throw new Error('Entrada ausente no HTML');
