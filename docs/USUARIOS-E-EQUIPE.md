@@ -6,13 +6,20 @@ Se a pessoa ainda não constar da lista, deixe o vínculo vazio e preencha Novo 
 Uma identidade de analista só pode ser vinculada a uma conta. Nomes e demandas históricos
 são preservados; o vínculo usa identificadores próprios no banco.
 
-Para cada módulo, selecione Sem acesso, Somente consulta ou Consulta e edição.
+Para cada módulo ativo, selecione Sem acesso, Somente consulta ou Consulta e edição.
 Gestores e analistas só recebem os módulos explicitamente selecionados; Admin acessa
-tudo, inclusive a administração de contas. Os registros são compartilhados entre as
+tudo que estiver ativo, inclusive a administração de contas. Os registros são compartilhados entre as
 pessoas autorizadas ao módulo: o vínculo de analista não restringe a leitura às próprias
 demandas. Unidades, fornecedores e sprints são referências compartilhadas de consulta.
-O cadastro de obras é editável por Projetos e Obras e consultável pelo Controle de
-Verba; demandas, EVs, ordens de serviço e dados financeiros mantêm escopos próprios.
+O cadastro de obras é editável por **Obras** e consultável pelo Controle de Verba; demandas,
+EVs, ordens de serviço e dados financeiros mantêm escopos próprios.
+
+**Projetos está descontinuado como módulo operacional.** Permissões antigas de `projects`
+podem continuar registradas como legado no banco, mas não concedem acesso na aplicação.
+As tabelas técnicas legadas são preservadas por compatibilidade; em especial,
+`projects_works` continua sendo a relação física usada pelo Portfólio e pode ser gravada por
+quem possui permissão de edição em **Obras**. As demais entidades específicas de Projetos
+não recebem novas regras operacionais pela interface.
 
 Após criar, guarde a senha provisória exibida uma única vez e entregue por canal seguro.
 O sistema não envia convite nem e-mail automaticamente. A primeira entrada exige uma
