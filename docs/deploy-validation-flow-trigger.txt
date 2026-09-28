@@ -1,1 +1,0 @@
-Trigger temporário para publicação do ajuste de datas e avanço automático das demandas.
