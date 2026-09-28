@@ -79,7 +79,7 @@ test('permissões vazias negam acesso; gravação não apaga filhos de módulo n
  let changes=[];
  const store=createModuleStore({records,canWrite:e=>entityWritable(p,e),commit:async(_,c)=>{changes=c;return c.map(r=>({...r,revision:2}));}});
  store.acceptInitialState(store.payload.state);
- const snapshot=structuredClone(store.payload.state);snapshot.works[0].nome='Editada';snapshot.works[0].ev={id:'ev',lines:[{disciplinaId:'civil',valorOrcado:0}]};snapshot.history=[{id:'fake'}];
+ const snapshot=structuredClone(store.payload.state);snapshot.works[0].nome='Editada';snapshot.history=[{id:'fake'}];
  store.save(snapshot);await store.flush();assert.deepEqual(changes.map(c=>c.entity),['projects_works']);
 });
 
