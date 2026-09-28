@@ -31,7 +31,7 @@ pnpm dev
 
 O build compila diretamente `src/boot-entry.js` e seus imports. Não há cópia standalone nem reescrita de funções durante o build. Edite `src/`; `dist/` é gerado.
 
-As permissões vêm do banco. Admin administra o sistema; Gestor e Analista recebem consulta/edição por módulo. Projetos permanece no banco e no código, mas está indisponível na navegação atual.
+As permissões vêm do banco. Admin administra o sistema; Gestor e Analista recebem consulta/edição por módulo. **Projetos está descontinuado como módulo operacional e não concede acesso pela interface.** As tabelas e identificadores legados de Projetos permanecem apenas como estrutura técnica compartilhada; `projects_works`, por exemplo, continua sendo usado pelo Portfólio de Obras e herda a permissão de escrita de **Obras**.
 
 ## Publicação e dados
 
@@ -43,4 +43,4 @@ Snapshots automáticos são solicitados ao entrar, quando não há um das últim
 
 Nunca adicionar exportações, planilhas operacionais, senhas ou chaves administrativas ao repositório. A configuração em `src/config.js` contém somente a URL e a chave pública do projeto.
 
-Veja [auditoria e mudanças](docs/AUDITORIA-20260908.md), [auditoria estrutural](docs/AUDITORIA-ESTRUTURA-2026-09-28.md), [mapa do banco](docs/MAPA-DO-BANCO.md) e [usuários](docs/USUARIOS-E-EQUIPE.md).
+Veja [matriz de regras de negócio](docs/MATRIZ-REGRAS-DE-NEGOCIO.md), [auditoria e mudanças](docs/AUDITORIA-20260908.md), [auditoria estrutural](docs/AUDITORIA-ESTRUTURA-2026-09-28.md), [mapa do banco](docs/MAPA-DO-BANCO.md) e [usuários](docs/USUARIOS-E-EQUIPE.md).
