@@ -19,15 +19,16 @@ pnpm dev
 ## Fonte única
 
 - `src/app.js`: telas e regras de negócio vigentes.
-- `src/boot.js`: login, sessão, inicialização e API Supabase.
+- `src/boot-entry.js` e `src/boot.js`: entrada do aplicativo, coordenação de persistência, login, sessão, inicialização e API Supabase.
 - `src/module-model.js`: catálogo relacional e conversão entre registros e estado.
-- `src/module-store.js`: diferenças por registro, fila, revisões e confirmação de gravação.
-- `src/sic-dashboard.js`: acompanhamento de SIC/SAP integrado, sem iframe nem base pública.
+- `src/module-store.js` e `src/lazy-module-store.js`: diferenças por registro, fila, revisões, carga modular e confirmação de gravação.
+- `src/sic-approvals.js` e `src/sic-approvals.html`: Aprovação de SICs, com comunicação isolada e estado compartilhado persistido no Supabase.
+- `src/sic-director-queue.js`: regras de vínculo entre Portfólio, fila de SICs e aprovação da Diretoria.
 - `src/users-admin.js` e `src/backups-ui.js`: gestão de contas e backups.
 - `src/dates.js`, `src/csv.js`, `src/arithmetic.js`: regras compartilhadas e testáveis.
 - `public/`: HTML inicial, estilos e imagens; nunca dados operacionais.
 
-O build compila diretamente `src/boot.js` e seus imports. Não há cópia standalone nem reescrita de funções durante o build. Edite `src/`; `dist/` é gerado.
+O build compila diretamente `src/boot-entry.js` e seus imports. Não há cópia standalone nem reescrita de funções durante o build. Edite `src/`; `dist/` é gerado.
 
 As permissões vêm do banco. Admin administra o sistema; Gestor e Analista recebem consulta/edição por módulo. Projetos permanece no banco e no código, mas está indisponível na navegação atual.
 
@@ -41,4 +42,4 @@ Snapshots automáticos são solicitados ao entrar, quando não há um das últim
 
 Nunca adicionar exportações, planilhas operacionais, senhas ou chaves administrativas ao repositório. A configuração em `src/config.js` contém somente a URL e a chave pública do projeto.
 
-Veja [auditoria e mudanças](docs/AUDITORIA-20260908.md), [mapa do banco](docs/MAPA-DO-BANCO.md) e [usuários](docs/USUARIOS-E-EQUIPE.md).
+Veja [auditoria e mudanças](docs/AUDITORIA-20260908.md), [auditoria estrutural](docs/AUDITORIA-ESTRUTURA-2026-09-28.md), [mapa do banco](docs/MAPA-DO-BANCO.md) e [usuários](docs/USUARIOS-E-EQUIPE.md).
