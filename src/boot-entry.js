@@ -15,12 +15,31 @@ function statusNode() {
   return document.querySelector('#cloudStatus');
 }
 
+function ensurePersistenceStatusVisuals() {
+  if (document.querySelector('#persistenceStatusVisuals')) return;
+  const style = document.createElement('style');
+  style.id = 'persistenceStatusVisuals';
+  style.textContent = `
+    #cloudStatus[data-persistence-coordinator="true"] { font-size: 0 !important; }
+    #cloudStatus[data-persistence-coordinator="true"]::after {
+      content: attr(data-display-label);
+      font-size: 12px;
+    }
+  `;
+  document.head.append(style);
+}
+
 function renderPersistenceStatus(state) {
   const node = statusNode();
   if (!node) return;
-  const label = state === 'saving' ? 'Salvando…' : state === 'failed' ? 'Erro ao salvar' : 'Salvo';
-  if (node.textContent !== label) node.textContent = label;
+  ensurePersistenceStatusVisuals();
+  const internalLabel = state === 'saving' ? 'Sincronizando…' : state === 'failed' ? 'Falha na sincronização' : 'Sincronizado';
+  const displayLabel = state === 'saving' ? 'Salvando…' : state === 'failed' ? 'Erro ao salvar' : 'Salvo';
+  if (node.textContent !== internalLabel) node.textContent = internalLabel;
   if (node.dataset.state !== state) node.dataset.state = state;
+  node.dataset.persistenceCoordinator = 'true';
+  node.dataset.displayLabel = displayLabel;
+  node.setAttribute('aria-label', displayLabel);
   if (state === 'saving') node.setAttribute('aria-busy', 'true');
   else node.removeAttribute('aria-busy');
 }
@@ -42,6 +61,14 @@ function clearPortfolioReadWarning() {
 function isModuleTimeout(error) {
   const message = String(error?.message || error || '');
   return /statement timeout|57014|timeout/i.test(message);
+}
+
+function rememberedWorksModule() {
+  try {
+    return sessionStorage.getItem('slt360-last-ui-module-v1') === 'works';
+  } catch {
+    return false;
+  }
 }
 
 function installCloudPersistenceCoordinator() {
@@ -76,10 +103,21 @@ function installCloudPersistenceCoordinator() {
     };
   }
 
+  let firstWorksEnsure = true;
+  const restoreWorksWithoutPreview = rememberedWorksModule();
   if (typeof cloud.ensureModule === 'function') {
     const originalEnsure = cloud.ensureModule.bind(cloud);
     cloud.ensureModule = async uiModule => {
       if (uiModule !== 'works') return originalEnsure(uiModule);
+
+      const restoringLoadedView = firstWorksEnsure && restoreWorksWithoutPreview;
+      firstWorksEnsure = false;
+      if (restoringLoadedView) {
+        const result = await originalEnsure(uiModule);
+        clearPortfolioReadWarning();
+        return result;
+      }
+
       let hasPreview = previewed.has('works');
       if (!hasPreview && typeof cloud.previewModule === 'function') {
         try {
@@ -111,7 +149,7 @@ function installCloudPersistenceCoordinator() {
 
 function installWhenReady() {
   if (installCloudPersistenceCoordinator()) return;
-  setTimeout(installWhenReady, 25);
+  setTimeout(installWhenReady, 100);
 }
 
 installWhenReady();
