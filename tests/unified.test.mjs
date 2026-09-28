@@ -130,6 +130,21 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   await db.query("select set_config('request.headers',$1,false)", [JSON.stringify({'x-client-info':'unified-1'})]);
   const loaded=(await db.query('select slt_module_load() result')).rows[0].result;
   for(const key of Object.keys(state))assert.deepEqual(hydrateRecords(loaded.records).state[key],state[key]);
+  const tombstoneKey='revived-after-delete';
+  const tombstoneCreate={
+   entity:'budget_approval_works',key:tombstoneKey,operation:'upsert',expected_revision:0,ordinal:99,child_fields:[],
+   document:{id:tombstoneKey,descricao:'Primeira versão'},
+  };
+  await commit([tombstoneCreate]);
+  await commit([{...tombstoneCreate,operation:'delete',expected_revision:1}]);
+  const revived=(await commit([{...tombstoneCreate,document:{id:tombstoneKey,descricao:'Recriado'}}])).rows[0].result;
+  assert.equal(Number(revived[0].revision),1,'registro excluído pode ser recriado como uma nova revisão lógica');
+  assert.equal((await db.query('select description from slt_budget_approval_works where record_key=$1 and deleted_at is null',[tombstoneKey])).rows[0].description,'Recriado');
+  await assert.rejects(
+   commit([{...tombstoneCreate,document:{id:tombstoneKey,descricao:'Cliente desatualizado'},expected_revision:2}]),
+   {code:'PT409'},
+   'recriação não remove a proteção contra clientes com revisão antiga',
+  );
   const home=(await db.query('select slt_home_summary() result')).rows[0].result;
   assert.equal(home.schema_version,2);
   assert.equal(Number(home.works.totalWorks),1);
