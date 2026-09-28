@@ -2510,7 +2510,7 @@ test('Gestor records an audited Director waiver before concluding a SIC',async({
  expect(b.errors).toEqual([]);
 });
 
-test('any user confirms whether Diretoria is required before dragging a validated SIC to Concluído',async({page})=>{
+test('any user confirms whether Diretoria is required before moving a validated SIC to Concluído',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-direct-completion',
@@ -2525,25 +2525,16 @@ test('any user confirms whether Diretoria is required before dragging a validate
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
 
- const dragToConcluded=async()=>{
-  const board=page.locator('[data-kanban-scroll-board]');
-  await board.evaluate(element=>{
-   const source=element.querySelector('.kanban-column[data-column="validadoObras"]');
-   const target=element.querySelector('.kanban-column[data-column="concluido"]');
-   element.scrollLeft=(source.offsetLeft+target.offsetLeft+target.offsetWidth)/2-element.clientWidth/2;
-  });
+ const requestDirectCompletion=async()=>{
   const card=page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-direct-completion"]');
-  const target=page.locator('.kanban-column[data-column="concluido"] .demand-list');
   await expect(card).toBeVisible();
-  const [sourceBox,targetBox]=await Promise.all([card.boundingBox(),target.boundingBox()]);
-  await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
-  await page.mouse.down();
-  await page.mouse.move(sourceBox.x+sourceBox.width/2+20,sourceBox.y+sourceBox.height/2,{steps:2});
-  await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+Math.min(targetBox.height/2,100),{steps:8});
-  await page.mouse.up();
+  await card.click();
+  const detail=page.locator('#demandDetailForm');
+  await detail.locator('[name="coluna"]').selectOption('concluido');
+  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
  };
 
- await dragToConcluded();
+ await requestDirectCompletion();
  let confirmation=page.locator('#sicDirectorRequirementForm');
  await expect(confirmation.getByRole('heading',{name:'Necessária aprovação da Diretoria?'})).toBeVisible();
  await confirmation.locator('[name="directorApprovalRequired"][value="yes"]').check();
@@ -2552,7 +2543,7 @@ test('any user confirms whether Diretoria is required before dragging a validate
  await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-direct-completion"]')).toBeVisible();
  expect(b.requests.flatMap(request=>request.changes).some(change=>change.key==='sic-direct-completion')).toBe(false);
 
- await dragToConcluded();
+ await requestDirectCompletion();
  confirmation=page.locator('#sicDirectorRequirementForm');
  await confirmation.locator('[name="directorApprovalRequired"][value="no"]').check();
  const amount=confirmation.locator('[name="sicDirectCompletionAmount"]');
