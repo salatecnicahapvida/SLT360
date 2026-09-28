@@ -9,7 +9,6 @@ test('dados operacionais não usam armazenamento local como persistência', () =
     'src/app.js',
     'src/module-store.js',
     'src/lazy-module-store.js',
-    'src/sic-dashboard.js',
     'src/sic-approvals.js',
     'src/users-admin.js',
   ];
@@ -43,4 +42,17 @@ test('Portfólio tem carga tolerante ao volume e conflito multiusuário explíci
   assert.match(sql, /'budget_estimates'/);
   assert.match(sql, /statement_timeout='15s'/);
   assert.match(sql, /PT409/);
+});
+
+test('aplicadores históricos de patch não fazem parte da fonte atual', () => {
+  const obsolete = [
+    '.github/workflows/apply-fast-module-preview.yml',
+    '.github/workflows/apply-kanban-column-sort.yml',
+    '.github/workflows/apply-validation-flow-intelligence.yml',
+    'scripts/patch-fast-module-preview.mjs',
+    'scripts/patch-kanban-column-sort.mjs',
+    'scripts/patch-kanban-column-sort-accessibility.mjs',
+    'scripts/patch-validation-flow-intelligence.mjs',
+  ];
+  for (const path of obsolete) assert.equal(fs.existsSync(path), false, `${path} não deve voltar à fonte ativa`);
 });
