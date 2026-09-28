@@ -14,11 +14,15 @@ test('retries a transient connection failure once', async () => {
 });
 
 test('does not retry database conflicts or permission failures', async () => {
-  for (const code of ['40001', '42501']) {
+  for (const error of [
+    { code: '40001', message: 'legacy conflict' },
+    { code: 'PT409', status: 409, message: 'current conflict' },
+    { code: '42501', message: 'rejected' },
+  ]) {
     let calls = 0;
     await assert.rejects(retryTransientCloud(async () => {
       calls += 1;
-      throw { code, message: 'rejected' };
+      throw error;
     }, { wait: async () => {} }));
     assert.equal(calls, 1);
   }
@@ -26,7 +30,9 @@ test('does not retry database conflicts or permission failures', async () => {
 
 test('explains the actual save failure category', () => {
   assert.equal(isTransientCloudError(new TypeError('Failed to fetch')), true);
-  assert.match(cloudSaveFailureMessage({ code: '40001' }), /outra sessão/);
+  assert.equal(isTransientCloudError({ code: 'PT409', status: 409, message: 'conflict' }), false);
+  assert.match(cloudSaveFailureMessage({ code: '40001' }), /outro usuário|outra sessão/);
+  assert.match(cloudSaveFailureMessage({ code: 'PT409', status: 409 }), /outro usuário|outra sessão/);
   assert.match(cloudSaveFailureMessage({ code: '42501', message: 'Sem permissão de gravação neste módulo' }), /Sem permissão de gravação neste módulo/);
   assert.match(cloudSaveFailureMessage(new TypeError('Failed to fetch')), /nova tentativa/);
 });
