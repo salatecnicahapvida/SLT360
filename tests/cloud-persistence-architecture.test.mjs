@@ -9,6 +9,7 @@ test('dados operacionais não usam armazenamento local como persistência', () =
     'src/app.js',
     'src/module-store.js',
     'src/lazy-module-store.js',
+    'src/sic-dashboard.js',
     'src/sic-approvals.js',
     'src/users-admin.js',
   ];
