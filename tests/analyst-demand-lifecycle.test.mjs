@@ -39,6 +39,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260925151000_allow_audited_sic_director_waiver.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260928182951_relax_sic_works_validation_and_lock_director_approval.sql', import.meta.url), 'utf8'));
     await db.exec(await fs.readFile(new URL('../supabase/migrations/20260928203000_allow_confirmed_sic_completion_without_director.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260928210500_preserve_ev_state_on_direct_sic_completion.sql', import.meta.url), 'utf8'));
     await db.query('insert into auth.users(id) values($1),($2)', [analyst, manager]);
     await db.query("insert into slt360_profiles(id,nome,perfil,must_change_password) values($1,'Analista teste','Analista',false),($2,'Gestor teste','Gestor',false)", [analyst, manager]);
     for (const module of ['budget', 'maintenance', 'clinical']) {
@@ -150,13 +151,12 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
         coluna: 'concluido',
         dataEntregaReal: '2026-09-28',
         valorGerado: 27.5,
-        evSemMudanca: true,
         sicDirectorWaiver: directCompletion,
       }),
     ]);
     assert.deepEqual(
-      (await db.query("select phase, generated_amount, extra->'sicDirectorWaiver' as waiver from slt_budget_demands where record_key='sic-direct'")).rows[0],
-      { phase: 'concluido', generated_amount: '27.5', waiver: directCompletion },
+      (await db.query("select phase, generated_amount, ev_no_change, extra->'sicDirectorWaiver' as waiver from slt_budget_demands where record_key='sic-direct'")).rows[0],
+      { phase: 'concluido', generated_amount: '27.5', ev_no_change: null, waiver: directCompletion },
     );
 
     await as('authenticated', manager);

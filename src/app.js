@@ -19444,7 +19444,6 @@ async function handleSicDirectorRequirementSubmit(form) {
   };
   demand.valorGerado = confirmedAmount;
   demand.dataEntregaReal = completedOn;
-  demand.evSemMudanca = true;
   addHistory({
     entidade: "demanda",
     entidadeId: demand.id,
