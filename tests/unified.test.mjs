@@ -142,7 +142,7 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   await db.query('select slt_backup_restore($1)',[backup.id]);
   assert.ok((await db.query('select count(*)::integer total from slt_backup_list()')).rows[0].total<=2);
   assert.equal((await db.query('select description from slt_budget_approval_works')).rows[0].description,'Approval');
-  await assert.rejects(commit([{...changes.find(c=>c.entity==='budget_approval_works'),expected_revision:2}]),{code:'40001'});
+  await assert.rejects(commit([{...changes.find(c=>c.entity==='budget_approval_works'),expected_revision:2}]),{code:'PT409'});
   assert.equal((await db.query('select * from slt_budget_demands where deleted_at is null')).rows.length,3);
   await as('authenticated','22222222-2222-4222-8222-222222222222');
   await assert.rejects(db.query('select slt_backup_restore($1)',[backup.id]),{code:'42501'});
