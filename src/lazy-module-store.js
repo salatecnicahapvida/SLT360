@@ -117,5 +117,5 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
 }
 
 export function dataModuleForUI(uiModule) {
-  return ({ works: 'budget', maintenance: 'maintenance', clinical: 'clinical', budget: 'finance', settings: 'core', projects: 'projects' })[uiModule] || '';
+  return ({ works: 'budget', maintenance: 'maintenance', clinical: 'clinical', budget: 'finance', settings: 'core' })[uiModule] || '';
 }
