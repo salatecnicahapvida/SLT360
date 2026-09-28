@@ -22,7 +22,8 @@ pnpm dev
 - `src/boot-entry.js` e `src/boot.js`: entrada do aplicativo, coordenação de persistência, login, sessão, inicialização e API Supabase.
 - `src/module-model.js`: catálogo relacional e conversão entre registros e estado.
 - `src/module-store.js` e `src/lazy-module-store.js`: diferenças por registro, fila, revisões, carga modular e confirmação de gravação.
-- `src/sic-approvals.js` e `src/sic-approvals.html`: Aprovação de SICs, com comunicação isolada e estado compartilhado persistido no Supabase.
+- `src/sic-dashboard.js`, `src/sic-dashboard.css` e `src/sic-dashboard.html`: painel integrado de SIC/SAP, carregado dinamicamente pela aplicação.
+- `src/sic-approvals.js` e `src/sic-approvals.html`: visão dedicada de Aprovação de SICs, com estado compartilhado persistido no Supabase.
 - `src/sic-director-queue.js`: regras de vínculo entre Portfólio, fila de SICs e aprovação da Diretoria.
 - `src/users-admin.js` e `src/backups-ui.js`: gestão de contas e backups.
 - `src/dates.js`, `src/csv.js`, `src/arithmetic.js`: regras compartilhadas e testáveis.
