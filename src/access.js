@@ -8,7 +8,8 @@ export const MODULE_OPTIONS = [
 export function moduleAllowed(profile,module,writing=false) {
  if (!profile?.ativo || profile.must_change_password !== false) return false;
  if (module==='projects') return false;
- return profile.perfil==='Admin' || (module!=='core' && profile.access?.some(g=>g.module===module && g.can_read && (!writing || g.can_write))===true);
+ if (module==='core') return profile.perfil==='Admin' || profile.perfil==='Gestor';
+ return profile.perfil==='Admin' || profile.access?.some(g=>g.module===module && g.can_read && (!writing || g.can_write))===true;
 }
 export function entityWritable(profile,entity) {
  if (entity.name==='projects_works') return moduleAllowed(profile,'budget',true);
