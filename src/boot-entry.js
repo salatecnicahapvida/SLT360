@@ -1,4 +1,5 @@
 import './boot.js';
+import './ev-tracking-ui.js';
 import { createPersistenceCoordinator } from './persistence-coordinator.js';
 
 const trackedWriteMethods = [
