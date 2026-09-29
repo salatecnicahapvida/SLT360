@@ -49,7 +49,15 @@ export function createLazyModuleStore({ load, commit, canWriteEntity, onStatus =
 
   async function loadOne(module) {
     if (!receivePayload) throw new Error('O aplicativo ainda não está pronto para receber dados do banco.');
-    await flush();
+    try {
+      await flush();
+    } catch (error) {
+      // Configurações é a área usada para diagnosticar perfis e cadastros. Uma falha
+      // pendente em outro módulo não deve impedir a leitura do módulo administrativo.
+      // A fila com erro continua preservada e o bloqueio de escrita segue ativo.
+      if (module !== 'core') throw error;
+      console.warn('Configurações abertas apesar de uma gravação pendente em outro módulo.', error);
+    }
     const response = await load(module);
     if (!response || response.schema_version !== 2 || !Array.isArray(response.records)) {
       throw new Error('A resposta do banco para este módulo é inválida.');
