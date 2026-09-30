@@ -60,9 +60,30 @@ function exactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function portfolioRecordIdForWork(workId) {
+  if (!workId) return '';
+  const row = document.querySelector(`.portfolio-work-row[data-id="${CSS.escape(workId)}"]`);
+  const historicalButton = row?.querySelector('[data-action="edit-historical-ev"][data-id]');
+  if (historicalButton?.dataset.id) return String(historicalButton.dataset.id);
+  const currentButton = row?.querySelector('[data-action="open-ev-modal"][data-id]');
+  if (currentButton?.dataset.id) return `current-${workId}`;
+  return '';
+}
+
+function recordIdFromSyntheticHistoricalWork(workId) {
+  const prefix = 'EVW-';
+  return workId.startsWith(prefix) ? workId.slice(prefix.length) : '';
+}
+
 function deleteRecordIdForEVForm(form) {
   const workId = String(form?.dataset?.workId || '').trim();
   if (!workId) return '';
+
+  const portfolioRecordId = portfolioRecordIdForWork(workId);
+  if (portfolioRecordId) return portfolioRecordId;
+
+  const syntheticHistoricalId = recordIdFromSyntheticHistoricalWork(workId);
+  if (syntheticHistoricalId) return syntheticHistoricalId;
 
   if (lastOpenedEVRecordId) return lastOpenedEVRecordId;
 
@@ -127,9 +148,11 @@ document.addEventListener('click', event => {
   if (action === 'edit-historical-ev') {
     lastOpenedEVRecordId = String(button.dataset.id || '');
   } else if (action === 'open-ev-modal') {
-    lastOpenedEVRecordId = button.dataset.id ? `current-${button.dataset.id}` : '';
+    const workId = String(button.dataset.id || '');
+    lastOpenedEVRecordId = portfolioRecordIdForWork(workId) || recordIdFromSyntheticHistoricalWork(workId) || (workId ? `current-${workId}` : '');
   } else if (action === 'open-work-ev') {
-    lastOpenedEVRecordId = '';
+    const workId = String(button.dataset.id || '');
+    lastOpenedEVRecordId = portfolioRecordIdForWork(workId) || recordIdFromSyntheticHistoricalWork(workId) || '';
   } else if (action === 'close-modal' || action === 'confirm-delete-ev-record') {
     lastOpenedEVRecordId = '';
   }
