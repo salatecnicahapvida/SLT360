@@ -1,5 +1,6 @@
 import './boot.js';
 import './ev-tracking-ui.js';
+import './ev-review-persistence-fix.js';
 import './ev-pending-items-ui.js';
 import './ev-delete-collapse-ui.js';
 import { createPersistenceCoordinator } from './persistence-coordinator.js';
