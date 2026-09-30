@@ -1,4 +1,5 @@
 let scheduled = false;
+let lastOpenedEVRecordId = '';
 
 function canDeleteEVRecords() {
   const role = String(globalThis.SLT_CLOUD?.profile?.perfil || '').trim();
@@ -26,7 +27,8 @@ function applyReviewCollapsedState(panel) {
     .forEach(node => { node.hidden = collapsed; });
   const button = panel.querySelector('[data-toggle-ev-review]');
   if (button) {
-    button.textContent = collapsed ? 'Expandir' : 'Recolher';
+    const label = collapsed ? 'Expandir' : 'Recolher';
+    if (button.textContent !== label) button.textContent = label;
     button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
 }
@@ -61,6 +63,8 @@ function exactText(value) {
 function deleteRecordIdForEVForm(form) {
   const workId = String(form?.dataset?.workId || '').trim();
   if (!workId) return '';
+
+  if (lastOpenedEVRecordId) return lastOpenedEVRecordId;
 
   const historicalPrefix = 'historical-budget-';
   if (workId.startsWith(historicalPrefix)) return workId.slice(historicalPrefix.length);
@@ -115,6 +119,21 @@ function scheduleScan() {
   scheduled = true;
   requestAnimationFrame(scan);
 }
+
+document.addEventListener('click', event => {
+  const button = event.target.closest?.('[data-action]');
+  if (!button) return;
+  const action = String(button.dataset.action || '');
+  if (action === 'edit-historical-ev') {
+    lastOpenedEVRecordId = String(button.dataset.id || '');
+  } else if (action === 'open-ev-modal') {
+    lastOpenedEVRecordId = button.dataset.id ? `current-${button.dataset.id}` : '';
+  } else if (action === 'open-work-ev') {
+    lastOpenedEVRecordId = '';
+  } else if (action === 'close-modal' || action === 'confirm-delete-ev-record') {
+    lastOpenedEVRecordId = '';
+  }
+}, true);
 
 new MutationObserver(scheduleScan).observe(document.documentElement, { childList: true, subtree: true });
 scheduleScan();
