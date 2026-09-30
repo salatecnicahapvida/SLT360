@@ -15,8 +15,24 @@ function installStyles() {
     .ev-review-collapse-toggle { margin-left:auto; white-space:nowrap; }
     .ev-tracking-panel[data-review-collapsed="true"] { padding-bottom:12px; }
     .ev-editor-actions .ev-delete-action { margin-right:auto; }
+    .ev-tracking-card.is-pending-card { display:none !important; }
+    .ev-tracking-grid { grid-template-columns:1fr !important; }
   `;
   document.head.append(style);
+}
+
+function unifyPendingFields(panel) {
+  if (!panel) return;
+  const pendingCard = panel.querySelector('[data-pending-card]');
+  if (pendingCard) {
+    pendingCard.classList.add('is-pending-card');
+    pendingCard.querySelector('[data-ev-pending]')?.setAttribute('data-ev-has-pending', '');
+    pendingCard.querySelector('[data-pending-note]')?.setAttribute('data-ev-pending-note', '');
+    pendingCard.querySelector('[data-pending-on]')?.setAttribute('data-ev-pending-on', '');
+    pendingCard.querySelector('[data-pending-by]')?.setAttribute('data-ev-pending-by', '');
+  }
+  const saveButton = panel.querySelector('[data-tracking-save]');
+  if (saveButton && saveButton.textContent !== 'Salvar revisão') saveButton.textContent = 'Salvar revisão';
 }
 
 function applyReviewCollapsedState(panel) {
@@ -35,6 +51,7 @@ function applyReviewCollapsedState(panel) {
 
 function enhanceReviewPanel(panel) {
   if (!panel) return;
+  unifyPendingFields(panel);
   if (panel.dataset.reviewCollapseMounted !== 'true') {
     panel.dataset.reviewCollapseMounted = 'true';
     panel.dataset.reviewCollapsed = 'true';
