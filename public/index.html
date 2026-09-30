@@ -10,13 +10,44 @@
     <link rel="stylesheet" href="styles.css?v=20260902-ev-full-width" />
     <link rel="stylesheet" href="cloud.css" />
     <style>
-      /* Portfólio de Obras: mantém Custo por m² compacto, sem criar um vão excessivo antes de Ações. */
+      /* Portfólio de Obras: mantém as colunas financeiras compactas e evita sobreposição no cabeçalho. */
+      .portfolio-works-table th:nth-child(9),
+      .portfolio-works-table td:nth-child(9) {
+        width: 155px;
+        min-width: 155px;
+        max-width: 155px;
+      }
+
       .portfolio-works-table th:nth-child(10),
       .portfolio-works-table td:nth-child(10) {
-        width: 140px;
-        min-width: 140px;
-        max-width: 140px;
+        width: 135px;
+        min-width: 135px;
+        max-width: 135px;
+      }
+
+      .portfolio-works-table th:nth-child(9) .portfolio-sort-button,
+      .portfolio-works-table th:nth-child(10) .portfolio-sort-button {
+        gap: 4px;
+        overflow: hidden;
+      }
+
+      .portfolio-works-table th:nth-child(9) .portfolio-sort-button span,
+      .portfolio-works-table th:nth-child(10) .portfolio-sort-button span {
+        display: inline-block;
+        min-width: 0;
+        overflow: hidden;
         white-space: nowrap;
+        font-size: 0;
+      }
+
+      .portfolio-works-table th:nth-child(9) .portfolio-sort-button span::after {
+        content: "Total s/ risco";
+        font-size: 11px;
+      }
+
+      .portfolio-works-table th:nth-child(10) .portfolio-sort-button span::after {
+        content: "R$/m² s/ risco";
+        font-size: 11px;
       }
     </style>
   </head>
