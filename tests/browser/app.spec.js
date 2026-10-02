@@ -2828,7 +2828,7 @@ test('EV pending items stay on their exact work across modal changes and reload'
  await page.getByRole('button',{name:'Adicionar pendência',exact:true}).click();
  await expect(page.locator('.multi-pending-list')).toContainText('Projeto elétrico da obra de teste');
  expect(items[1].ev_key).toBe('work:test-work');expect(items[1].work_id).toBe('test-work');
- await close();await open('Obra histórica Norte - AM');
+ await close();await open('Obra histórica Norte');
  await expect(page.locator('.multi-pending-list')).toContainText('Nenhuma pendência aberta');
  await expect(page.locator('[data-multi-pending-section]')).not.toContainText('Projeto elétrico da obra de teste');
  await expect(page.locator('[data-multi-pending-section]')).not.toContainText('Pendência antiga sem vínculo');
