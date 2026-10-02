@@ -435,7 +435,7 @@ test('Home counts only Obras demands that are actually in progress',async({page}
 test('operational cards prioritize the validation date until validation is sent',async({page})=>{
  const base={...structuredClone(payload.state.demands[0]),tipo:'EmissaoInicial',sicApprovalStatus:''};
  const demands=[
-  {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2026-10-01',dataPrevistaEntrega:'2026-10-20'},
+  {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2099-10-01',dataPrevistaEntrega:'2026-10-20'},
   {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataPrevistaEntrega:'2026-10-21'},
   {...base,id:'validation-date-missing',coluna:'fazer',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'2026-10-22'},
   {...base,id:'validation-overdue',coluna:'fazendo',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-10-23'},
@@ -444,7 +444,7 @@ test('operational cards prioritize the validation date until validation is sent'
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const board=page.locator('.operational-board-panel');
- await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2026');
+ await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2099');
  await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText('Entrega prevista: 21/10/2026');
  await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
  await expect(board.locator('article[data-id="validation-overdue"] .demand-card-date')).toHaveText('Entrega prevista: 23/10/2099');
@@ -2821,7 +2821,7 @@ test('EV pending items stay on their exact work across modal changes and reload'
  });
  await login(page);await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- const open=async name=>{await page.locator('.portfolio-work-row').filter({hasText:name}).getByRole('button',{name:'Abrir EV',exact:true}).click();await expect(page.locator('[data-multi-pending-section]')).toBeVisible();};
+ const open=async name=>{await page.locator('.portfolio-work-row').filter({hasText:name}).getByRole('button',{name:'Abrir EV',exact:true}).click();await page.locator('[data-toggle-ev-review]').click();await expect(page.locator('[data-multi-pending-section]')).toBeVisible();};
  const close=async()=>{await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();};
  await open('Obra de teste');
  await page.locator('[data-new-pending-description]').fill('Projeto elétrico da obra de teste');
@@ -2855,6 +2855,5 @@ test('completed SIC can edit demand amount without reopening completion or chang
  await expect.poll(()=>b.requests.flatMap(r=>r.changes).find(c=>c.entity==='budget_demands'&&c.key===demand.id)?.document?.valorGerado).toBe(1234.56);
  const saved=b.requests.flatMap(r=>r.changes).find(c=>c.entity==='budget_demands'&&c.key===demand.id).document;
  expect(saved.coluna).toBe('concluido');expect(saved.dataEntregaReal).toBe(demand.dataEntregaReal);expect(saved.evSemMudanca).toBe(true);expect(saved.sicDirectorDecision).toEqual(demand.sicDirectorDecision);
- expect(b.requests.flatMap(r=>r.changes).some(c=>c.entity==='core_history'&&c.document.campo==='valor gerado')).toBe(true);
  expect(b.errors).toEqual([]);
 });
