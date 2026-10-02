@@ -15811,7 +15811,7 @@ function openDemandDetailModal(id) {
           <section class="modal-section demand-produced-value-section">
             <div class="section-title with-action">
               <span>Impacto financeiro da conclusão</span>
-              <button class="secondary-action compact-action" type="button" data-action="edit-completed-demand-value" data-id="${demand.id}">${demandHasRecordedValue(demand) ? "Ajustar valor gerado" : "Informar valor gerado"}</button>
+              <button class="secondary-action compact-action" type="button" data-action="edit-completed-demand-value" data-id="${demand.id}">${demandTypeKey(demand.tipo) === "SIC" ? (demandHasRecordedValue(demand) ? "Ajustar valor da demanda" : "Informar valor da demanda") : (demandHasRecordedValue(demand) ? "Ajustar valor gerado" : "Informar valor gerado")}</button>
             </div>
             <div class="split-list compact">
               ${splitItem("Valor gerado", demandHasRecordedValue(demand) ? money(demand.valorGerado) : "Não informado")}
@@ -18907,7 +18907,7 @@ function demandCompletionEVSuggestedValue(demand) {
   return Math.abs(delta);
 }
 
-function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false } = {}) {
+function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false, editValue = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
@@ -18923,11 +18923,11 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
   if (pendingDemandCompletion?.demandId === demand.id) pendingDemandCompletion = null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
-      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" aria-labelledby="demandCompletionTitle">
+      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" data-edit-value="${editValue ? "true" : "false"}" aria-labelledby="demandCompletionTitle">
         <header>
           <div>
             <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
-            <h2 id="demandCompletionTitle">${isSicDemand ? "Informe os dados finais da SIC" : "Confirme a conclusão da demanda"}</h2>
+            <h2 id="demandCompletionTitle">${editValue ? "Ajustar valor da demanda" : isSicDemand ? "Informe os dados finais da SIC" : "Confirme a conclusão da demanda"}</h2>
             <p class="muted">${escapeAttribute(demand.id)} · ${escapeAttribute(work.nome || "Obra vinculada")}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
@@ -18944,9 +18944,9 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
           <section class="modal-section">
             <div class="section-title"><span>Dados da conclusão</span></div>
             <div class="form-grid">
-              <label class="field">
+              <label class="field" ${editValue ? "hidden" : ""}>
                 <span>Data entrega real *</span>
-                <input name="dataEntregaReal" type="date" required value="${escapeAttribute(deliveryDate)}" ${deliveryDate ? "" : "autofocus"} />
+                <input name="dataEntregaReal" type="date" ${editValue ? "" : "required"} value="${escapeAttribute(deliveryDate)}" ${deliveryDate ? "" : "autofocus"} />
                 <small>Obrigatória para concluir qualquer demanda.</small>
               </label>
               <label class="field">
@@ -18960,11 +18960,11 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
               </label>
             </div>
           </section>
-          <p class="muted">${evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação dos dados acima."}</p>
+          <p class="muted">${editValue ? "O ajuste fica registrado no histórico. A demanda permanece concluída e as aprovações anteriores são preservadas." : evNoChange ? "Registrado: esta demanda não alterou o EV." : "EV atualizado para esta demanda. O card será concluído após a confirmação dos dados acima."}</p>
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
-          <button class="primary-action" type="button" data-action="save-demand-completion">Concluir demanda</button>
+          <button class="primary-action" type="button" data-action="save-demand-completion">${editValue ? "Salvar valor" : "Concluir demanda"}</button>
         </footer>
       </form>
     </div>
@@ -19061,8 +19061,10 @@ async function handleDemandCompletionSubmit(form) {
   const demand = state.demands[demandIndex];
   if (!demand) return;
   const formData = new FormData(form);
+  const editValue = form.dataset.editValue === "true";
+  if (editValue && (demand.coluna !== "concluido" || demandTypeKey(demand.tipo) !== "SIC")) return;
   const dataEntregaReal = String(formData.get("dataEntregaReal") || "").trim();
-  if (!dataEntregaReal) {
+  if (!editValue && !dataEntregaReal) {
     showFormError("Informe a Data entrega real antes de concluir a demanda.", form);
     form.querySelector('[name="dataEntregaReal"]')?.focus();
     return;
@@ -19078,22 +19080,24 @@ async function handleDemandCompletionSubmit(form) {
     return;
   }
   const evSemMudanca = formData.get("evSemMudanca") === "true";
-  if (!evSemMudanca && !demandHasEVUpdateForCompletion(demand)) {
+  if (!editValue && !evSemMudanca && !demandHasEVUpdateForCompletion(demand)) {
     showFormError("Atualize e salve o EV ou informe que não houve mudança antes de concluir.", form);
     return;
   }
   const demandSnapshot = clone(demand);
   const historySnapshot = clone(state.history || []);
-  demand.dataEntregaReal = dataEntregaReal;
   demand.valorGerado = valorGerado;
-  demand.evSemMudanca = evSemMudanca;
-  const updated = await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
+  if (!editValue) {
+    demand.dataEntregaReal = dataEntregaReal;
+    demand.evSemMudanca = evSemMudanca;
+  }
+  const updated = editValue ? demand : await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
   if (updated === false) {
     if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
     state.history = historySnapshot;
     return;
   }
-  if (dateOnly(demandSnapshot.dataEntregaReal) !== dataEntregaReal) {
+  if (!editValue && dateOnly(demandSnapshot.dataEntregaReal) !== dataEntregaReal) {
     addHistory({
       entidade: "demanda",
       entidadeId: demand.id,
@@ -19119,7 +19123,7 @@ async function handleDemandCompletionSubmit(form) {
   }
   closeModal();
   await setView("worksOperational");
-  showToast(`${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
+  showToast(editValue ? `${demand.id}: valor da demanda atualizado para ${money(valorGerado)}.` : `${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
 }
 
 function sicWorksValidatedAmount(demand) {
@@ -20891,7 +20895,8 @@ document.addEventListener("click", async (event) => {
   if (action === "edit-completed-demand-value") {
     const demand = state.demands.find((item) => item.id === actionButton.dataset.id);
     if (!demand || demand.coluna !== "concluido") return;
-    openDemandCompletionModal(demand.id);
+    if (demandTypeKey(demand.tipo) === "SIC") openDemandCompletionAmountModal(demand.id, { editValue: true });
+    else openDemandCompletionModal(demand.id);
     return;
   }
   if (action === "waive-sic-director-approval") {

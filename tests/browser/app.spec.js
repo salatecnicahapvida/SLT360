@@ -435,7 +435,7 @@ test('Home counts only Obras demands that are actually in progress',async({page}
 test('operational cards prioritize the validation date until validation is sent',async({page})=>{
  const base={...structuredClone(payload.state.demands[0]),tipo:'EmissaoInicial',sicApprovalStatus:''};
  const demands=[
-  {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2026-10-01',dataPrevistaEntrega:'2026-10-20'},
+  {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2099-10-01',dataPrevistaEntrega:'2026-10-20'},
   {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataPrevistaEntrega:'2026-10-21'},
   {...base,id:'validation-date-missing',coluna:'fazer',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'2026-10-22'},
   {...base,id:'validation-overdue',coluna:'fazendo',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-10-23'},
@@ -444,7 +444,7 @@ test('operational cards prioritize the validation date until validation is sent'
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const board=page.locator('.operational-board-panel');
- await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2026');
+ await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2099');
  await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText('Entrega prevista: 21/10/2026');
  await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
  await expect(board.locator('article[data-id="validation-overdue"] .demand-card-date')).toHaveText('Entrega prevista: 23/10/2099');
@@ -2803,5 +2803,57 @@ test('completed demand can register generated amount after legacy completion',as
  await expect(savedDetail.getByRole('button',{name:'Ajustar valor gerado'})).toBeVisible();
  await expect(savedDetail).toContainText('Valor gerado');
  await expect(savedDetail).toContainText('Sem mudança no EV');
+ expect(b.errors).toEqual([]);
+});
+
+test('EV pending items stay on their exact work across modal changes and reload',async({page})=>{
+ const b=await backend(page);const items=[{id:'legacy-unscoped',ev_key:'',description:'Pendência antiga sem vínculo',resolved:false}];const tracking=[];
+ await page.route('**/rest/v1/slt_budget_ev_pending_items**',async route=>{
+  const req=route.request();let data=items;
+  if(req.method()==='POST'){const item={...req.postDataJSON(),id:'pending-1',resolved:false};items.push(item);data=item;}
+  else if(req.method()==='PATCH'){const url=new URL(req.url());const item=items.find(x=>`eq.${x.id}`===url.searchParams.get('id')&&`eq.${x.ev_key}`===url.searchParams.get('ev_key'));Object.assign(item,req.postDataJSON());data=item;}
+  await route.fulfill({json:data});
+ });
+ await page.route('**/rest/v1/slt_budget_ev_tracking**',async route=>{
+  let data=tracking;
+  if(route.request().method()==='POST'){data=route.request().postDataJSON();const i=tracking.findIndex(x=>x.ev_key===data.ev_key);if(i<0)tracking.push(data);else tracking[i]=data;}
+  await route.fulfill({json:data});
+ });
+ await login(page);await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ const open=async name=>{await page.locator('.portfolio-work-row').filter({hasText:new RegExp(name,'i')}).getByRole('button',{name:'Abrir EV',exact:true}).click();await page.locator('[data-toggle-ev-review]').click();await expect(page.locator('[data-multi-pending-section]')).toBeVisible();};
+ const close=async()=>{await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();};
+ await open('Obra de teste');
+ await page.locator('[data-new-pending-description]').fill('Projeto elétrico da obra de teste');
+ await page.getByRole('button',{name:'Adicionar pendência',exact:true}).click();
+ await expect(page.locator('.multi-pending-list')).toContainText('Projeto elétrico da obra de teste');
+ expect(items[1].ev_key).toBe('work:test-work');expect(items[1].work_id).toBe('test-work');
+ await close();await open('Obra histórica Norte');
+ await expect(page.locator('.multi-pending-list')).toContainText('Nenhuma pendência aberta');
+ await expect(page.locator('[data-multi-pending-section]')).not.toContainText('Projeto elétrico da obra de teste');
+ await expect(page.locator('[data-multi-pending-section]')).not.toContainText('Pendência antiga sem vínculo');
+ await close();await open('Obra de teste');
+ await expect(page.locator('.multi-pending-list')).toContainText('Projeto elétrico da obra de teste');
+ await page.reload();await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
+ await open('Obra de teste');
+ await expect(page.locator('.multi-pending-list')).toContainText('Projeto elétrico da obra de teste');
+ await page.getByRole('button',{name:'Marcar como resolvida'}).click();
+ await page.getByRole('button',{name:'Confirmar resolução'}).click();
+ await expect(page.locator('.multi-pending-resolved-group')).toContainText('Projeto elétrico da obra de teste');
+ expect(b.errors).toEqual([]);
+});
+
+test('completed SIC can edit demand amount without reopening completion or changing approvals',async({page})=>{
+ const demand={...structuredClone(payload.state.demands[0]),id:'completed-sic-value',coluna:'concluido',valorGerado:25,dataEntregaReal:'2026-09-15',sicDirectorDecision:{version:1,finalAmount:25},evSemMudanca:true};
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="completed-sic-value"]').click();
+ await page.getByRole('button',{name:'Ajustar valor da demanda',exact:true}).click();
+ const form=page.locator('#demandCompletionForm');await expect(form).toBeVisible();
+ await form.locator('[name="valorGerado"]').fill('1.234,56');
+ await form.getByRole('button',{name:'Salvar valor',exact:true}).click();
+ await expect.poll(()=>b.requests.flatMap(r=>r.changes).find(c=>c.entity==='budget_demands'&&c.key===demand.id)?.document?.valorGerado).toBe(1234.56);
+ const saved=b.requests.flatMap(r=>r.changes).find(c=>c.entity==='budget_demands'&&c.key===demand.id).document;
+ expect(saved.coluna).toBe('concluido');expect(saved.dataEntregaReal).toBe(demand.dataEntregaReal);expect(saved.evSemMudanca).toBe(true);expect(saved.sicDirectorDecision).toEqual(demand.sicDirectorDecision);
  expect(b.errors).toEqual([]);
 });

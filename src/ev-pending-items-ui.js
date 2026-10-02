@@ -56,18 +56,20 @@ function revisionFromPanel(panel) {
 }
 
 function contextFromPanel(panel) {
-  const evKey = String(panel?.dataset?.evKey || '').trim();
-  return {
-    evKey,
-    workId: evKey.startsWith('work:') ? evKey.slice(5) : '',
-    historicalRecordId: evKey.startsWith('historical:') ? evKey.slice(11) : '',
-    revision: revisionFromPanel(panel),
-  };
+  // The form owns the EV identity; never reuse a previous panel or click.
+  const rawWorkId = String(panel?.closest('form')?.dataset?.workId || '').trim();
+  const prefix = 'historical-work-';
+  const historicalRecordId = rawWorkId.startsWith(prefix) ? rawWorkId.slice(prefix.length) : '';
+  const workId = historicalRecordId ? '' : rawWorkId;
+  const evKey = historicalRecordId ? `historical:${historicalRecordId}` : workId ? `work:${workId}` : '';
+  return { evKey, workId, historicalRecordId, revision: revisionFromPanel(panel) };
 }
 
 function indexPending(rows) {
   itemsByEv.clear();
   for (const row of rows || []) {
+    // Legacy unscoped rows cannot safely be attributed to any work.
+    if (!row.ev_key || (!row.work_id && !row.historical_record_id)) continue;
     if (!itemsByEv.has(row.ev_key)) itemsByEv.set(row.ev_key, []);
     itemsByEv.get(row.ev_key).push(row);
   }
@@ -106,7 +108,7 @@ async function loadAll(force = false) {
 }
 
 function pendingItems(evKey) {
-  return itemsByEv.get(evKey) || [];
+  return evKey ? itemsByEv.get(evKey) || [] : [];
 }
 
 function openPendingItems(evKey) {
@@ -199,7 +201,8 @@ function updateLegacyFields(panel) {
 }
 
 function renderPanel(panel) {
-  if (!panel?.isConnected) return;
+  if (!panel?.isConnected || !contextFromPanel(panel).evKey) return;
+  panel.dataset.evKey = contextFromPanel(panel).evKey;
   let section = panel.querySelector('[data-multi-pending-section]');
   if (!section) {
     section = document.createElement('section');
@@ -233,6 +236,10 @@ async function syncTrackingSummary(context) {
 
 async function addPending(section, panel) {
   const context = contextFromPanel(panel);
+  if (!context.evKey || !canWrite()) {
+    setMessage(section, 'Não foi possível identificar o EV ou autorizar o registro.', 'error');
+    return;
+  }
   const description = String(section.querySelector('[data-new-pending-description]')?.value || '').trim();
   const recordedOn = section.querySelector('[data-new-pending-on]')?.value || '';
   const recordedBy = String(section.querySelector('[data-new-pending-by]')?.value || '').trim();
@@ -270,6 +277,10 @@ async function addPending(section, panel) {
 async function resolvePending(section, panel, itemNode) {
   const context = contextFromPanel(panel);
   const id = String(itemNode?.dataset?.pendingItem || '');
+  if (!context.evKey || !canWrite() || !pendingItems(context.evKey).some(item => item.id === id)) {
+    setMessage(section, 'Esta pendência não pertence ao EV aberto.', 'error');
+    return;
+  }
   const resolvedOn = itemNode?.querySelector('[data-resolved-on]')?.value || '';
   const resolvedBy = String(itemNode?.querySelector('[data-resolved-by]')?.value || '').trim();
   if (!resolvedOn || !resolvedBy) {
@@ -284,7 +295,7 @@ async function resolvePending(section, panel, itemNode) {
     resolved_on: resolvedOn,
     resolved_by: resolvedBy,
     resolved_revision: context.revision || null,
-  }).eq('id', id).select().single();
+  }).eq('id', id).eq('ev_key', context.evKey).select().single();
   if (error) {
     if (button) button.disabled = false;
     setMessage(section, error.message || 'Não foi possível resolver a pendência.', 'error');

@@ -12,7 +12,6 @@ let trackingLoaded = false;
 let trackingPromise = null;
 let reviewFilter = '';
 let pendingFilter = '';
-let lastHistoricalRecordId = '';
 let scanScheduled = false;
 
 function localDate() {
@@ -53,7 +52,7 @@ function modalContext(form) {
   const historicalFromWorkId = rawWorkId.startsWith(historicalPrefix)
     ? rawWorkId.slice(historicalPrefix.length)
     : '';
-  const historicalRecordId = historicalFromWorkId || lastHistoricalRecordId || '';
+  const historicalRecordId = historicalFromWorkId || '';
   const workId = historicalFromWorkId ? '' : rawWorkId;
   const evKey = workId
     ? `work:${workId}`
@@ -105,7 +104,7 @@ function trackingPanelHTML(context, row) {
   const disabled = writable ? '' : 'disabled';
   const revision = context.revision ? `REV${String(context.revision).padStart(2, '0')}` : 'REV atual';
   return `
-    <section class="ev-tracking-panel" data-ev-tracking-panel>
+    <section class="ev-tracking-panel" data-ev-tracking-panel data-ev-key="${escapeHTML(context.evKey)}">
       <div class="ev-tracking-heading">
         <div>
           <span class="eyebrow">Controle de revisão</span>
@@ -362,9 +361,6 @@ function install() {
     if (clicked.dataset.action === 'clear-portfolio-filters') {
       reviewFilter = '';
       pendingFilter = '';
-    }
-    if (['edit-historical-ev', 'open-ev-modal', 'open-work-ev'].includes(clicked.dataset.action)) {
-      lastHistoricalRecordId = clicked.dataset.action === 'edit-historical-ev' ? String(clicked.dataset.id || '') : '';
     }
   }, true);
   new MutationObserver(scheduleScan).observe(document.body, { childList: true, subtree: true });
