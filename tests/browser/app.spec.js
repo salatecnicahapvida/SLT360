@@ -2821,7 +2821,7 @@ test('EV pending items stay on their exact work across modal changes and reload'
  });
  await login(page);await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
- const open=async name=>{await page.locator('.portfolio-work-row').filter({hasText:name}).getByRole('button',{name:'Abrir EV',exact:true}).click();await page.locator('[data-toggle-ev-review]').click();await expect(page.locator('[data-multi-pending-section]')).toBeVisible();};
+ const open=async name=>{await page.locator('.portfolio-work-row').filter({hasText:new RegExp(name,'i')}).getByRole('button',{name:'Abrir EV',exact:true}).click();await page.locator('[data-toggle-ev-review]').click();await expect(page.locator('[data-multi-pending-section]')).toBeVisible();};
  const close=async()=>{await page.locator('.ev-modal-card').getByRole('button',{name:'Fechar',exact:true}).click();};
  await open('Obra de teste');
  await page.locator('[data-new-pending-description]').fill('Projeto elétrico da obra de teste');
