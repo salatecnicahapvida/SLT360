@@ -92,6 +92,7 @@ function strategicTargetById(id) {
 let hapcapexReference = globalThis.HAPCAPEX_REFERENCE || {capexInicial:0, contingenciamentos:0, aportesExtras:0, capexAtual:0, previstoHistorico:{}};
 
 const columns = [
+  { id: "pullPlanning", label: "Pull Planning" },
   { id: "fazer", label: "Fazer" },
   { id: "fazendo", label: "Fazendo" },
   { id: "pausado", label: "Pausado" },
@@ -5463,6 +5464,7 @@ function operationalKpiDetailData(key) {
   const filtered = filteredDemands();
   const map = {
     opTotal: { title: "Total no filtro operacional", demands: filtered, metric: "Total", filter: "opTotal" },
+    opPullPlanning: { title: "Demandas em Pull Planning", demands: filtered.filter((demand) => demand.coluna === "pullPlanning"), metric: "Pull Planning", filter: "opPullPlanning" },
     opFazer: { title: "Demandas a iniciar", demands: filtered.filter((demand) => demand.coluna === "fazer"), metric: "A iniciar", filter: "opFazer" },
     opFazendo: { title: "Demandas em execução", demands: filtered.filter((demand) => demand.coluna === "fazendo"), metric: "Em execução", filter: "opFazendo" },
     opPausado: { title: "Demandas pausadas", demands: filtered.filter((demand) => demand.coluna === "pausado"), metric: "Pausadas", filter: "opPausado" },
@@ -5650,6 +5652,7 @@ function renderWorksOperational() {
 
     <section class="kpi-grid">
       ${kpi("Total no Filtro", String(filtered.length), "Demandas no filtro atual", "blue", "", "opTotal")}
+      ${kpi("Pull Planning", String(filtered.filter((demand) => demand.coluna === "pullPlanning").length), "Planejamento das demandas", "blue", "", "opPullPlanning")}
       ${kpi("A iniciar", String(filtered.filter((demand) => demand.coluna === "fazer").length), "Fila Fazer", "orange", "", "opFazer")}
       ${kpi("Em execução", String(inProgress), "Fila Fazendo", "green", "", "opFazendo")}
       ${kpi("Pausado", String(paused), "Aguardando destrava", "orange", "", "opPausado")}
@@ -5849,7 +5852,7 @@ function renderOperationalFilterBanner() {
 function renderKanbanBoard(filtered) {
   return `
     ${renderKanbanTopScrollbar()}
-    <div class="kanban-board" data-kanban-scroll-board>
+    <div class="kanban-board" data-kanban-scroll-board style="--kanban-column-count: ${columns.length}">
       ${columns
         .map((column) => {
           const demands = sortKanbanColumnDemands(filtered.filter((demand) => demand.coluna === column.id), column.id);
@@ -6376,6 +6379,7 @@ function applyOperationalKpiFilter(key) {
   const map = {
     opTotal: {},
     activeDemands: {},
+    opPullPlanning: { status: "pullPlanning" },
     opFazer: { status: "fazer" },
     opFazendo: { status: "fazendo" },
     opPausado: { status: "pausado" },
@@ -6626,6 +6630,7 @@ function renderWorksManagement() {
         </div>
         <div class="split-list">
           ${splitItem("Todas", String(scopedDemands.length))}
+          ${splitItem("Pull Planning", String(scopedDemands.filter((demand) => demand.coluna === "pullPlanning").length))}
           ${splitItem("A iniciar", String(scopedDemands.filter((demand) => demand.coluna === "fazer").length))}
           ${splitItem("Em fluxo", String(active.length))}
           ${splitItem("Concluídas", String(completed.length))}
@@ -6671,6 +6676,7 @@ function renderWorksManagement() {
 function managementFilteredDemands() {
   const demands = filteredDemands();
   if (managementStatusFilter === "completed") return demands.filter((demand) => demand.coluna === "concluido");
+  if (managementStatusFilter === "planning") return demands.filter((demand) => demand.coluna === "pullPlanning");
   if (managementStatusFilter === "todo") return demands.filter((demand) => demand.coluna === "fazer");
   if (managementStatusFilter === "progress") return demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
   if (managementStatusFilter === "canceled") return demands.filter((demand) => demand.coluna === "cancelado");
@@ -6681,6 +6687,7 @@ function renderManagementStatusTabs() {
   const demands = filteredDemands();
   const tabs = [
     { id: "completed", label: "Concluídas", count: demands.filter((demand) => demand.coluna === "concluido").length },
+    { id: "planning", label: "Pull Planning", count: demands.filter((demand) => demand.coluna === "pullPlanning").length },
     { id: "todo", label: "A fazer", count: demands.filter((demand) => demand.coluna === "fazer").length },
     { id: "progress", label: "Em fluxo", count: demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna)).length },
     { id: "canceled", label: "Canceladas", count: demands.filter((demand) => demand.coluna === "cancelado").length },

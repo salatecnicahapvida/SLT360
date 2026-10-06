@@ -6547,7 +6547,7 @@ button.alert-item {
 
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(9, minmax(250px, 1fr));
+  grid-template-columns: repeat(var(--kanban-column-count, 9), minmax(250px, 1fr));
   gap: 14px;
   align-items: start;
   overflow-x: auto;
@@ -6632,6 +6632,10 @@ button.alert-item {
   display: block;
   height: 4px;
   background: var(--blue);
+}
+
+.kanban-column[data-column="pullPlanning"]::before {
+  background: #475569;
 }
 
 .kanban-column[data-column="fazendo"]::before {
@@ -6762,6 +6766,10 @@ button.alert-item {
   font-size: 0.72rem;
   font-weight: 900;
   line-height: 1;
+}
+
+.kanban-column[data-column="pullPlanning"] .kanban-count {
+  background: #475569;
 }
 
 .kanban-column[data-column="fazendo"] .kanban-count {
@@ -7432,6 +7440,10 @@ button.alert-item {
   margin-right: 6px;
   border-radius: 999px;
   background: var(--blue);
+}
+
+.status-dot[data-status="pullPlanning"] {
+  background: #475569;
 }
 
 .status-dot[data-status="fazendo"] {
@@ -8822,6 +8834,15 @@ button.analyst-chip {
 .demand-status-control select {
   color: #6f35d6;
   font-weight: 900;
+}
+
+.demand-status-control[data-status="pullPlanning"] {
+  background: #f1f5f9;
+  border-color: rgba(71, 85, 105, 0.28);
+}
+
+.demand-status-control[data-status="pullPlanning"] select {
+  color: #475569;
 }
 
 .demand-status-control[data-status="fazer"] {

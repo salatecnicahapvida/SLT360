@@ -22,6 +22,8 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
         { id: 'sic-direct', titulo: 'SIC sem Diretoria', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
         { id: 'sic-direct-required', titulo: 'SIC com Diretoria', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
         { id: 'sic-direct-forged', titulo: 'SIC com usuário inválido', obraId: 'work-1', tipo: 'SIC', coluna: 'validadoObras', valorGerado: 25 },
+        { id: 'budget-planning', titulo: 'Planejamento de orçamento', obraId: 'work-1', tipo: 'EmissaoInicial', coluna: 'fazer' },
+        { id: 'sic-planning', titulo: 'Planejamento de SIC', obraId: 'work-1', tipo: 'SIC', coluna: 'fazer' },
       ],
       maintenanceDemands: [
         { id: 'maintenance-1', titulo: 'Predial', centroCusto: 'Manutenção predial', coluna: 'naoIniciado', historico: [] },
@@ -65,6 +67,14 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     ];
     await commit(updates);
     assert.equal((await db.query("select phase from slt_budget_demands where record_key='budget-1'")).rows[0].phase, 'fazendo');
+
+    for (const key of ['budget-planning', 'sic-planning']) {
+      const demand = payload.state.demands.find(item => item.id === key);
+      await commit([change('budget_demands', key, { ...demand, coluna: 'pullPlanning' })]);
+      assert.equal((await db.query('select phase from slt_budget_demands where record_key=$1', [key])).rows[0].phase, 'pullPlanning');
+      await commit([change('budget_demands', key, { ...demand, coluna: 'fazendo' }, 2)]);
+      assert.equal((await db.query('select phase from slt_budget_demands where record_key=$1', [key])).rows[0].phase, 'fazendo');
+    }
 
     const inserts = [
       change('budget_demands', 'budget-new', { id: 'budget-new', titulo: 'Novo orçamento', obraId: 'work-1' }, 0),

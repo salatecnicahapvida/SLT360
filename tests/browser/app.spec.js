@@ -572,7 +572,7 @@ test('kanban reorders by displayed milestone, creation date and real completion'
  const concluded=page.locator('.kanban-column[data-column="concluido"]');
  const expectedOpen=['sort-overdue-validation','sort-validation-near-old','sort-validation-near-new','sort-validation-far','sort-no-date'];
  const expectedCompleted=['sort-completed-new','sort-completed-old'];
- await expect(page.locator('.operational-board-panel .kanban-sort-button')).toHaveCount(9);
+ await expect(page.locator('.operational-board-panel .kanban-sort-button')).toHaveCount(10);
  expect(await fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedOpen);
  expect(await concluded.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedCompleted);
  await fazer.locator('.demand-list').evaluate((list)=>{
@@ -623,7 +623,7 @@ test('kanban shows column totals and time in the current stage for every demand 
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const counts=page.locator('.operational-board-panel .kanban-count');
- await expect(counts).toHaveText(['1','1','1','1','0','0','0','0','0']);
+ await expect(counts).toHaveText(['0','1','1','1','1','0','0','0','0','0']);
  expect(await counts.first().evaluate((element)=>getComputedStyle(element).color)).not.toBe('rgba(0, 0, 0, 0)');
  const expectedTypeBadges=new Map([
   ['stage-initial','Emissão Inicial'],['stage-revision','Rev. Orç.'],['stage-extra','Dem. Extra'],['stage-sic','SIC'],
@@ -694,6 +694,72 @@ test('legacy stage counters start at demand creation instead of the demand start
  await expect(card.locator('.demand-card-stage-duration')).toHaveText('2 dias');
  await card.click();
  await expect(page.locator('#demandDetailForm .demand-stage-summary strong')).toHaveText('2 dias');
+ expect(b.errors).toEqual([]);
+});
+
+test('Pull Planning persists movements, filters both Obras views and exports the selected demands',async({page})=>{
+ const phaseStartedAt=new Date(Date.now()-2*86400000).toISOString();
+ const demands=[
+  {...structuredClone(payload.state.demands[0]),id:'planning-sic',coluna:'pullPlanning',phaseStartedAt,phaseStartedAtEstimated:false,phaseHistory:[]},
+  {...structuredClone(payload.state.demands[1]),id:'planning-budget',coluna:'fazer',phaseStartedAt,phaseStartedAtEstimated:false,phaseHistory:[]},
+  {...structuredClone(payload.state.demands[1]),id:'other-budget',coluna:'fazendo'},
+ ];
+ const b=await backend(page,'Analista',false,{analystCanWrite:true,demandRecords:demands,strictRevisions:true});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const columns=page.locator('.operational-board-panel .kanban-column');
+ await expect(columns.first()).toHaveAttribute('data-column','pullPlanning');
+ const columnTops=await columns.evaluateAll(items=>items.map(item=>Math.round(item.getBoundingClientRect().top)));
+ expect(new Set(columnTops).size).toBe(1);
+ const planningColumn=page.locator('.kanban-column[data-column="pullPlanning"]');
+ await expect(planningColumn.getByRole('heading',{name:'Pull Planning',exact:true})).toBeVisible();
+ await expect(planningColumn.locator('article')).toHaveCount(1);
+ const budgetCard=page.locator('article[data-id="planning-budget"]');
+ await budgetCard.click();
+ const form=page.locator('#demandDetailForm');
+ await form.locator('[name="coluna"]').selectOption('pullPlanning');
+ await form.getByRole('button',{name:'Salvar',exact:true}).click();
+ await expect(planningColumn.locator('article')).toHaveCount(2);
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='planning-budget').at(-1)?.document?.coluna).toBe('pullPlanning');
+ await budgetCard.click();
+ await expect(form.locator('[name="coluna"]')).toHaveValue('pullPlanning');
+ await expect(form.locator('.demand-stage-period.is-current')).toContainText('Pull Planning');
+ await expect(form.locator('.demand-stage-period').first()).toContainText('Fazer');
+ await form.getByRole('button',{name:'Fechar',exact:true}).first().click();
+
+ const planningKpi=page.locator('[data-action="open-kpi-detail"][data-kpi="opPullPlanning"]');
+ await expect(planningKpi.locator('strong')).toHaveText('2');
+ await planningKpi.click();
+ await expect(page.locator('.kpi-detail-table tbody tr')).toHaveCount(2);
+ await page.locator('[data-action="apply-operational-filter"][data-kpi="opPullPlanning"]').click();
+ await expect(page.locator('[data-operational-filter="status"][value="pullPlanning"]')).toBeChecked();
+ await expect(page.locator('.operational-list-table tbody tr')).toHaveCount(2);
+ await expect(page.locator('.operational-list-table')).toContainText('Pull Planning');
+ const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Exportar relatório filtrado',exact:true}).click()]);
+ const csv=await readFile(await download.path(),'utf8');
+ expect(csv).toContain('Pull Planning');expect(csv).toContain('planning-sic');expect(csv).toContain('planning-budget');expect(csv).not.toContain('other-budget');
+
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ await expect(page.locator('[data-operational-filter="status"][value="pullPlanning"]')).toBeChecked();
+ await expect(page.locator('.management-tabs [data-filter="planning"]')).toHaveText('Pull Planning 2');
+ await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
+ await page.locator('.management-tabs [data-filter="planning"]').click();
+ const managementCount=page.locator('.kpi-card').filter({has:page.getByText('Demandas no filtro',{exact:true})}).locator('strong');
+ await expect(managementCount).toHaveText('2');
+
+ await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
+ await page.locator('[data-action="set-operational-view"][data-mode="kanban"]').click();
+ await planningColumn.locator('article[data-id="planning-sic"]').dragTo(page.locator('.kanban-column[data-column="fazer"]'));
+ await expect(page.locator('.kanban-column[data-column="fazer"] article[data-id="planning-sic"]')).toBeVisible();
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='planning-sic').at(-1)?.document?.phaseHistory?.some(period=>period.stageId==='pullPlanning')).toBe(true);
+ await page.reload();
+ await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
+ await expect(planningColumn.locator('article[data-id="planning-budget"]')).toBeVisible();
+ await expect(page.locator('.kanban-column[data-column="fazer"] article[data-id="planning-sic"]')).toBeVisible();
+ const statusFilter=page.locator('[data-operational-filter-group="status"]');
+ await statusFilter.locator('summary').click();
+ await statusFilter.locator('[value="pullPlanning"]').check();
+ await expect(page.locator('.operational-board-panel article[data-id]')).toHaveCount(1);
+ await expect(planningKpi.locator('strong')).toHaveText('1');
  expect(b.errors).toEqual([]);
 });
 
@@ -1011,7 +1077,7 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(kpiValue('Concluídas')).toHaveText('2');
  await expect(kpiValue('Analistas responsáveis')).toHaveText('2');
  await expect(kpiValue('Sem data suficiente')).toHaveText('1');
- await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
  const analystPanel=page.locator('.panel').filter({has:page.getByRole('heading',{name:'Detalhe por analista'})});
  const analystTable=analystPanel.locator('table');
@@ -1024,7 +1090,7 @@ test('management view recalculates every indicator and analyst row from the filt
  await managementAnalystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
  await expect(kpiValue('Demandas no filtro')).toHaveText('3');
  await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
- await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','A fazer 1','Em fluxo 1','Canceladas 0','Todas 3']);
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 1','Canceladas 0','Todas 3']);
  await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
 
@@ -2150,12 +2216,12 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
- await expect(kanbanColumns).toHaveCount(9);
+ await expect(kanbanColumns).toHaveCount(10);
  const kanbanHeight=(await kanbanColumns.first().boundingBox()).height;
  expect(kanbanHeight).toBeGreaterThanOrEqual(2080);
  expect(kanbanHeight).toBeLessThanOrEqual(3040);
  await expect(kanbanColumns.locator('header h2')).toHaveText([
-  'Fazer','Fazendo','Pausado','Aguardando Validação Obras','Validado Obras','Aguardando Aprovação Diretoria',
+  'Pull Planning','Fazer','Fazendo','Pausado','Aguardando Validação Obras','Validado Obras','Aguardando Aprovação Diretoria',
   'Aprovado Diretoria','Concluído','Cancelado',
  ]);
 
