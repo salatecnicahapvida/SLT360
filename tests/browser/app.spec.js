@@ -21,12 +21,13 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,historyRecords=null,omitHistoryIds=false,strictRevisions=false,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
  if(Array.isArray(evRecords))input.state.evs=evRecords;
  if(Array.isArray(sprintRecords))input.state.sprints=sprintRecords;
+ if(Array.isArray(historyRecords))input.state.history=historyRecords;
  if(Array.isArray(fundRecords))input.state.funds=fundRecords;
  input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
@@ -42,6 +43,7 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
  }
  const approval=sicApprovalStore||{payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  let records=flattenPayload(input).map(r=>({...r,revision:1}));
+ if(omitHistoryIds)for(const row of records)if(row.entity==='core_history')delete row.document.id;
  let analysts=analystNames.map((nome,index)=>({
   id:`22222222-2222-4222-8222-${String(index+1).padStart(12,'0')}`,
   nome,
@@ -97,6 +99,13 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
   else if(p.endsWith('/slt_backup_daily'))data={created:false};
   else if(p.endsWith('/slt_commit_changes')){
    const body=req.postDataJSON();requests.push(body);
+   if(strictRevisions){
+    for(const change of body.changes){
+     const previous=records.find(row=>row.entity===change.entity&&row.key===change.key);
+     const message=change.operation==='delete'&&!previous?'Registro inexistente':Number(previous?.revision||0)!==change.expected_revision?'Registro alterado em outra sessão':'';
+     if(message){await route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({message,code:'22023'})});return;}
+    }
+   }
    if(failFinanceCommit&&body.changes.some(change=>change.entity.startsWith('finance_'))){
     await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:'permission denied for finance_funds',code:'42501'})});
     return;
@@ -1126,6 +1135,40 @@ test('manager can delete demands only after opening the card',async({page})=>{
  await expect(detail.locator('[data-action="open-delete-demand"]')).toBeVisible();
  await detail.locator('[data-action="open-delete-demand"]').click();
  await expect(page.locator('#deleteDemandForm')).toBeVisible();
+ expect(b.errors).toEqual([]);
+});
+
+test('settings create, edit and activate sprints with legacy history missing document ids',async({page})=>{
+ const b=await backend(page,'Admin',false,{
+  sprintRecords:[{id:'sprint-017',nome:'Sprint 17',dataInicio:'2026-09-14',dataFim:'2026-09-27',status:'Ativa'}],
+  historyRecords:Array.from({length:4},(_,index)=>({id:`MAN-legacy-${index}`,campo:'importação',timestamp:'2026-09-01T12:00:00Z'})),
+  omitHistoryIds:true,strictRevisions:true,
+ });
+ await login(page);
+ await page.locator('[data-view="settings"]').filter({visible:true}).first().click();
+ const form=page.locator('#sprintInlineForm');
+ await form.locator('[name="nome"]').fill('Sprint 18');
+ await form.locator('[name="dataInicio"]').fill('2026-09-28');
+ await form.locator('[name="dataFim"]').fill('2026-10-11');
+ await form.locator('[name="status"]').selectOption('Ativa');
+ await form.getByRole('button',{name:'Criar sprint'}).click();
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 18');
+ await expect(page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 17'}).locator('td').nth(3)).toHaveText('Encerrada');
+ await page.getByRole('button',{name:'Editar — Sprint 18',exact:true}).click();
+ const edit=page.locator('#sprintForm');
+ await edit.locator('[name="nome"]').fill('Sprint 18 revisada');
+ await edit.locator('[name="dataFim"]').fill('2026-10-12');
+ await edit.locator('button[type="submit"]').click();
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 18 revisada');
+ await page.getByRole('button',{name:'Tornar atual — Sprint 17',exact:true}).click();
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 17');
+ await page.reload();
+ await expect(page.locator('.sprint-table tbody tr').filter({hasText:'Sprint 18 revisada'})).toContainText('12/10/2026');
+ await expect(page.locator('.sprint-settings-panel .panel-header .tag')).toHaveText('Sprint ativa: Sprint 17');
+ await expect(page.getByRole('heading',{name:'Alterações não confirmadas no banco'})).toHaveCount(0);
+ expect(b.requests).toHaveLength(3);
+ expect(b.requests.flatMap(request=>request.changes).every(change=>change.operation==='upsert')).toBe(true);
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.entity==='core_history'&&change.key.startsWith('MAN-legacy-'))).toBe(false);
  expect(b.errors).toEqual([]);
 });
 

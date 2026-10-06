@@ -142,6 +142,9 @@ export function hydrateRecords(records) {
   const assets=new Map(groups.get('clinical_assets').map(r=>[r.key,r.document]));
   function doc(e,row) {
     const value=clone(row.document);
+    // Entradas antigas podem omitir id nos campos decodificados. A chave do
+    // registro deve permanecer estável quando uma nova entrada é inserida.
+    if(e.name==='core_history' && (value.id==null || value.id==='')) value.id=row.key;
     if(e.name==='clinical_orders' && value.assetId) {
       const asset=assets.get(value.assetId);
       if(asset) {
