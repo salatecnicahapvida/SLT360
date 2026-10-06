@@ -1410,6 +1410,44 @@ test('configuration catalogs can be created and edited and feed work and EV form
  expect(b.errors).toEqual([]);
 });
 
+for(const type of ['EmissaoInicial','ReemissaoCompleta','DemandaExtra']){
+ test(`new ${type} demands start in Pull Planning and retain later stage changes`,async({page})=>{
+  const b=await backend(page,'Admin',false,{demandRecords:[],strictRevisions:true});await login(page);
+  await page.getByRole('button',{name:'Abrir Obras'}).click();
+  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+  await page.locator(`.demand-type-option[data-type="${type}"]`).click();
+  const step1=page.locator('#demandWizardStep1');
+  await step1.locator('[name="obraBusca"]').fill('Obra de teste');
+  await step1.getByRole('button',{name:/Avançar/}).click();
+  const form=page.locator('#demandForm');
+  await expect(form.locator('[name="coluna"]')).toHaveValue('pullPlanning');
+  // The creation rule must hold even if a stale form still posts the old stage.
+  await form.locator('[name="coluna"]').evaluate(input=>{input.value='fazer';});
+  await form.getByRole('button',{name:'Salvar demanda',exact:true}).click();
+  const card=page.locator('article[data-id="DEM-001"]');
+  await expect(page.locator('.kanban-column[data-column="pullPlanning"]').locator(card)).toBeVisible();
+  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+  const creation=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-001');
+  expect(creation?.document?.tipo).toBe(type);
+  expect(creation?.document?.coluna).toBe('pullPlanning');
+  expect(creation?.document?.phaseStartedAt).toBe(creation?.document?.createdAt);
+
+  await page.reload();
+  await expect(page.locator('.kanban-column[data-column="pullPlanning"]').locator(card)).toBeVisible();
+  await card.click();
+  const detail=page.locator('#demandDetailForm');
+  await expect(detail.locator('[name="coluna"]')).toHaveValue('pullPlanning');
+  await expect(detail.locator('.demand-stage-period.is-current')).toContainText('Pull Planning');
+  await detail.locator('[name="coluna"]').selectOption('fazer');
+  await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+  await expect(page.locator('.kanban-column[data-column="fazer"]').locator(card)).toBeVisible();
+  await expect(page.locator('#cloudStatus')).toHaveText('Sincronizado');
+  await page.reload();
+  await expect(page.locator('.kanban-column[data-column="fazer"]').locator(card)).toBeVisible();
+  expect(b.errors).toEqual([]);
+ });
+}
+
 test('new demands suggest the historical analyst, persist labels and give SICs a 15-day due date',async({page})=>{
  const sprints=[
   {id:'sprint-016',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},

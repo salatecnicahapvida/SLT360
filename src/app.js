@@ -2318,6 +2318,12 @@ function demandTypeLabel(value) {
   return workDemandTypeDefinitions.find((type) => type.id === key)?.label || value;
 }
 
+function newWorkDemandColumn(type) {
+  return ["EmissaoInicial", "ReemissaoCompleta", "DemandaExtra"].includes(demandTypeKey(type))
+    ? "pullPlanning"
+    : "fazer";
+}
+
 function demandTypeCardLabel(value) {
   const map = {
     EmissaoInicial: "Emissão Inicial",
@@ -16772,7 +16778,7 @@ function demandWizardHiddenFields(draft) {
     <input type="hidden" name="analistaResponsavel" value="${escapeAttribute(draft.analistaResponsavel)}" />
     <input type="hidden" name="analistasSelecionados" value="${escapeAttribute(JSON.stringify(demandAnalystNames(draft)))}" />
     <input type="hidden" name="descricao" value="${escapeAttribute(draft.descricao)}" />
-    <input type="hidden" name="coluna" value="fazer" />
+    <input type="hidden" name="coluna" value="${newWorkDemandColumn(draft.tipo)}" />
   `;
 }
 
@@ -18254,7 +18260,7 @@ async function handleDemandSubmit(form) {
     ...analystAssignment,
     prioridade: formData.get("prioridade"),
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
-    coluna: tipo === "SIC" ? "fazer" : formData.get("coluna") || "fazer",
+    coluna: newWorkDemandColumn(tipo),
     phaseStartedAt: demandCreatedAt,
     phaseEndedAt: "",
     phaseStartedAtEstimated: false,
@@ -20091,7 +20097,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     analistaResponsavel: "",
     analistasComplementares: [],
     prioridade: "Média",
-    coluna: "fazer",
+    coluna: newWorkDemandColumn("EmissaoInicial"),
     dataPrevistaInicio: startDate,
     dataInicioReal: "",
     dataPrevEnvioValidacaoObras: addDaysISO(startDate, 10),
@@ -20123,7 +20129,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     entidadeId: demand.id,
     campo: "criação",
     valorAnterior: "Projeto entregue para ST",
-    valorNovo: `Card criado em Obras > Fazer para ${work.nome}`,
+    valorNovo: `Card criado em Obras > Pull Planning para ${work.nome}`,
   });
 
   if (options.navigate) {
@@ -20133,7 +20139,7 @@ function createBudgetDemandFromProject(rowNumber, options = {}) {
     operationalViewMode = "kanban";
     closeModal();
     setView("worksOperational");
-    showToast(`${demand.id} criado em Obras na etapa Fazer.`);
+    showToast(`${demand.id} criado em Obras na etapa Pull Planning.`);
   }
   return demand;
 }
