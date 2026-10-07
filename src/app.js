@@ -5950,6 +5950,7 @@ function renderOperationalListRow(demand) {
 }
 
 function renderDemandCard(demand) {
+  const isPullPlanning = demand.coluna === "pullPlanning";
   const work = workById(demand.obraId);
   const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
   const description = String(demand.observacao || demand.sicMetadata?.descricaoSic || "").trim();
@@ -5957,6 +5958,9 @@ function renderDemandCard(demand) {
   const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
   const sprintFlag = sprintFlagLabel(sprintName);
   const timing = demandTimingInfo(demand);
+  const cardDateLabel = isPullPlanning
+    ? demand.dataPrevistaInicio ? `Início previsto: ${dateText(demand.dataPrevistaInicio)}` : "Sem previsão de início"
+    : timing.dateLabel;
   const stageTime = demandStageTimeInfo(demand);
   const complementCount = (demand.analistasComplementares || []).length;
   const isSic = demandTypeKey(demand.tipo) === "SIC";
@@ -5965,7 +5969,7 @@ function renderDemandCard(demand) {
   const lecomNumber = sicInfo?.lecomNumber || "";
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandProducedValue(demand);
-  const timingAlert = demand.coluna === "pausado"
+  const timingAlert = isPullPlanning || demand.coluna === "pausado"
     ? ""
     : '<div class="demand-card-alert" data-tone="' + escapeAttribute(timing.tone) + '"><i></i><strong>' + escapeAttribute(timing.label) + '</strong></div>';
   return `
@@ -5986,7 +5990,7 @@ function renderDemandCard(demand) {
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
-        approval && approval.status !== "Pendente"
+        !isPullPlanning && approval && approval.status !== "Pendente"
           ? `<div class="sic-card-sync">
               <span class="sic-approval-badge" data-status="${approval.dataStatus}">${approval.label}</span>
             </div>`
@@ -5997,13 +6001,13 @@ function renderDemandCard(demand) {
         <span>${demand.analistaResponsavel || "Analista a definir"}</span>
         ${complementCount ? `<b>+${complementCount}</b>` : ""}
       </div>
-      ${demand.coluna === "concluido" ? "" : `
+      ${isPullPlanning || demand.coluna === "concluido" ? "" : `
       <div class="demand-card-stage-time" title="${stageTime.closed ? `Contagem encerrada em ${escapeAttribute(stageTime.endedLabel)}` : `Desde ${escapeAttribute(stageTime.startedLabel)}`}${stageTime.estimated ? " · referência estimada para demanda antiga" : ""}">
         <span>Tempo na etapa:</span>
         <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
       </div>
       `}
-      <span class="demand-card-date">${timing.dateLabel}</span>
+      <span class="demand-card-date">${cardDateLabel}</span>
       ${timingAlert}
       ${
         demandHasRecordedValue(demand) && (demand.coluna === "concluido" || (isSic && ["validadoObras", "aprovacaoDiretoria", "aprovadoDiretoria"].includes(demand.coluna)))
