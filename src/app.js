@@ -6028,7 +6028,7 @@ function demandCardDateLabels(demand, fallbackLabel) {
   if (["fazer", "fazendo"].includes(demand.coluna)) {
     const validationDate = dateOnly(demand.dataPrevEnvioValidacaoObras);
     return validationDate && validationDate >= todayISO()
-      ? [dateLabel("Envio previsto p/ validação", validationDate), deliveryLabel]
+      ? [dateLabel("Envio previsto", validationDate), deliveryLabel]
       : [deliveryLabel];
   }
   if (demand.coluna === "validacaoObras") {
