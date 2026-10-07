@@ -441,11 +441,11 @@ test('Home counts only Obras demands that are actually in progress',async({page}
  expect(b.errors).toEqual([]);
 });
 
-test('operational cards prioritize the validation date until validation is sent',async({page})=>{
+test('operational cards show stage dates and hide an expired planned validation date',async({page})=>{
  const base={...structuredClone(payload.state.demands[0]),tipo:'EmissaoInicial',sicApprovalStatus:''};
  const demands=[
   {...base,id:'validation-pending',coluna:'fazer',dataPrevEnvioValidacaoObras:'2099-10-01',dataPrevistaEntrega:'2026-10-20'},
-  {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataPrevistaEntrega:'2026-10-21'},
+  {...base,id:'validation-sent',coluna:'validacaoObras',dataPrevEnvioValidacaoObras:'2026-10-02',dataEnvioRealValidacaoObras:'2026-10-03',dataPrevistaEntrega:'2026-10-21'},
   {...base,id:'validation-date-missing',coluna:'fazer',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'2026-10-22'},
   {...base,id:'validation-overdue',coluna:'fazendo',dataPrevEnvioValidacaoObras:'2000-01-01',dataPrevistaEntrega:'2099-10-23'},
   {...base,id:'validation-completed',coluna:'concluido',dataPrevEnvioValidacaoObras:'2026-10-03',dataPrevistaEntrega:'2026-10-23',dataEntregaReal:'2026-09-15'},
@@ -453,8 +453,8 @@ test('operational cards prioritize the validation date until validation is sent'
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const board=page.locator('.operational-board-panel');
- await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText('Envio p/ validação: 01/10/2099');
- await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText('Entrega prevista: 21/10/2026');
+ await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText(['Envio previsto p/ validação: 01/10/2099','Entrega prevista: 20/10/2026']);
+ await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText(['Envio p/ validação: 03/10/2026','Entrega prevista: 21/10/2026']);
  await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
  await expect(board.locator('article[data-id="validation-overdue"] .demand-card-date')).toHaveText('Entrega prevista: 23/10/2099');
  await expect(board.locator('article[data-id="validation-completed"] .demand-card-date')).toHaveText('Entrega real: 15/09/2026');

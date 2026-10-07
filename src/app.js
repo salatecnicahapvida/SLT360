@@ -5958,9 +5958,7 @@ function renderDemandCard(demand) {
   const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
   const sprintFlag = sprintFlagLabel(sprintName);
   const timing = demandTimingInfo(demand);
-  const cardDateLabel = isPullPlanning
-    ? demand.dataPrevistaInicio ? `Início previsto: ${dateText(demand.dataPrevistaInicio)}` : "Sem previsão de início"
-    : timing.dateLabel;
+  const cardDateLabels = demandCardDateLabels(demand, timing.dateLabel);
   const stageTime = demandStageTimeInfo(demand);
   const complementCount = (demand.analistasComplementares || []).length;
   const isSic = demandTypeKey(demand.tipo) === "SIC";
@@ -6007,7 +6005,7 @@ function renderDemandCard(demand) {
         <span class="demand-card-stage-duration">${stageTime.durationLabel}</span>
       </div>
       `}
-      <span class="demand-card-date">${cardDateLabel}</span>
+      ${cardDateLabels.map((label) => `<span class="demand-card-date">${escapeAttribute(label)}</span>`).join("")}
       ${timingAlert}
       ${
         demandHasRecordedValue(demand) && (demand.coluna === "concluido" || (isSic && ["validadoObras", "aprovacaoDiretoria", "aprovadoDiretoria"].includes(demand.coluna)))
@@ -6016,6 +6014,30 @@ function renderDemandCard(demand) {
       }
     </article>
   `;
+}
+
+function demandCardDateLabels(demand, fallbackLabel) {
+  const dateLabel = (label, value) => `${label}: ${dateText(dateOnly(value))}`;
+  const deliveryLabel = dateLabel("Entrega prevista", demand.dataPrevistaEntrega);
+  if (demand.coluna === "pullPlanning") {
+    return [
+      dateLabel("Início previsto", demand.dataPrevistaInicio),
+      dateLabel("Término previsto", demand.dataPrevistaEntrega),
+    ];
+  }
+  if (["fazer", "fazendo"].includes(demand.coluna)) {
+    const validationDate = dateOnly(demand.dataPrevEnvioValidacaoObras);
+    return validationDate && validationDate >= todayISO()
+      ? [dateLabel("Envio previsto p/ validação", validationDate), deliveryLabel]
+      : [deliveryLabel];
+  }
+  if (demand.coluna === "validacaoObras") {
+    return [dateLabel("Envio p/ validação", demand.dataEnvioRealValidacaoObras), deliveryLabel];
+  }
+  if (demand.coluna === "validadoObras") {
+    return [dateLabel("Validação Obras", demand.dataValidacaoObras), deliveryLabel];
+  }
+  return [fallbackLabel];
 }
 
 function renderDemandCardLabels(labels = []) {
