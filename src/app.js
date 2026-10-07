@@ -5747,7 +5747,12 @@ function operationalDemandCreationTimestamp(demand) {
 }
 
 function compareKanbanColumnDemands(first, second, columnId) {
-  if (columnId === "concluido") {
+  if (columnId === "pullPlanning") {
+    const firstStart = dateOnly(first?.dataPrevistaInicio) || "9999-12-31";
+    const secondStart = dateOnly(second?.dataPrevistaInicio) || "9999-12-31";
+    const startComparison = firstStart.localeCompare(secondStart);
+    if (startComparison) return startComparison;
+  } else if (columnId === "concluido") {
     const firstCompleted = dateOnly(first?.dataEntregaReal) || "";
     const secondCompleted = dateOnly(second?.dataEntregaReal) || "";
     if (firstCompleted || secondCompleted) {
@@ -5862,9 +5867,11 @@ function renderKanbanBoard(filtered) {
       ${columns
         .map((column) => {
           const demands = sortKanbanColumnDemands(filtered.filter((demand) => demand.coluna === column.id), column.id);
-          const sortTitle = column.id === "concluido"
-            ? "Reordenar por conclusão real, da mais recente para a mais antiga"
-            : "Reordenar pelo marco exibido no card; em empate, priorizar o card criado primeiro";
+          const sortTitle = column.id === "pullPlanning"
+            ? "Reordenar pela previsão de início, da mais próxima para a mais distante; sem previsão ao final"
+            : column.id === "concluido"
+              ? "Reordenar por conclusão real, da mais recente para a mais antiga"
+              : "Reordenar pelo marco exibido no card; em empate, priorizar o card criado primeiro";
           return `
             <section class="kanban-column" data-column="${column.id}">
               <header>
@@ -20581,9 +20588,11 @@ document.addEventListener("click", async (event) => {
     const column = columns.find((item) => item.id === actionButton.dataset.column);
     if (!column) return;
     render();
-    showToast(column.id === "concluido"
-      ? `${column.label}: ordenado pela conclusão real, do mais recente para o mais antigo.`
-      : `${column.label}: ordenado pelo marco exibido no card e, em empate, pela criação.`);
+    showToast(column.id === "pullPlanning"
+      ? `${column.label}: ordenado pela previsão de início, da mais próxima para a mais distante.`
+      : column.id === "concluido"
+        ? `${column.label}: ordenado pela conclusão real, do mais recente para o mais antigo.`
+        : `${column.label}: ordenado pelo marco exibido no card e, em empate, pela criação.`);
   }
   if (action === "set-operational-view") {
     operationalViewMode = actionButton.dataset.mode || "kanban";
