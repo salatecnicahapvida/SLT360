@@ -6575,10 +6575,9 @@ function managementAnalystLabel(demand) {
 
 function managementProduction(demands) {
   const completed = demands.filter((demand) => demand.coluna === "concluido");
-  const eligible = completed.filter((demand) => demandHasRecordedValue(demand) && Number.isFinite(Number(demand.valorGerado)) && managementDemandArea(demand) > 0);
+  const eligible = completed.filter((demand) => managementDemandArea(demand) > 0);
   const area = eligible.reduce((sum, demand) => sum + managementDemandArea(demand), 0);
-  const eligibleValue = eligible.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
-  return { completed, eligible, area, eligibleValue, value: completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0), valueM2: area ? eligibleValue / area : null };
+  return { completed, eligible, area, value: completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0) };
 }
 
 function managementDemandArea(demand) {
@@ -6591,7 +6590,7 @@ function managementDemandArea(demand) {
 function managementMetricDemands(metric, demands = managementFilteredDemands()) {
   const summary = managementDemandSummary(demands);
   if (["completed", "value"].includes(metric)) return summary.completed;
-  if (["area", "valueM2"].includes(metric)) return managementProduction(demands).eligible;
+  if (metric === "area") return managementProduction(demands).eligible;
   if (metric === "active") return summary.active;
   if (["onTime", "late", "noDate"].includes(metric)) return summary[metric].map((row) => row.demand);
   if (metric === "deadline") return demands.filter((demand) => demand.coluna !== "cancelado");
@@ -6621,7 +6620,7 @@ function managementChartRows(demands, metric, group = "analyst") {
     const production = managementProduction(items);
     let value = items.length;
     if (metric === "value") value = production.value;
-    if (metric === "valueM2") value = production.valueM2;
+    if (metric === "area") value = production.area;
     if (metric === "assessed") value = summary.punctualPercent;
     if (metric === "late") value = summary.averageDelay;
     return { label, value, count: items.length };
@@ -6647,19 +6646,17 @@ function managementDetailData(metric = "all", group = "", value = "") {
   } else if (group) {
     demands = demands.filter((demand) => normalizeSearchText(managementGroupLabel(demand, group)) === normalizeSearchText(value));
   }
-  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", value: "Valor produzido", valueM2: "Produção por m²", area: "Área produzida", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
+  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
   const production = managementProduction(demands);
-  const ratioNote = " R$/m² considera somente concluídas com valor registrado e área positiva. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
+  const areaNote = " A produção em m² soma a área equivalente (ou construída) das demandas concluídas, mesmo sem valor financeiro registrado. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
   return {
     eyebrow: "Visão Gerencial · demandas do indicador",
     title: `${titles[metric] || titles.all}${group === "leader" ? " · liderança" : value ? ` · ${escapeAttribute(value)}` : ""}`,
-    subtitle: `Respeita todos os filtros e a etapa selecionada. Clique no código para abrir a demanda.${ratioNote}`,
+    subtitle: `Respeita todos os filtros e a etapa selecionada. Clique no código para abrir a demanda.${areaNote}`,
     metrics: [
       { label: "Demandas", value: String(demands.length) },
       { label: "Valor produzido", value: money(production.value) },
-      { label: "Valor da base de R$/m²", value: money(production.eligibleValue) },
-      { label: "Área da base de R$/m²", value: `${number(production.area, 2)} m²` },
-      { label: "Produção por m²", value: production.valueM2 === null ? "—" : `${money(production.valueM2)}/m²` },
+      { label: "Produção em m²", value: `${number(production.area, 2)} m²` },
     ],
     columns: ["Demanda", "Obra", "Atividade", "Analista", "Sprint", "Etapa", "Entrega prevista", "Entrega real", "Valor produzido", "Área (m²)"],
     rows: demands.map((demand) => [
@@ -6681,7 +6678,7 @@ function renderManagementBars(demands, metric, group = "analyst") {
   const rows = managementChartRows(demands, metric, group);
   const max = metric === "assessed" ? 100 : Math.max(...rows.map((row) => row.value), 1);
   return rows.length ? `<div class="management-bar-list">${rows.map((row) => {
-    const formatted = metric === "value" ? money(row.value) : metric === "valueM2" ? `${money(row.value)}/m²` : metric === "assessed" ? `${number(row.value)}% · ${row.count} avaliadas` : metric === "late" ? `${number(row.value, 1)} dias · ${row.count} atrasadas` : String(row.value);
+    const formatted = metric === "value" ? money(row.value) : metric === "area" ? `${number(row.value, 2)} m²` : metric === "assessed" ? `${number(row.value)}% · ${row.count} avaliadas` : metric === "late" ? `${number(row.value, 1)} dias · ${row.count} atrasadas` : String(row.value);
     return `<button class="management-bar" type="button" ${managementDetailAttributes(metric, group, row.label)} aria-label="${escapeAttribute(`${row.label}: ${formatted}. Ver demandas`)}"><span class="management-bar-caption"><strong>${escapeAttribute(row.label)}</strong><span>${formatted}</span></span><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width:${Math.min(row.value / max * 100, 100)}%"></span></span></button>`;
   }).join("")}</div>` : `<div class="empty-state">Nenhuma demanda nesta base.</div>`;
 }
@@ -6691,10 +6688,10 @@ function managementPanel(title, subtitle, body, metric = "all") {
 }
 
 function renderManagementLeaders(demands) {
-  const entries = [ { metric: "completed", label: "Mais demandas concluídas" }, { metric: "valueM2", label: "Maior produção por m²" }, { metric: "value", label: "Maior valor produzido" } ];
+  const entries = [ { metric: "completed", label: "Mais demandas concluídas" }, { metric: "area", label: "Maior produção em m²" }, { metric: "value", label: "Maior valor produzido" } ];
   return `<div class="management-grid management-leaders">${entries.map(({ metric, label }) => {
     const leaders = managementLeaders(demands, metric);
-    const reading = !leaders.length ? "Sem produção nesta base" : metric === "completed" ? `${leaders[0].value} demandas` : metric === "valueM2" ? `${money(leaders[0].value)}/m²` : money(leaders[0].value);
+    const reading = !leaders.length ? "Sem produção nesta base" : metric === "completed" ? `${leaders[0].value} demandas` : metric === "area" ? `${number(leaders[0].value, 2)} m²` : money(leaders[0].value);
     return `<button class="management-leader" type="button" ${managementDetailAttributes(metric, "leader")}><small>${label}</small><strong>${leaders.length ? leaders.map((row) => escapeAttribute(row.label)).join(" · ") : "—"}</strong><span>${reading}</span><em>${leaders.length > 1 ? "Empate · ver demandas dos líderes" : "Ver demandas"}</em></button>`;
   }).join("")}</div>`;
 }
@@ -6713,7 +6710,6 @@ function renderWorksManagement() {
   const demands = managementFilteredDemands();
   const summary = managementDemandSummary(demands);
   const production = managementProduction(demands);
-  const ratio = production.valueM2 === null ? "—" : `${money(production.valueM2)}/m²`;
   const metric = (label, value, hint, tone, key) => kpi(label, value, hint, tone, "", `mgmt:${key}`);
   return `
     ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, carga de trabalho e prazos da equipe · clique nos resultados para ver as demandas", `
@@ -6728,8 +6724,7 @@ function renderWorksManagement() {
         ${metric("Demandas no filtro", String(demands.length), "Carteira selecionada", "blue", "all")}
         ${metric("Concluídas", String(summary.completed.length), "Entregas finalizadas", "green", "completed")}
         ${metric("Valor produzido", money(production.value), "Somente demandas concluídas", "orange", "value")}
-        ${metric("Produção por m²", ratio, `${production.eligible.length} concluídas com área e valor`, "orange", "valueM2")}
-        ${metric("Área produzida", `${number(production.area, 2)} m²`, "Área somada por demanda da base de R$/m²", "blue", "area")}
+        ${metric("Produção em m²", `${number(production.area, 2)} m²`, `${production.eligible.length} concluídas com área informada`, "blue", "area")}
         ${metric("Em fluxo", String(summary.active.length), "Demandas abertas, incluindo A iniciar", "blue", "active")}
         ${metric("Dentro do prazo", `${summary.onTime.length} (${number(summary.punctualPercent)}%)`, `${summary.onTime.length + summary.late.length} demandas com prazo avaliado`, "green", "onTime")}
         ${metric("Atrasadas", String(summary.late.length), summary.late.length ? `${number(summary.averageDelay, 1)} dias de atraso médio` : "Nenhuma demanda vencida", summary.late.length ? "red" : "green", "late")}
@@ -6737,12 +6732,12 @@ function renderWorksManagement() {
         ${metric("Analistas responsáveis", String(analystsForDemands(demands).length), "Responsáveis nas demandas do filtro", "blue", "responsible")}
       </section>
       <section class="management-section" aria-labelledby="managementProductionTitle">
-        <div class="management-section-heading"><h2 id="managementProductionTitle">Produção e destaques por analista</h2><p>Somente concluídas do filtro. R$/m² = valor registrado ÷ área equivalente (ou construída). Cada entrega soma a área da obra novamente; sem área ou valor registrado, não entra em R$/m².</p></div>
+        <div class="management-section-heading"><h2 id="managementProductionTitle">Produção e destaques por analista</h2><p>Somente concluídas do filtro. A produção em m² soma a área equivalente (ou construída), mesmo sem valor financeiro registrado. Cada entrega soma a área da obra novamente; demandas sem área informada não entram no total em m².</p></div>
         ${renderManagementLeaders(demands)}
         <div class="management-grid">
           ${managementPanel("Concluídas por analista", "Ranking por quantidade de entregas", renderManagementBars(demands, "completed"), "completed")}
           ${managementPanel("Valor produzido por analista", "EV emitido ou diferença aprovada · concluídas", renderManagementBars(demands, "value"), "value")}
-          ${managementPanel("Produção por m² por analista", "Valor ÷ área das entregas com dados suficientes", renderManagementBars(demands, "valueM2"), "valueM2")}
+          ${managementPanel("Produção em m² por analista", "Soma das áreas das demandas concluídas", renderManagementBars(demands, "area"), "area")}
         </div>
       </section>
       <section class="management-section" aria-labelledby="managementLoadTitle">
