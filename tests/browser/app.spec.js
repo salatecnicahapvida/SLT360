@@ -1075,9 +1075,14 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 1 (50%)');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 1 (50%)');
  await expect(kpiValue('Em fluxo')).toHaveText('2');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 1 (50%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Em atraso: 1 (50%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).not.toContainText('Sem data suficiente');
+ await expect(page.locator('[aria-labelledby="managementProductionTitle"] > .management-section-heading p')).toHaveCount(0);
+ await expect(page.locator('[aria-labelledby="managementDeadlineTitle"] > .management-section-heading p')).toHaveCount(0);
  await expect(kpiValue('Concluídas')).toHaveText('2');
  await expect(kpiValue('Canceladas')).toHaveText('1');
- for(const key of ['active','canceled','value','area'])await expect(page.locator(`[data-kpi="mgmt:${key}"] > span`)).toBeEmpty();
+ for(const key of ['canceled','value','area'])await expect(page.locator(`[data-kpi="mgmt:${key}"] > span`)).toBeEmpty();
  await expect(page.locator('.works-management')).not.toContainText('A iniciar');
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
@@ -1104,6 +1109,8 @@ test('management view recalculates every indicator and analyst chart from the fi
 
  await page.locator('.management-tabs [data-filter="todo"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('1');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 1 (100%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Em atraso: 0 (0%)');
  await expect(kpiValue('Concluídas')).toHaveText('0');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 0 (0%)');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 0 (0%)');
@@ -1242,9 +1249,15 @@ test('management rankings include every filtered analyst with zero production an
  await expect(modal.locator('.management-demand-link')).toHaveText(['rank-no-area']);await close();
  const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
  await analystFilter.locator('summary').click();await analystFilter.locator('[data-operational-filter="analyst"][value="Bruno"]').check();
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 0 (0%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Em atraso: 0 (0%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Sem data suficiente: 1 (100%)');
  for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Bruno']);
  await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
  await page.locator('.management-tabs [data-filter="completed"]').click();
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 0 (0%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Em atraso: 0 (0%)');
+ await expect(page.locator('[data-kpi="mgmt:active"]')).not.toContainText('Sem data suficiente');
  for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Ana','Davi']);
  await page.locator('.management-tabs [data-filter="canceled"]').click();
  for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Carla']);
@@ -1273,6 +1286,18 @@ test('management panels stay aligned and readable across narrow screens and zoom
    return {fits,aligned};
   });
   expect(layout,`width=${width}, zoom=${zoom}`).toEqual({fits:true,aligned:true});
+  const profile=await page.locator('.management-profile').evaluate(root=>{
+   const chart=root.querySelector('.management-activity-donut');
+   const legend=root.querySelector('.management-profile-legend');
+   const body=root.getBoundingClientRect(),ring=chart.getBoundingClientRect(),list=legend.getBoundingClientRect();
+   const scale=parseFloat(getComputedStyle(document.body).zoom)||1;
+   const stacked=getComputedStyle(root).gridTemplateColumns.split(' ').length===1;
+   return {size:ring.width/scale,square:Math.abs(ring.width-ring.height)<1,fits:ring.left>=body.left-1&&ring.right<=body.right+1&&list.left>=body.left-1&&list.right<=body.right+1,stacked,centered:Math.abs((ring.top+list.bottom)/2-(body.top+body.bottom)/2)<3*scale};
+  });
+  expect(profile.square).toBe(true);
+  expect(profile.fits).toBe(true);
+  expect(profile.size).toBeGreaterThanOrEqual(170);
+  if(profile.stacked)expect(profile.centered).toBe(true);
  }
  expect(b.errors).toEqual([]);
 });

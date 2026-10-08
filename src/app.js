@@ -6690,8 +6690,8 @@ function managementMetricText(metric, value, count = 0) {
   return String(value);
 }
 
-function managementPanel(title, subtitle, body, metric = "all") {
-  return `<section class="panel management-panel"><div class="panel-header"><div><h2>${title}</h2><p class="panel-subtitle">${subtitle}</p></div><button class="management-see-all" type="button" ${managementDetailAttributes(metric)} aria-label="Ver demandas: ${title}">Ver demandas</button></div>${body}</section>`;
+function managementPanel(title, subtitle, body, metric = "all", className = "") {
+  return `<section class="panel management-panel ${className}"><div class="panel-header"><div><h2>${title}</h2><p class="panel-subtitle">${subtitle}</p></div><button class="management-see-all" type="button" ${managementDetailAttributes(metric)} aria-label="Ver demandas: ${title}">Ver demandas</button></div>${body}</section>`;
 }
 
 function managementRankingRows(demands, metric) {
@@ -6794,6 +6794,13 @@ function renderWorksManagement() {
     `Entregues em atraso: ${completedSummary.late.length} (${completedPercent(completedSummary.late.length)}%)`,
     ...(completedSummary.noDate.length ? [`Sem data suficiente: ${completedSummary.noDate.length} (${completedPercent(completedSummary.noDate.length)}%)`] : []),
   ].join("<br>");
+  const activeSummary = managementDemandSummary(summary.active);
+  const activePercent = (count) => number(summary.active.length ? count / summary.active.length * 100 : 0);
+  const activeHint = [
+    `No prazo: ${activeSummary.onTime.length} (${activePercent(activeSummary.onTime.length)}%)`,
+    `Em atraso: ${activeSummary.late.length} (${activePercent(activeSummary.late.length)}%)`,
+    ...(activeSummary.noDate.length ? [`Sem data suficiente: ${activeSummary.noDate.length} (${activePercent(activeSummary.noDate.length)}%)`] : []),
+  ].join("<br>");
   const missingValue = summary.completed.filter((demand) => !demandHasRecordedValue(demand)).length;
   const missingArea = summary.completed.length - production.eligible.length;
   const missingHint = (count, field) => count ? `${count} demanda${count === 1 ? " concluída" : "s concluídas"} sem ${field}` : "";
@@ -6810,13 +6817,13 @@ function renderWorksManagement() {
       <section class="kpi-grid management-kpis">
         ${metric("Demandas no filtro", String(demands.length), "Carteira selecionada", "blue", "all")}
         ${metric("Concluídas", String(summary.completed.length), completedHint, "green", "completed")}
-        ${metric("Em fluxo", String(summary.active.length), "", "blue", "active")}
+        ${metric("Em fluxo", String(summary.active.length), activeHint, "blue", "active")}
         ${metric("Canceladas", String(summary.canceled.length), "", "red", "canceled")}
         ${metric("Valor produzido", money(production.value), missingHint(missingValue, "valor"), "orange", "value")}
         ${metric("Produção em m²", `${number(production.area, 2)} m²`, missingHint(missingArea, "área"), "blue", "area")}
       </section>
       <section class="management-section" aria-labelledby="managementProductionTitle">
-        <div class="management-section-heading"><h2 id="managementProductionTitle">Rankings de produção por analista</h2><p>Todos os analistas com demandas no filtro, inclusive com produção zero. Os valores consideram somente concluídas. A produção em m² soma a área equivalente (ou construída), mesmo sem valor financeiro registrado. Cada entrega soma a área da obra novamente; demandas sem área informada não entram no total em m².</p></div>
+        <div class="management-section-heading"><h2 id="managementProductionTitle">Rankings de produção por analista</h2></div>
         <div class="management-grid">
           ${managementPanel("Ranking de entregas", "Demandas concluídas · empates mantêm a mesma posição", renderManagementRanking(demands, "completed"), "completed")}
           ${managementPanel("Ranking de valor financeiro", "Valor produzido nas demandas concluídas", renderManagementRanking(demands, "value"), "value")}
@@ -6824,7 +6831,7 @@ function renderWorksManagement() {
         </div>
       </section>
       <section class="management-section" aria-labelledby="managementDeadlineTitle">
-        <div class="management-section-heading"><h2 id="managementDeadlineTitle">Eficiência de prazo</h2><p>Ativas e concluídas. Canceladas não entram na avaliação de prazo.</p></div>
+        <div class="management-section-heading"><h2 id="managementDeadlineTitle">Eficiência de prazo</h2></div>
         <div class="management-grid">
           ${managementPanel("Situação dos prazos", "Clique na legenda ou no total para abrir as demandas", renderManagementDeadlines(summary), "deadline")}
           ${managementPanel("Prazo por analista", "Percentual no prazo · somente demandas avaliadas", renderManagementGauges(demands), "assessed")}
@@ -6834,7 +6841,7 @@ function renderWorksManagement() {
       <section class="management-section" aria-labelledby="managementProfileTitle">
         <div class="management-section-heading"><h2 id="managementProfileTitle">Perfil das demandas</h2><p>Atividade e classificação da obra, separados dos indicadores de prazo.</p></div>
         <div class="management-grid management-grid-two">
-          ${managementPanel("Demandas por tipo de atividade", "Distribuição dentro do filtro gerencial", renderManagementActivityDonut(demands))}
+          ${managementPanel("Demandas por tipo de atividade", "Distribuição dentro do filtro gerencial", renderManagementActivityDonut(demands), "all", "management-activity-panel")}
           ${managementPanel("Por classificação da obra", "Tamanho dos blocos = quantidade de demandas", renderManagementTreemap(demands))}
         </div>
       </section>
