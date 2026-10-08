@@ -1153,7 +1153,7 @@ test('management drilldowns match chart groups, filters and production leaders w
  await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).first().click();
  await page.locator('.management-bar[data-group="sprint"][data-value="Sprint B"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
- await page.locator('.management-bar[data-group="classification"][data-value="Outros"]').click();
+ await page.locator('.management-bar[data-group="classification"][data-value="Não informado"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
  const typeButton=page.locator('.management-bar[data-group="type"]').filter({hasText:'SIC'});
  await typeButton.click();await assertRows(['leader-b2','leader-canceled']);await close();
