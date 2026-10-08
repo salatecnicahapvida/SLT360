@@ -1081,10 +1081,11 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('.works-management')).not.toContainText('A iniciar');
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
- const analystPanel=page.locator('.management-panel').filter({has:page.getByRole('heading',{name:'Demandas por analista',exact:true})});
- await expect(analystPanel.locator('.management-column')).toHaveCount(2);
- await expect(analystPanel.locator('.management-column[data-value="Ana"] .management-column-value')).toHaveText('3');
- await expect(analystPanel).not.toContainText('Somente no diretório');
+ const deliveryRanking=page.locator('.management-ranking[data-metric="completed"]');
+ await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana','Bruno']);
+ await expect(deliveryRanking.locator('.management-rank-reading > span:not(.management-rank-track)')).toHaveText(['2','0']);
+ await expect(page.locator('.works-management')).not.toContainText('Somente no diretório');
+ for(const title of ['Carga de trabalho','Demandas por analista','Em fluxo por analista','Demandas por sprint'])await expect(page.getByRole('heading',{name:title,exact:true})).toHaveCount(0);
  await expect(kpiValue('Produção em m²')).toHaveText('200,00 m²');
  await expect(page.getByRole('heading',{name:'Produção em m² por analista',exact:true})).toBeVisible();
  await expect(page.locator('.works-management')).not.toContainText('R$/m²');
@@ -1107,8 +1108,8 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 0 (0%)');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 0 (0%)');
  await expect(kpiValue('Canceladas')).toHaveText('0');
- await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
- await expect(analystPanel.locator('.management-column')).toHaveCount(1);
+ await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana']);
+ await expect(deliveryRanking.locator('.management-rank-reading > span:not(.management-rank-track)')).toHaveText(['0']);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
  expect(b.errors).toEqual([]);
@@ -1149,13 +1150,12 @@ test('management drilldowns match chart groups, filters and production rankings 
  await expect(page.locator('.management-rank[data-metric="value"]').first()).toContainText('Bruno');
  await expect(page.locator('.management-leader')).toHaveCount(0);
  await expect(page.locator('.management-ranking')).toHaveCount(3);
- await expect(page.locator('.management-columns')).toHaveCount(2);
- await expect(page.locator('.management-load')).toBeVisible();
+ await expect(page.locator('.management-columns,.management-load')).toHaveCount(0);
  await expect(page.locator('.management-gauges')).toBeVisible();
  await expect(page.locator('.management-dot-list')).toBeVisible();
  await expect(page.locator('.management-activity-donut')).toBeVisible();
  await expect(page.locator('.management-treemap')).toBeVisible();
- const colors=await page.locator('.management-column[data-group="analyst"]').evaluateAll(items=>items.map(item=>getComputedStyle(item).getPropertyValue('--chart-color')));
+ const colors=await page.locator('.management-rank[data-metric="completed"]').evaluateAll(items=>items.map(item=>getComputedStyle(item).getPropertyValue('--chart-color')));
  expect(new Set(colors).size).toBe(3);
  const modal=page.locator('.kpi-modal-card');
  const assertRows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
@@ -1176,15 +1176,13 @@ test('management drilldowns match chart groups, filters and production rankings 
  await expect(modal).toContainText('100,00 m²');await close();
  await page.locator('.management-rank[data-metric="completed"][data-value="Ana"]').click();
  await assertRows(['leader-a1','leader-a2']);await close();
- await page.locator('.management-column[data-metric="all"][data-group="analyst"][data-value="Ana"]').click();
- await assertRows(['leader-a1','leader-a2','leader-active']);
+ await kpi('active').click();
+ await assertRows(['leader-active']);
  await modal.locator('[data-kpi-modal-search]').fill('leader-active');
  await expect(modal.locator('tbody tr:visible')).toHaveCount(1);
  await modal.locator('.management-demand-link[data-id="leader-active"]').click();
  await expect(page.locator('#demandDetailForm')).toHaveAttribute('data-id','leader-active');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).first().click();
- await page.locator('.management-column[data-group="sprint"][data-value="Sprint B"]').click();
- await assertRows(['leader-b1','leader-b2']);await close();
  await page.locator('.management-profile-item[data-group="classification"][data-value="Não informado"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
  const typeButton=page.locator('.management-profile-item[data-group="type"]').filter({hasText:'SIC'});
@@ -1216,30 +1214,43 @@ test('management drilldowns match chart groups, filters and production rankings 
  expect(b.errors).toEqual([]);
 });
 
-test('management stacked load opens the exact analyst and stage within the current filters',async({page})=>{
+test('management rankings include every filtered analyst with zero production and preserve filtered drilldowns',async({page})=>{
  const demands=[
-  {id:'load-a-doing',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',sicIds:[]},
-  {id:'load-a-todo',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazer',analistaResponsavel:'Ana',sicIds:[]},
-  {id:'load-b-doing',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Bruno',sicIds:[]},
-  {id:'load-a-done',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'rank-done',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',valorGerado:100,sicIds:[]},
+  {id:'rank-active',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Bruno',valorGerado:99999,sicIds:[]},
+  {id:'rank-canceled',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Carla',valorGerado:99999,sicIds:[]},
+  {id:'rank-no-area',obraId:'work-without-ev',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Davi',sicIds:[]},
  ];
- const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno'],demandRecords:demands});await login(page);
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Carla','Davi','Sem demanda'],demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ const ranking=metric=>page.locator(`.management-ranking[data-metric="${metric}"]`);
+ const names=metric=>ranking(metric).locator('.management-rank-reading > strong');
+ const values=metric=>ranking(metric).locator('.management-rank-reading > span:not(.management-rank-track)');
+ await expect(names('completed')).toHaveText(['Ana','Davi','Bruno','Carla']);
+ await expect(values('completed')).toHaveText(['1','1','0','0']);
+ await expect(names('value')).toHaveText(['Ana','Bruno','Carla','Davi']);
+ await expect(values('value')).toHaveText(['R$ 100,00','R$ 0,00','R$ 0,00','R$ 0,00']);
+ await expect(names('area')).toHaveText(['Ana','Bruno','Carla','Davi']);
+ await expect(values('area')).toHaveText(['100,00 m²','0,00 m²','0,00 m²','0,00 m²']);
+ await expect(page.locator('.works-management')).not.toContainText('Sem demanda');
  const modal=page.locator('.kpi-modal-card');
- const rows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
  const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
- await expect(page.locator('.management-stack-segment[data-value="Ana"]')).toHaveCount(2);
- await page.locator('.management-stack-segment[data-value="Ana"][data-column="fazendo"]').click();
- await rows(['load-a-doing']);await expect(modal.locator('h2')).toContainText('Ana · Fazendo');await close();
- await page.locator('.management-stage-legend [data-column="fazendo"]').click();
- await rows(['load-a-doing','load-b-doing']);await close();
- await page.locator('.management-load-heading[data-value="Ana"]').click();
- await rows(['load-a-doing','load-a-todo']);await close();
- const filter=page.locator('[data-operational-filter-group="analyst"]');
- await filter.locator('summary').click();await filter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
- await page.locator('.management-stage-legend [data-column="fazendo"]').click();
- await rows(['load-a-doing']);await close();
+ await ranking('completed').locator('[data-value="Bruno"]').click();
+ await expect(modal).toContainText('Nenhum item encontrado');await close();
+ await ranking('completed').locator('[data-value="Davi"]').click();
+ await expect(modal.locator('.management-demand-link')).toHaveText(['rank-no-area']);await close();
+ const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
+ await analystFilter.locator('summary').click();await analystFilter.locator('[data-operational-filter="analyst"][value="Bruno"]').check();
+ for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Bruno']);
+ await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
+ await page.locator('.management-tabs [data-filter="completed"]').click();
+ for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Ana','Davi']);
+ await page.locator('.management-tabs [data-filter="canceled"]').click();
+ for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Carla']);
+ await page.locator('.management-tabs [data-filter="planning"]').click();
+ await expect(page.locator('.management-ranking')).toHaveCount(0);
+ await expect(page.getByText('Nenhum analista com demanda neste filtro.',{exact:true})).toHaveCount(3);
  expect(b.errors).toEqual([]);
 });
 
