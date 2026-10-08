@@ -6633,11 +6633,11 @@ function managementLeaders(demands, metric) {
   return ranked.filter((row) => Math.abs(row.value - ranked[0].value) < 1e-9);
 }
 
-function managementDetailAttributes(metric, group = "", value = "") {
-  return `data-action="open-management-detail" data-metric="${escapeAttribute(metric)}" data-group="${escapeAttribute(group)}" data-value="${escapeAttribute(value)}"`;
+function managementDetailAttributes(metric, group = "", value = "", column = "") {
+  return `data-action="open-management-detail" data-metric="${escapeAttribute(metric)}" data-group="${escapeAttribute(group)}" data-value="${escapeAttribute(value)}"${column ? ` data-column="${escapeAttribute(column)}"` : ""}`;
 }
 
-function managementDetailData(metric = "all", group = "", value = "") {
+function managementDetailData(metric = "all", group = "", value = "", column = "") {
   const scoped = managementFilteredDemands();
   let demands = managementMetricDemands(metric, scoped);
   if (group === "leader") {
@@ -6646,12 +6646,13 @@ function managementDetailData(metric = "all", group = "", value = "") {
   } else if (group) {
     demands = demands.filter((demand) => normalizeSearchText(managementGroupLabel(demand, group)) === normalizeSearchText(value));
   }
+  if (column) demands = demands.filter((demand) => demand.coluna === column);
   const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
   const production = managementProduction(demands);
   const areaNote = " A produção em m² soma a área equivalente (ou construída) das demandas concluídas, mesmo sem valor financeiro registrado. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
   return {
     eyebrow: "Visão Gerencial · demandas do indicador",
-    title: `${titles[metric] || titles.all}${group === "leader" ? " · liderança" : value ? ` · ${escapeAttribute(value)}` : ""}`,
+    title: `${titles[metric] || titles.all}${group === "leader" ? " · liderança" : value ? ` · ${escapeAttribute(value)}` : ""}${column ? ` · ${escapeAttribute(columns.find((item) => item.id === column)?.label || "Etapa não informada")}` : ""}`,
     subtitle: `Respeita todos os filtros e a etapa selecionada. Clique no código para abrir a demanda.${areaNote}`,
     metrics: [
       { label: "Demandas", value: String(demands.length) },
@@ -6674,26 +6675,117 @@ function managementDetailData(metric = "all", group = "", value = "") {
   };
 }
 
-function renderManagementBars(demands, metric, group = "analyst") {
-  const rows = managementChartRows(demands, metric, group);
-  const max = metric === "assessed" ? 100 : Math.max(...rows.map((row) => row.value), 1);
-  return rows.length ? `<div class="management-bar-list">${rows.map((row) => {
-    const formatted = metric === "value" ? money(row.value) : metric === "area" ? `${number(row.value, 2)} m²` : metric === "assessed" ? `${number(row.value)}% · ${row.count} avaliadas` : metric === "late" ? `${number(row.value, 1)} dias · ${row.count} atrasadas` : String(row.value);
-    return `<button class="management-bar" type="button" ${managementDetailAttributes(metric, group, row.label)} aria-label="${escapeAttribute(`${row.label}: ${formatted}. Ver demandas`)}"><span class="management-bar-caption"><strong>${escapeAttribute(row.label)}</strong><span>${formatted}</span></span><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width:${Math.min(row.value / max * 100, 100)}%"></span></span></button>`;
-  }).join("")}</div>` : `<div class="empty-state">Nenhuma demanda nesta base.</div>`;
+function managementChartColor(group, label) {
+  const colors = ["#2563eb", "#087f8c", "#7c3aed", "#c2410c", "#be185d", "#15803d", "#475569", "#0e7490", "#4338ca", "#a52745", "#a16207", "#a21caf", "#0369a1", "#047857", "#6d28d9", "#9a3412"];
+  const labels = [...new Set(state.demands.map((demand) => normalizeSearchText(managementGroupLabel(demand, group))))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return colors[Math.max(labels.indexOf(normalizeSearchText(label)), 0) % colors.length];
+}
+
+function managementMetricText(metric, value, count = 0) {
+  if (metric === "value") return money(value);
+  if (metric === "area") return `${number(value, 2)} m²`;
+  if (metric === "assessed") return `${number(value)}% · ${count} avaliadas`;
+  if (metric === "late") return `${number(value, 1)} dias · ${count} atrasadas`;
+  return String(value);
 }
 
 function managementPanel(title, subtitle, body, metric = "all") {
   return `<section class="panel management-panel"><div class="panel-header"><div><h2>${title}</h2><p class="panel-subtitle">${subtitle}</p></div><button class="management-see-all" type="button" ${managementDetailAttributes(metric)} aria-label="Ver demandas: ${title}">Ver demandas</button></div>${body}</section>`;
 }
 
-function renderManagementLeaders(demands) {
-  const entries = [ { metric: "completed", label: "Mais demandas concluídas" }, { metric: "area", label: "Maior produção em m²" }, { metric: "value", label: "Maior valor produzido" } ];
-  return `<div class="management-grid management-leaders">${entries.map(({ metric, label }) => {
-    const leaders = managementLeaders(demands, metric);
-    const reading = !leaders.length ? "Sem produção nesta base" : metric === "completed" ? `${leaders[0].value} demandas` : metric === "area" ? `${number(leaders[0].value, 2)} m²` : money(leaders[0].value);
-    return `<button class="management-leader" type="button" ${managementDetailAttributes(metric, "leader")}><small>${label}</small><strong>${leaders.length ? leaders.map((row) => escapeAttribute(row.label)).join(" · ") : "—"}</strong><span>${reading}</span><em>${leaders.length > 1 ? "Empate · ver demandas dos líderes" : "Ver demandas"}</em></button>`;
-  }).join("")}</div>`;
+function renderManagementRanking(demands, metric) {
+  const assigned = demands.filter((demand) => String(demand.analistaResponsavel || "").trim());
+  const rows = managementChartRows(assigned, metric);
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  const unassigned = managementMetricDemands(metric, demands).filter((demand) => !String(demand.analistaResponsavel || "").trim());
+  const ranking = rows.length ? `<ol class="management-ranking" data-metric="${metric}">${rows.map((row) => {
+    const position = rows.findIndex((item) => Math.abs(item.value - row.value) < 1e-9) + 1;
+    const tied = rows.filter((item) => Math.abs(item.value - row.value) < 1e-9).length > 1;
+    const formatted = managementMetricText(metric, row.value);
+    return `<li><button class="management-rank" type="button" data-position="${position}" ${managementDetailAttributes(metric, "analyst", row.label)} style="--chart-color:${managementChartColor("analyst", row.label)}" aria-label="${escapeAttribute(`${position}º lugar${tied ? ', empate' : ''}: ${row.label}, ${formatted}. Ver demandas`)}"><span class="management-rank-position">${position}º</span><span class="management-rank-reading"><strong>${escapeAttribute(row.label)}</strong><span>${formatted}</span><span class="management-rank-track" aria-hidden="true"><i style="width:${row.value / max * 100}%"></i></span>${tied ? '<small>Empate</small>' : ''}</span></button></li>`;
+  }).join("")}</ol>` : `<div class="empty-state">Nenhum analista com produção neste filtro.</div>`;
+  return `${ranking}<div class="management-ranking-footer"><span>${rows.length} analistas · ordem decrescente</span>${unassigned.length ? `<button class="management-see-all" type="button" ${managementDetailAttributes(metric, "analyst", "Não informado")}>${unassigned.length} demandas sem responsável</button>` : ""}</div>`;
+}
+
+function renderManagementColumns(demands, metric = "all", group = "analyst") {
+  const rows = managementChartRows(demands, metric, group);
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  return rows.length ? `<div class="management-columns" aria-label="Gráfico de colunas"><div class="management-columns-plot">${rows.map((row) => `<button class="management-column" type="button" ${managementDetailAttributes(metric, group, row.label)} style="--chart-color:${managementChartColor(group, row.label)}" aria-label="${escapeAttribute(`${row.label}: ${row.value} demandas. Ver demandas`)}"><strong class="management-column-value">${row.value}</strong><span class="management-column-track" aria-hidden="true"><i style="height:${row.value / max * 100}%"></i></span><span class="management-column-label">${escapeAttribute(row.label)}</span></button>`).join("")}</div></div>` : `<div class="empty-state">Nenhuma demanda nesta base.</div>`;
+}
+
+function managementStageColor(column) {
+  return ({ pullPlanning: "#7c3aed", fazer: "#0284c7", fazendo: "#2563eb", pausado: "#c2410c", validacaoObras: "#a16207", validadoObras: "#087f8c", aprovacaoDiretoria: "#be185d", aprovadoDiretoria: "#15803d" })[column] || "#475569";
+}
+
+function renderManagementLoad(demands) {
+  const active = managementMetricDemands("active", demands);
+  const rows = managementChartRows(demands, "active");
+  const stages = [...new Set(active.map((demand) => demand.coluna))].sort((a, b) => columns.findIndex((item) => item.id === a) - columns.findIndex((item) => item.id === b));
+  if (!rows.length) return `<div class="empty-state">Nenhuma demanda em fluxo neste filtro.</div>`;
+  return `<div class="management-load">${rows.map((row) => {
+    const analystDemands = active.filter((demand) => normalizeSearchText(managementAnalystLabel(demand)) === normalizeSearchText(row.label));
+    return `<div class="management-load-row"><button class="management-load-heading" type="button" ${managementDetailAttributes("active", "analyst", row.label)}><strong>${escapeAttribute(row.label)}</strong><span>${row.count} demandas</span></button><div class="management-stack">${stages.map((column) => {
+      const count = analystDemands.filter((demand) => demand.coluna === column).length;
+      const label = columns.find((item) => item.id === column)?.label || "Etapa não informada";
+      return count ? `<button class="management-stack-segment" type="button" style="flex:${count};--chart-color:${managementStageColor(column)}" ${managementDetailAttributes("active", "analyst", row.label, column)} aria-label="${escapeAttribute(`${row.label}: ${count} em ${label}. Ver demandas`)}">${count}</button>` : "";
+    }).join("")}</div></div>`;
+  }).join("")}<div class="management-stage-legend">${stages.map((column) => `<button type="button" ${managementDetailAttributes("active", "", "", column)}><i style="background:${managementStageColor(column)}" aria-hidden="true"></i>${escapeAttribute(columns.find((item) => item.id === column)?.label || "Etapa não informada")} <strong>${active.filter((demand) => demand.coluna === column).length}</strong></button>`).join("")}</div></div>`;
+}
+
+function renderManagementGauges(demands) {
+  const rows = managementChartRows(demands, "assessed");
+  return rows.length ? `<div class="management-gauges">${rows.map((row) => `<button class="management-gauge" type="button" ${managementDetailAttributes("assessed", "analyst", row.label)} aria-label="${escapeAttribute(`${row.label}: ${managementMetricText('assessed', row.value, row.count)}. Ver demandas`)}"><span class="management-gauge-ring" style="background:conic-gradient(#15803d 0 ${row.value}%, #dc5965 ${row.value}% 100%)"><strong>${number(row.value)}%</strong></span><strong>${escapeAttribute(row.label)}</strong><small>${row.count} avaliadas</small></button>`).join("")}</div><p class="management-chart-note">Verde: no prazo · vermelho: com atraso</p>` : `<div class="empty-state">Nenhuma demanda com prazo avaliado.</div>`;
+}
+
+function renderManagementDots(demands) {
+  const rows = managementChartRows(demands, "late");
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  return rows.length ? `<div class="management-dot-list">${rows.map((row) => `<button class="management-dot-row" type="button" ${managementDetailAttributes("late", "analyst", row.label)}><span class="management-bar-caption"><strong>${escapeAttribute(row.label)}</strong><span>${managementMetricText("late", row.value, row.count)}</span></span><span class="management-dot-track" aria-hidden="true"><i style="left:clamp(7px, ${row.value / max * 100}%, calc(100% - 7px))"></i></span></button>`).join("")}</div>` : `<div class="empty-state">Nenhuma demanda atrasada neste filtro.</div>`;
+}
+
+function renderManagementProfileLegend(rows, group) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return `<div class="management-profile-legend">${rows.map((row) => `<button class="management-profile-item" type="button" ${managementDetailAttributes("all", group, row.label)}><i style="background:${managementChartColor(group, row.label)}" aria-hidden="true"></i><span>${escapeAttribute(row.label)}</span><strong>${row.value} <small>(${number(row.value / total * 100)}%)</small></strong></button>`).join("")}</div>`;
+}
+
+function renderManagementActivityDonut(demands) {
+  const rows = managementChartRows(demands, "all", "type");
+  if (!rows.length) return `<div class="empty-state">Nenhuma demanda neste filtro.</div>`;
+  let start = 0;
+  const stops = rows.map((row) => {
+    const end = start + row.value / demands.length * 100;
+    const stop = `${managementChartColor("type", row.label)} ${start}% ${end}%`;
+    start = end;
+    return stop;
+  }).join(", ");
+  return `<div class="management-profile"><button class="donut-chart management-activity-donut" type="button" style="background:conic-gradient(${stops})" ${managementDetailAttributes("all")} aria-label="Ver ${demands.length} demandas por tipo de atividade"><span>${demands.length}</span><small>demandas</small></button>${renderManagementProfileLegend(rows, "type")}</div>`;
+}
+
+function managementTreemapTiles(rows, x = 0, y = 0, width = 100, height = 100) {
+  if (rows.length === 1) return [{ ...rows[0], x, y, width, height }];
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  let split = 1;
+  let accumulated = rows[0].value;
+  let distance = Math.abs(accumulated - total / 2);
+  let selected = accumulated;
+  for (let index = 1; index < rows.length - 1; index += 1) {
+    accumulated += rows[index].value;
+    if (Math.abs(accumulated - total / 2) < distance) {
+      split = index + 1;
+      selected = accumulated;
+      distance = Math.abs(accumulated - total / 2);
+    }
+  }
+  const ratio = selected / total;
+  return width >= height
+    ? [...managementTreemapTiles(rows.slice(0, split), x, y, width * ratio, height), ...managementTreemapTiles(rows.slice(split), x + width * ratio, y, width * (1 - ratio), height)]
+    : [...managementTreemapTiles(rows.slice(0, split), x, y, width, height * ratio), ...managementTreemapTiles(rows.slice(split), x, y + height * ratio, width, height * (1 - ratio))];
+}
+
+function renderManagementTreemap(demands) {
+  const rows = managementChartRows(demands, "all", "classification");
+  if (!rows.length) return `<div class="empty-state">Nenhuma demanda neste filtro.</div>`;
+  return `<div class="management-treemap" aria-label="Mapa de áreas: o tamanho representa a quantidade de demandas">${managementTreemapTiles(rows).map((row) => `<button class="management-treemap-tile" type="button" style="left:${row.x}%;top:${row.y}%;width:${row.width}%;height:${row.height}%;--chart-color:${managementChartColor("classification", row.label)}" ${managementDetailAttributes("all", "classification", row.label)} aria-label="${escapeAttribute(`${row.label}: ${row.value} demandas. Ver demandas`)}"><strong>${escapeAttribute(row.label)}</strong><span>${row.value} demandas</span></button>`).join("")}</div>${renderManagementProfileLegend(rows, "classification")}`;
 }
 
 function renderManagementDeadlines(summary) {
@@ -6732,35 +6824,34 @@ function renderWorksManagement() {
         ${metric("Analistas responsáveis", String(analystsForDemands(demands).length), "Responsáveis nas demandas do filtro", "blue", "responsible")}
       </section>
       <section class="management-section" aria-labelledby="managementProductionTitle">
-        <div class="management-section-heading"><h2 id="managementProductionTitle">Produção e destaques por analista</h2><p>Somente concluídas do filtro. A produção em m² soma a área equivalente (ou construída), mesmo sem valor financeiro registrado. Cada entrega soma a área da obra novamente; demandas sem área informada não entram no total em m².</p></div>
-        ${renderManagementLeaders(demands)}
+        <div class="management-section-heading"><h2 id="managementProductionTitle">Rankings de produção por analista</h2><p>Somente concluídas do filtro. A produção em m² soma a área equivalente (ou construída), mesmo sem valor financeiro registrado. Cada entrega soma a área da obra novamente; demandas sem área informada não entram no total em m².</p></div>
         <div class="management-grid">
-          ${managementPanel("Concluídas por analista", "Ranking por quantidade de entregas", renderManagementBars(demands, "completed"), "completed")}
-          ${managementPanel("Valor produzido por analista", "EV emitido ou diferença aprovada · concluídas", renderManagementBars(demands, "value"), "value")}
-          ${managementPanel("Produção em m² por analista", "Soma das áreas das demandas concluídas", renderManagementBars(demands, "area"), "area")}
+          ${managementPanel("Ranking de entregas", "Demandas concluídas · empates mantêm a mesma posição", renderManagementRanking(demands, "completed"), "completed")}
+          ${managementPanel("Ranking de valor financeiro", "Valor produzido nas demandas concluídas", renderManagementRanking(demands, "value"), "value")}
+          ${managementPanel("Produção em m² por analista", "Ranking pela soma das áreas concluídas", renderManagementRanking(demands, "area"), "area")}
         </div>
       </section>
       <section class="management-section" aria-labelledby="managementLoadTitle">
         <div class="management-section-heading"><h2 id="managementLoadTitle">Carga de trabalho</h2><p>Distribuição da carteira selecionada e das demandas abertas.</p></div>
         <div class="management-grid">
-          ${managementPanel("Demandas por analista", "Todas as demandas do filtro atual", renderManagementBars(demands, "all"))}
-          ${managementPanel("Em fluxo por analista", "Carga aberta de cada responsável", renderManagementBars(demands, "active"), "active")}
-          ${managementPanel("Demandas por sprint", "Distribuição das demandas do filtro atual", renderManagementBars(demands, "all", "sprint"))}
+          ${managementPanel("Demandas por analista", "Todas as demandas do filtro atual", renderManagementColumns(demands))}
+          ${managementPanel("Em fluxo por analista", "Carga aberta por etapa · clique em cada segmento", renderManagementLoad(demands), "active")}
+          ${managementPanel("Demandas por sprint", "Distribuição das demandas do filtro atual", renderManagementColumns(demands, "all", "sprint"))}
         </div>
       </section>
       <section class="management-section" aria-labelledby="managementDeadlineTitle">
         <div class="management-section-heading"><h2 id="managementDeadlineTitle">Eficiência de prazo</h2><p>Ativas e concluídas. Canceladas não entram na avaliação de prazo.</p></div>
         <div class="management-grid">
           ${managementPanel("Situação dos prazos", "Clique na legenda ou no total para abrir as demandas", renderManagementDeadlines(summary), "deadline")}
-          ${managementPanel("Prazo por analista", "Percentual no prazo · somente demandas avaliadas", renderManagementBars(demands, "assessed"), "assessed")}
-          ${managementPanel("Atraso médio por analista", "Dias de atraso · somente demandas atrasadas", renderManagementBars(demands, "late"), "late")}
+          ${managementPanel("Prazo por analista", "Percentual no prazo · somente demandas avaliadas", renderManagementGauges(demands), "assessed")}
+          ${managementPanel("Atraso médio por analista", "Dias de atraso · somente demandas atrasadas", renderManagementDots(demands), "late")}
         </div>
       </section>
       <section class="management-section" aria-labelledby="managementProfileTitle">
         <div class="management-section-heading"><h2 id="managementProfileTitle">Perfil das demandas</h2><p>Atividade e classificação da obra, separados dos indicadores de prazo.</p></div>
         <div class="management-grid management-grid-two">
-          ${managementPanel("Demandas por tipo de atividade", "Distribuição dentro do filtro gerencial", renderManagementBars(demands, "all", "type"))}
-          ${managementPanel("Por classificação da obra", "Demandas agrupadas pela motivação do investimento", renderManagementBars(demands, "all", "classification"))}
+          ${managementPanel("Demandas por tipo de atividade", "Distribuição dentro do filtro gerencial", renderManagementActivityDonut(demands))}
+          ${managementPanel("Por classificação da obra", "Tamanho dos blocos = quantidade de demandas", renderManagementTreemap(demands))}
         </div>
       </section>
     </div>
@@ -20664,7 +20755,7 @@ document.addEventListener("click", async (event) => {
   if (action === "open-sic-slice") openSicSliceDetailModal(actionButton.dataset.field, actionButton.dataset.label);
   if (action === "open-sic-timeline") openSicTimelineDetailModal(actionButton.dataset.mode, actionButton.dataset.key);
   if (action === "open-kpi-detail") openKpiDetail(actionButton.dataset.kpi);
-  if (action === "open-management-detail") openKpiDetail("", managementDetailData(actionButton.dataset.metric, actionButton.dataset.group, actionButton.dataset.value));
+  if (action === "open-management-detail") openKpiDetail("", managementDetailData(actionButton.dataset.metric, actionButton.dataset.group, actionButton.dataset.value, actionButton.dataset.column));
   if (action === "apply-operational-filter") applyOperationalKpiFilter(actionButton.dataset.kpi);
   if (action === "reorder-kanban-column") {
     const column = columns.find((item) => item.id === actionButton.dataset.column);

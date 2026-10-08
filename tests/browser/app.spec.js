@@ -1080,8 +1080,8 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
  const analystPanel=page.locator('.management-panel').filter({has:page.getByRole('heading',{name:'Demandas por analista',exact:true})});
- await expect(analystPanel.locator('.management-bar')).toHaveCount(2);
- await expect(analystPanel.locator('.management-bar[data-value="Ana"] .management-bar-caption')).toHaveText('Ana3');
+ await expect(analystPanel.locator('.management-column')).toHaveCount(2);
+ await expect(analystPanel.locator('.management-column[data-value="Ana"] .management-column-value')).toHaveText('3');
  await expect(analystPanel).not.toContainText('Somente no diretório');
  await expect(kpiValue('Produção em m²')).toHaveText('200,00 m²');
  await expect(page.getByRole('heading',{name:'Produção em m² por analista',exact:true})).toBeVisible();
@@ -1104,13 +1104,13 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(kpiValue('Dentro do prazo')).toHaveText('1 (100%)');
  await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
  await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
- await expect(analystPanel.locator('.management-bar')).toHaveCount(1);
+ await expect(analystPanel.locator('.management-column')).toHaveCount(1);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
  expect(b.errors).toEqual([]);
 });
 
-test('management drilldowns match chart groups, filters and production leaders with incomplete area data',async({page})=>{
+test('management drilldowns match chart groups, filters and production rankings with incomplete area data',async({page})=>{
  const demands=[
   {id:'leader-a1',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',sprintId:'sprint-a',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2025-12-31',valorGerado:100,sicIds:[]},
   {id:'leader-a2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'concluido',analistaResponsavel:'Ana',sprintId:'sprint-a',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2026-01-02',valorGerado:100,sicIds:[]},
@@ -1127,12 +1127,22 @@ test('management drilldowns match chart groups, filters and production leaders w
  const kpi=key=>page.locator(`[data-kpi="mgmt:${key}"]`);
  await expect(kpi('value').locator('strong')).toHaveText('R$ 1.100,00');
  await expect(kpi('area').locator('strong')).toHaveText('350,00 m²');
- await expect(page.locator('.management-bar[data-metric="area"] .management-bar-caption')).toHaveText(['Ana200,00 m²','Carla100,00 m²','Bruno50,00 m²']);
- await expect(page.locator('.management-leader[data-metric="completed"]')).toContainText('Ana · Bruno');
- await expect(page.locator('.management-leader[data-metric="completed"]')).toContainText('Empate');
- await expect(page.locator('.management-leader[data-metric="value"]')).toContainText('Bruno');
- await expect(page.locator('.management-leader[data-metric="area"]')).toContainText('Ana');
- await expect(page.locator('.management-leader[data-metric="area"]')).toContainText('200,00 m²');
+ await expect(page.locator('.management-rank[data-metric="area"] .management-rank-reading > strong')).toHaveText(['Ana','Carla','Bruno']);
+ await expect(page.locator('.management-rank[data-metric="area"] .management-rank-reading > span:not(.management-rank-track)')).toHaveText(['200,00 m²','100,00 m²','50,00 m²']);
+ const deliveryRanking=page.locator('.management-rank[data-metric="completed"]');
+ await expect(deliveryRanking.locator('.management-rank-position')).toHaveText(['1º','1º','3º']);
+ await expect(deliveryRanking.filter({hasText:'Empate'})).toHaveCount(2);
+ await expect(page.locator('.management-rank[data-metric="value"]').first()).toContainText('Bruno');
+ await expect(page.locator('.management-leader')).toHaveCount(0);
+ await expect(page.locator('.management-ranking')).toHaveCount(3);
+ await expect(page.locator('.management-columns')).toHaveCount(2);
+ await expect(page.locator('.management-load')).toBeVisible();
+ await expect(page.locator('.management-gauges')).toBeVisible();
+ await expect(page.locator('.management-dot-list')).toBeVisible();
+ await expect(page.locator('.management-activity-donut')).toBeVisible();
+ await expect(page.locator('.management-treemap')).toBeVisible();
+ const colors=await page.locator('.management-column[data-group="analyst"]').evaluateAll(items=>items.map(item=>getComputedStyle(item).getPropertyValue('--chart-color')));
+ expect(new Set(colors).size).toBe(3);
  const modal=page.locator('.kpi-modal-card');
  const assertRows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
  const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
@@ -1140,28 +1150,34 @@ test('management drilldowns match chart groups, filters and production leaders w
  await assertRows(['leader-a1','leader-a2','leader-b1','leader-no-value']);
  await expect(modal).toContainText('A área é somada por demanda');
  await close();
- await page.locator('.management-leader[data-metric="value"]').click();
+ await page.locator('.management-rank[data-metric="value"][data-value="Bruno"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
- await page.locator('.management-leader[data-metric="area"]').click();
+ await page.locator('.management-rank[data-metric="area"][data-value="Ana"]').click();
  await assertRows(['leader-a1','leader-a2']);await close();
- await page.locator('.management-bar[data-metric="area"][data-value="Carla"]').click();
+ await page.locator('.management-rank[data-metric="area"][data-value="Carla"]').click();
  await assertRows(['leader-no-value']);
  await expect(modal).toContainText('100,00 m²');await close();
- await page.locator('.management-leader[data-metric="completed"]').click();
- await assertRows(['leader-a1','leader-a2','leader-b1','leader-b2']);await close();
- await page.locator('.management-bar[data-metric="all"][data-group="analyst"][data-value="Ana"]').click();
+ await page.locator('.management-rank[data-metric="completed"][data-value="Ana"]').click();
+ await assertRows(['leader-a1','leader-a2']);await close();
+ await page.locator('.management-column[data-metric="all"][data-group="analyst"][data-value="Ana"]').click();
  await assertRows(['leader-a1','leader-a2','leader-active']);
  await modal.locator('[data-kpi-modal-search]').fill('leader-active');
  await expect(modal.locator('tbody tr:visible')).toHaveCount(1);
  await modal.locator('.management-demand-link[data-id="leader-active"]').click();
  await expect(page.locator('#demandDetailForm')).toHaveAttribute('data-id','leader-active');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).first().click();
- await page.locator('.management-bar[data-group="sprint"][data-value="Sprint B"]').click();
+ await page.locator('.management-column[data-group="sprint"][data-value="Sprint B"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
- await page.locator('.management-bar[data-group="classification"][data-value="Não informado"]').click();
+ await page.locator('.management-profile-item[data-group="classification"][data-value="Não informado"]').click();
  await assertRows(['leader-b1','leader-b2']);await close();
- const typeButton=page.locator('.management-bar[data-group="type"]').filter({hasText:'SIC'});
+ const typeButton=page.locator('.management-profile-item[data-group="type"]').filter({hasText:'SIC'});
  await typeButton.click();await assertRows(['leader-b2','leader-canceled']);await close();
+ await page.locator('.management-treemap-tile[data-value="Não informado"]').click();
+ await assertRows(['leader-b1','leader-b2']);await close();
+ await page.locator('.management-gauge[data-value="Ana"]').click();
+ await assertRows(['leader-a1','leader-a2','leader-active']);await close();
+ await page.locator('.management-dot-row[data-value="Ana"]').click();
+ await assertRows(['leader-a2']);await close();
  await page.locator('.management-legend[data-metric="late"]').click();
  await assertRows(['leader-a2']);await close();
  const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
@@ -1178,6 +1194,33 @@ test('management drilldowns match chart groups, filters and production leaders w
  expect(b.errors).toEqual([]);
 });
 
+test('management stacked load opens the exact analyst and stage within the current filters',async({page})=>{
+ const demands=[
+  {id:'load-a-doing',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'load-a-todo',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazer',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'load-b-doing',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Bruno',sicIds:[]},
+  {id:'load-a-done',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',sicIds:[]},
+ ];
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno'],demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ const modal=page.locator('.kpi-modal-card');
+ const rows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
+ const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
+ await expect(page.locator('.management-stack-segment[data-value="Ana"]')).toHaveCount(2);
+ await page.locator('.management-stack-segment[data-value="Ana"][data-column="fazendo"]').click();
+ await rows(['load-a-doing']);await expect(modal.locator('h2')).toContainText('Ana · Fazendo');await close();
+ await page.locator('.management-stage-legend [data-column="fazendo"]').click();
+ await rows(['load-a-doing','load-b-doing']);await close();
+ await page.locator('.management-load-heading[data-value="Ana"]').click();
+ await rows(['load-a-doing','load-a-todo']);await close();
+ const filter=page.locator('[data-operational-filter-group="analyst"]');
+ await filter.locator('summary').click();await filter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
+ await page.locator('.management-stage-legend [data-column="fazendo"]').click();
+ await rows(['load-a-doing']);await close();
+ expect(b.errors).toEqual([]);
+});
+
 test('management panels stay aligned and readable across narrow screens and zoom',async({page})=>{
  const b=await backend(page);await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -1187,7 +1230,7 @@ test('management panels stay aligned and readable across narrow screens and zoom
   await page.evaluate(value=>{document.body.style.zoom=String(value);},zoom);
   const layout=await page.locator('.works-management').evaluate(root=>{
    const outer=root.getBoundingClientRect();
-   const items=[...root.querySelectorAll('.kpi-card,.management-panel,.management-leader')];
+   const items=[...root.querySelectorAll('.kpi-card,.management-panel')];
    const fits=items.every(item=>{const box=item.getBoundingClientRect();return box.left>=outer.left-1&&box.right<=outer.right+1&&item.scrollWidth<=item.clientWidth+1;});
    const aligned=[...root.querySelectorAll('.management-grid')].every(grid=>{
     const rows=new Map();
