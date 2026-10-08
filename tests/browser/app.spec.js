@@ -453,7 +453,7 @@ test('operational cards show stage dates and hide an expired planned validation 
  const b=await backend(page,'Admin',false,{demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const board=page.locator('.operational-board-panel');
- await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText(['Envio previsto: 01/10/2099','Entrega prevista: 20/10/2026']);
+ await expect(board.locator('article[data-id="validation-pending"] .demand-card-date')).toHaveText(['Envio p/ validação: 01/10/2099','Entrega prevista: 20/10/2026']);
  await expect(board.locator('article[data-id="validation-sent"] .demand-card-date')).toHaveText(['Envio p/ validação: 03/10/2026','Entrega prevista: 21/10/2026']);
  await expect(board.locator('article[data-id="validation-date-missing"] .demand-card-date')).toHaveText('Entrega prevista: 22/10/2026');
  await expect(board.locator('article[data-id="validation-overdue"] .demand-card-date')).toHaveText('Entrega prevista: 23/10/2099');
