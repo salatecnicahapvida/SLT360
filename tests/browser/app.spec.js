@@ -833,7 +833,7 @@ test('pausing and canceling a demand require a reason and persist it in the card
  expect(b.errors).toEqual([]);
 });
 
-test('completed demand hides current-stage age while canceled demand keeps its stopped counter',async({page})=>{
+test('completed and canceled demand cards hide current-stage age while preserving stage history',async({page})=>{
  const phaseStartedAt=new Date(Date.now()-(5*24*60*60*1000)).toISOString();
  const phaseEndedAt=new Date(Date.now()-(3*24*60*60*1000)).toISOString();
  const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',phaseStartedAt,phaseEndedAt,phaseStartedAtEstimated:false,phaseHistory:[]};
@@ -851,8 +851,8 @@ test('completed demand hides current-stage age while canceled demand keeps its s
  await expect(detail.locator('.demand-stage-period').last()).not.toContainText('agora');
  await detail.locator('footer').getByRole('button',{name:'Fechar',exact:true}).click();
  const canceled=page.locator('article[data-id="stage-canceled"]');
- await expect(canceled.locator('.demand-card-stage-duration')).toHaveText('2 dias');
- await expect(canceled.locator('.demand-card-stage-time')).toHaveAttribute('title',/Contagem encerrada em/);
+ await expect(canceled.locator('.demand-card-stage-duration')).toHaveCount(0);
+ await expect(canceled.locator('.demand-card-stage-time')).toHaveCount(0);
  await canceled.click();
  detail=page.locator('#demandDetailForm');
  await expect(detail.locator('.demand-stage-summary small')).toContainText('contagem encerrada em');
