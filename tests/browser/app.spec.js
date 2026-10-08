@@ -1120,7 +1120,7 @@ test('management drilldowns match chart groups, filters and production leaders w
   {id:'leader-canceled',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',valorGerado:99999,sicIds:[]},
  ];
  const works=[...structuredClone(payload.state.works),{id:'built-area',nome:'Obra com área construída',classificacaoObra:'Outros',areaEquivalente:0,areaConstruida:50}];
- const b=await backend(page,'Admin',false,{demandRecords:demands,workRecords:works,sprintRecords:[{id:'sprint-a',nome:'Sprint A'},{id:'sprint-b',nome:'Sprint B'}]});await login(page);
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Carla'],demandRecords:demands,workRecords:works,sprintRecords:[{id:'sprint-a',nome:'Sprint A'},{id:'sprint-b',nome:'Sprint B'}]});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
  const kpi=key=>page.locator(`[data-kpi="mgmt:${key}"]`);
