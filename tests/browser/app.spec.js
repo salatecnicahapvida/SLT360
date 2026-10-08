@@ -1059,7 +1059,7 @@ test('management view recalculates every indicator and analyst chart from the fi
   {id:'mgmt-2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'fazendo',analistaResponsavel:'Bruno',dataPrevistaEntrega:'2000-01-01',sicIds:[]},
   {id:'mgmt-3',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-05',dataEntregaReal:'2026-09-04',valorGerado:100,sicIds:[]},
   {id:'mgmt-4',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',sicIds:[]},
-  {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',valorGerado:200,sicIds:[]},
+  {id:'mgmt-5',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',dataPrevistaEntrega:'2026-09-06',dataEntregaReal:'2026-09-07',valorGerado:200,sicIds:[]},
  ];
  const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno','Somente no diretório'],demandRecords:demands});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
@@ -1071,12 +1071,14 @@ test('management view recalculates every indicator and analyst chart from the fi
 
  const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
- await expect(kpiValue('Dentro do prazo')).toHaveText('2 (67%)');
- await expect(kpiValue('Atrasadas')).toHaveText('1');
+ await expect(page.locator('.management-kpis .kpi-card > small')).toHaveText(['Demandas no filtro','Concluídas','Em fluxo','Canceladas','Valor produzido','Produção em m²']);
+ await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 1 (50%)');
+ await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 1 (50%)');
  await expect(kpiValue('Em fluxo')).toHaveText('2');
  await expect(kpiValue('Concluídas')).toHaveText('2');
- await expect(kpiValue('Analistas responsáveis')).toHaveText('2');
- await expect(kpiValue('Sem data suficiente')).toHaveText('1');
+ await expect(kpiValue('Canceladas')).toHaveText('1');
+ for(const key of ['active','canceled','value','area'])await expect(page.locator(`[data-kpi="mgmt:${key}"] > span`)).toBeEmpty();
+ await expect(page.locator('.works-management')).not.toContainText('A iniciar');
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
  const analystPanel=page.locator('.management-panel').filter({has:page.getByRole('heading',{name:'Demandas por analista',exact:true})});
@@ -1094,15 +1096,17 @@ test('management view recalculates every indicator and analyst chart from the fi
  await managementAnalystFilter.locator('summary').click();
  await managementAnalystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
  await expect(kpiValue('Demandas no filtro')).toHaveText('3');
- await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
+ await expect(kpiValue('Canceladas')).toHaveText('0');
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 1','Canceladas 0','Todas 3']);
  await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
 
  await page.locator('.management-tabs [data-filter="todo"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('1');
- await expect(kpiValue('Dentro do prazo')).toHaveText('1 (100%)');
- await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
+ await expect(kpiValue('Concluídas')).toHaveText('0');
+ await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 0 (0%)');
+ await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 0 (0%)');
+ await expect(kpiValue('Canceladas')).toHaveText('0');
  await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
  await expect(analystPanel.locator('.management-column')).toHaveCount(1);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
@@ -1127,6 +1131,16 @@ test('management drilldowns match chart groups, filters and production rankings 
  const kpi=key=>page.locator(`[data-kpi="mgmt:${key}"]`);
  await expect(kpi('value').locator('strong')).toHaveText('R$ 1.100,00');
  await expect(kpi('area').locator('strong')).toHaveText('350,00 m²');
+ await expect(kpi('value')).toContainText('1 demanda concluída sem valor');
+ await expect(kpi('area')).toContainText('1 demanda concluída sem área');
+ await expect(kpi('completed')).toContainText('Entregues no prazo: 3 (60%)');
+ await expect(kpi('completed')).toContainText('Entregues em atraso: 1 (20%)');
+ await expect(kpi('completed')).toContainText('Sem data suficiente: 1 (20%)');
+ const assertPartition=async()=>{
+  const counts=await Promise.all(['all','completed','active','canceled'].map(async key=>Number(await kpi(key).locator('strong').textContent())));
+  expect(counts[1]+counts[2]+counts[3]).toBe(counts[0]);
+ };
+ await assertPartition();
  await expect(page.locator('.management-rank[data-metric="area"] .management-rank-reading > strong')).toHaveText(['Ana','Carla','Bruno']);
  await expect(page.locator('.management-rank[data-metric="area"] .management-rank-reading > span:not(.management-rank-track)')).toHaveText(['200,00 m²','100,00 m²','50,00 m²']);
  const deliveryRanking=page.locator('.management-rank[data-metric="completed"]');
@@ -1146,6 +1160,9 @@ test('management drilldowns match chart groups, filters and production rankings 
  const modal=page.locator('.kpi-modal-card');
  const assertRows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
  const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
+ await kpi('canceled').click();
+ await assertRows(['leader-canceled']);
+ await expect(modal.locator('h2')).toHaveText('Demandas canceladas');await close();
  await kpi('area').focus();await page.keyboard.press('Enter');
  await assertRows(['leader-a1','leader-a2','leader-b1','leader-no-value']);
  await expect(modal).toContainText('A área é somada por demanda');
@@ -1185,11 +1202,16 @@ test('management drilldowns match chart groups, filters and production rankings 
  await analystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
  await expect(kpi('value').locator('strong')).toHaveText('R$ 200,00');
  await expect(kpi('area').locator('strong')).toHaveText('200,00 m²');
+ for(const key of ['value','area'])await expect(kpi(key).locator(':scope > span')).toBeEmpty();
+ await assertPartition();
  await kpi('all').click();await assertRows(['leader-a1','leader-a2','leader-active']);await close();
  await page.locator('.management-tabs [data-filter="completed"]').click();
+ await assertPartition();
  await kpi('all').click();await assertRows(['leader-a1','leader-a2']);await close();
  await page.locator('.management-tabs [data-filter="planning"]').click();
  await expect(kpi('area').locator('strong')).toHaveText('0,00 m²');
+ await assertPartition();
+ for(const key of ['value','area'])await expect(kpi(key).locator(':scope > span')).toBeEmpty();
  await kpi('all').click();await expect(modal).toContainText('Nenhum item encontrado');await close();
  expect(b.errors).toEqual([]);
 });

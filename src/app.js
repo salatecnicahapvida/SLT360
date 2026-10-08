@@ -6592,6 +6592,7 @@ function managementMetricDemands(metric, demands = managementFilteredDemands()) 
   if (["completed", "value"].includes(metric)) return summary.completed;
   if (metric === "area") return managementProduction(demands).eligible;
   if (metric === "active") return summary.active;
+  if (metric === "canceled") return summary.canceled;
   if (["onTime", "late", "noDate"].includes(metric)) return summary[metric].map((row) => row.demand);
   if (metric === "deadline") return demands.filter((demand) => demand.coluna !== "cancelado");
   if (metric === "assessed") return demands.filter((demand) => ["onTime", "late"].includes(managementDeadlineReading(demand).status));
@@ -6647,7 +6648,7 @@ function managementDetailData(metric = "all", group = "", value = "", column = "
     demands = demands.filter((demand) => normalizeSearchText(managementGroupLabel(demand, group)) === normalizeSearchText(value));
   }
   if (column) demands = demands.filter((demand) => demand.coluna === column);
-  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
+  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", canceled: "Demandas canceladas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
   const production = managementProduction(demands);
   const areaNote = " A produção em m² soma a área equivalente (ou construída) das demandas concluídas, mesmo sem valor financeiro registrado. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
   return {
@@ -6802,6 +6803,16 @@ function renderWorksManagement() {
   const demands = managementFilteredDemands();
   const summary = managementDemandSummary(demands);
   const production = managementProduction(demands);
+  const completedSummary = managementDemandSummary(summary.completed);
+  const completedPercent = (count) => number(summary.completed.length ? count / summary.completed.length * 100 : 0);
+  const completedHint = [
+    `Entregues no prazo: ${completedSummary.onTime.length} (${completedPercent(completedSummary.onTime.length)}%)`,
+    `Entregues em atraso: ${completedSummary.late.length} (${completedPercent(completedSummary.late.length)}%)`,
+    ...(completedSummary.noDate.length ? [`Sem data suficiente: ${completedSummary.noDate.length} (${completedPercent(completedSummary.noDate.length)}%)`] : []),
+  ].join("<br>");
+  const missingValue = summary.completed.filter((demand) => !demandHasRecordedValue(demand)).length;
+  const missingArea = summary.completed.length - production.eligible.length;
+  const missingHint = (count, field) => count ? `${count} demanda${count === 1 ? " concluída" : "s concluídas"} sem ${field}` : "";
   const metric = (label, value, hint, tone, key) => kpi(label, value, hint, tone, "", `mgmt:${key}`);
   return `
     ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, carga de trabalho e prazos da equipe · clique nos resultados para ver as demandas", `
@@ -6814,14 +6825,11 @@ function renderWorksManagement() {
     <div class="works-management">
       <section class="kpi-grid management-kpis">
         ${metric("Demandas no filtro", String(demands.length), "Carteira selecionada", "blue", "all")}
-        ${metric("Concluídas", String(summary.completed.length), "Entregas finalizadas", "green", "completed")}
-        ${metric("Valor produzido", money(production.value), "Somente demandas concluídas", "orange", "value")}
-        ${metric("Produção em m²", `${number(production.area, 2)} m²`, `${production.eligible.length} concluídas com área informada`, "blue", "area")}
-        ${metric("Em fluxo", String(summary.active.length), "Demandas abertas, incluindo A iniciar", "blue", "active")}
-        ${metric("Dentro do prazo", `${summary.onTime.length} (${number(summary.punctualPercent)}%)`, `${summary.onTime.length + summary.late.length} demandas com prazo avaliado`, "green", "onTime")}
-        ${metric("Atrasadas", String(summary.late.length), summary.late.length ? `${number(summary.averageDelay, 1)} dias de atraso médio` : "Nenhuma demanda vencida", summary.late.length ? "red" : "green", "late")}
-        ${metric("Sem data suficiente", String(summary.noDate.length), "Sem previsão ou conclusão necessária", summary.noDate.length ? "orange" : "green", "noDate")}
-        ${metric("Analistas responsáveis", String(analystsForDemands(demands).length), "Responsáveis nas demandas do filtro", "blue", "responsible")}
+        ${metric("Concluídas", String(summary.completed.length), completedHint, "green", "completed")}
+        ${metric("Em fluxo", String(summary.active.length), "", "blue", "active")}
+        ${metric("Canceladas", String(summary.canceled.length), "", "red", "canceled")}
+        ${metric("Valor produzido", money(production.value), missingHint(missingValue, "valor"), "orange", "value")}
+        ${metric("Produção em m²", `${number(production.area, 2)} m²`, missingHint(missingArea, "área"), "blue", "area")}
       </section>
       <section class="management-section" aria-labelledby="managementProductionTitle">
         <div class="management-section-heading"><h2 id="managementProductionTitle">Rankings de produção por analista</h2><p>Somente concluídas do filtro. A produção em m² soma a área equivalente (ou construída), mesmo sem valor financeiro registrado. Cada entrega soma a área da obra novamente; demandas sem área informada não entram no total em m².</p></div>
