@@ -1053,7 +1053,7 @@ test('module switching keeps one service order per id when source and database v
  await expect(page.getByText(/Identificador duplicado/)).toHaveCount(0);
 });
 
-test('management view recalculates every indicator and analyst row from the filtered demands',async({page})=>{
+test('management view recalculates every indicator and analyst chart from the filtered demands',async({page})=>{
  const demands=[
   {id:'mgmt-1',obraId:'test-work',tipo:'SIC',coluna:'fazer',analistaResponsavel:'Ana',dataPrevistaEntrega:'2099-01-01',sicIds:[]},
   {id:'mgmt-2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'fazendo',analistaResponsavel:'Bruno',dataPrevistaEntrega:'2000-01-01',sicIds:[]},
@@ -1079,11 +1079,15 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(kpiValue('Sem data suficiente')).toHaveText('1');
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
- const analystPanel=page.locator('.panel').filter({has:page.getByRole('heading',{name:'Detalhe por analista'})});
- const analystTable=analystPanel.locator('table');
- await expect(analystTable.locator('tbody tr')).toHaveCount(2);
- await expect(analystTable.locator('tbody tr').filter({hasText:'Ana'}).locator('td')).toHaveText(['Ana','3','2','2','0','100%','—','R$ 300,00','1']);
- await expect(analystTable).not.toContainText('Somente no diretório');
+ const analystPanel=page.locator('.management-panel').filter({has:page.getByRole('heading',{name:'Demandas por analista',exact:true})});
+ await expect(analystPanel.locator('.management-bar')).toHaveCount(2);
+ await expect(analystPanel.locator('.management-bar[data-value="Ana"] .management-bar-caption')).toHaveText('Ana3');
+ await expect(analystPanel).not.toContainText('Somente no diretório');
+ await expect(kpiValue('Produção por m²')).toHaveText('R$ 1,50/m²');
+ await expect(kpiValue('Área produzida')).toHaveText('200,00 m²');
+ await expect(page.getByRole('heading',{name:'Status do filtro atual',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Eficiência e perfil',exact:true})).toHaveCount(0);
+ await expect(page.locator('.works-management table')).toHaveCount(0);
 
  const managementAnalystFilter=page.locator('[data-operational-filter-group="analyst"]');
  await managementAnalystFilter.locator('summary').click();
@@ -1099,9 +1103,96 @@ test('management view recalculates every indicator and analyst row from the filt
  await expect(kpiValue('Dentro do prazo')).toHaveText('1 (100%)');
  await expect(kpiValue('Analistas responsáveis')).toHaveText('1');
  await expect(page.locator('.panel').filter({has:page.getByRole('heading',{name:'Demandas por analista'})})).toContainText('Ana');
- await expect(analystPanel.locator('tbody tr')).toHaveCount(1);
- const managementGridTops=await page.locator('#mainContent .content-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
+ await expect(analystPanel.locator('.management-bar')).toHaveCount(1);
+ const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
+ expect(b.errors).toEqual([]);
+});
+
+test('management drilldowns match chart groups, filters and production leaders with incomplete area data',async({page})=>{
+ const demands=[
+  {id:'leader-a1',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',sprintId:'sprint-a',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2025-12-31',valorGerado:100,sicIds:[]},
+  {id:'leader-a2',obraId:'test-work',tipo:'ReemissaoCompleta',coluna:'concluido',analistaResponsavel:'Ana',sprintId:'sprint-a',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2026-01-02',valorGerado:100,sicIds:[]},
+  {id:'leader-b1',obraId:'built-area',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Bruno',sprintId:'sprint-b',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2025-12-31',valorGerado:400,sicIds:[]},
+  {id:'leader-b2',obraId:'work-without-ev',tipo:'SIC',coluna:'concluido',analistaResponsavel:'Bruno',sprintId:'sprint-b',dataPrevistaEntrega:'2026-01-01',dataEntregaReal:'2025-12-31',valorGerado:500,sicIds:[]},
+  {id:'leader-no-value',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Carla',sicIds:[]},
+  {id:'leader-active',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Ana',dataPrevistaEntrega:'2099-01-01',valorGerado:10000,sicIds:[]},
+  {id:'leader-canceled',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',valorGerado:99999,sicIds:[]},
+ ];
+ const works=[...structuredClone(payload.state.works),{id:'built-area',nome:'Obra com área construída',classificacaoObra:'Outros',areaEquivalente:0,areaConstruida:50}];
+ const b=await backend(page,'Admin',false,{demandRecords:demands,workRecords:works,sprintRecords:[{id:'sprint-a',nome:'Sprint A'},{id:'sprint-b',nome:'Sprint B'}]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ const kpi=key=>page.locator(`[data-kpi="mgmt:${key}"]`);
+ await expect(kpi('value').locator('strong')).toHaveText('R$ 1.100,00');
+ await expect(kpi('valueM2').locator('strong')).toHaveText('R$ 2,40/m²');
+ await expect(kpi('area').locator('strong')).toHaveText('250,00 m²');
+ await expect(page.locator('.management-leader[data-metric="completed"]')).toContainText('Ana · Bruno');
+ await expect(page.locator('.management-leader[data-metric="completed"]')).toContainText('Empate');
+ await expect(page.locator('.management-leader[data-metric="value"]')).toContainText('Bruno');
+ await expect(page.locator('.management-leader[data-metric="valueM2"]')).toContainText('R$ 8,00/m²');
+ const modal=page.locator('.kpi-modal-card');
+ const assertRows=async ids=>{await expect(modal.locator('.management-demand-link')).toHaveText(ids);};
+ const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
+ await kpi('valueM2').focus();await page.keyboard.press('Enter');
+ await assertRows(['leader-a1','leader-a2','leader-b1']);
+ await expect(modal).toContainText('A área é somada por demanda');
+ await close();
+ await page.locator('.management-leader[data-metric="value"]').click();
+ await assertRows(['leader-b1','leader-b2']);await close();
+ await page.locator('.management-leader[data-metric="valueM2"]').click();
+ await assertRows(['leader-b1']);await close();
+ await page.locator('.management-leader[data-metric="completed"]').click();
+ await assertRows(['leader-a1','leader-a2','leader-b1','leader-b2']);await close();
+ await page.locator('.management-bar[data-metric="all"][data-group="analyst"][data-value="Ana"]').click();
+ await assertRows(['leader-a1','leader-a2','leader-active']);
+ await modal.locator('[data-kpi-modal-search]').fill('leader-active');
+ await expect(modal.locator('tbody tr:visible')).toHaveCount(1);
+ await modal.locator('.management-demand-link[data-id="leader-active"]').click();
+ await expect(page.locator('#demandDetailForm')).toHaveAttribute('data-id','leader-active');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Fechar',exact:true}).first().click();
+ await page.locator('.management-bar[data-group="sprint"][data-value="Sprint B"]').click();
+ await assertRows(['leader-b1','leader-b2']);await close();
+ await page.locator('.management-bar[data-group="classification"][data-value="Outros"]').click();
+ await assertRows(['leader-b1','leader-b2']);await close();
+ const typeButton=page.locator('.management-bar[data-group="type"]').filter({hasText:'SIC'});
+ await typeButton.click();await assertRows(['leader-b2','leader-canceled']);await close();
+ await page.locator('.management-legend[data-metric="late"]').click();
+ await assertRows(['leader-a2']);await close();
+ const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
+ await analystFilter.locator('summary').click();
+ await analystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
+ await expect(kpi('value').locator('strong')).toHaveText('R$ 200,00');
+ await expect(kpi('valueM2').locator('strong')).toHaveText('R$ 1,00/m²');
+ await kpi('all').click();await assertRows(['leader-a1','leader-a2','leader-active']);await close();
+ await page.locator('.management-tabs [data-filter="completed"]').click();
+ await kpi('all').click();await assertRows(['leader-a1','leader-a2']);await close();
+ await page.locator('.management-tabs [data-filter="planning"]').click();
+ await expect(kpi('valueM2').locator('strong')).toHaveText('—');
+ await kpi('all').click();await expect(modal).toContainText('Nenhum item encontrado');await close();
+ expect(b.errors).toEqual([]);
+});
+
+test('management panels stay aligned and readable across narrow screens and zoom',async({page})=>{
+ const b=await backend(page);await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ for(const {width,zoom} of [{width:1440,zoom:1},{width:1100,zoom:1},{width:800,zoom:1},{width:390,zoom:1},{width:1440,zoom:1.25},{width:1440,zoom:1.5}]){
+  await page.setViewportSize({width,height:1000});
+  await page.evaluate(value=>{document.body.style.zoom=String(value);},zoom);
+  const layout=await page.locator('.works-management').evaluate(root=>{
+   const outer=root.getBoundingClientRect();
+   const items=[...root.querySelectorAll('.kpi-card,.management-panel,.management-leader')];
+   const fits=items.every(item=>{const box=item.getBoundingClientRect();return box.left>=outer.left-1&&box.right<=outer.right+1&&item.scrollWidth<=item.clientWidth+1;});
+   const aligned=[...root.querySelectorAll('.management-grid')].every(grid=>{
+    const rows=new Map();
+    for(const item of grid.children){const rect=item.getBoundingClientRect();const top=Math.round(rect.top);if(!rows.has(top))rows.set(top,[]);rows.get(top).push(Math.round(rect.height));}
+    return [...rows.values()].every(heights=>Math.max(...heights)-Math.min(...heights)<=1);
+   });
+   return {fits,aligned};
+  });
+  expect(layout,`width=${width}, zoom=${zoom}`).toEqual({fits:true,aligned:true});
+ }
  expect(b.errors).toEqual([]);
 });
 

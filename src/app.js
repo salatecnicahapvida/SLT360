@@ -4953,8 +4953,7 @@ function alertItem(title, detail) {
   `;
 }
 
-function openKpiDetail(key) {
-  const detail = kpiDetailData(key);
+function openKpiDetail(key, detail = kpiDetailData(key)) {
   if (!detail) return;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
@@ -5011,6 +5010,7 @@ function renderKpiDetailTable(detail) {
 }
 
 function kpiDetailData(key) {
+  if (key.startsWith("mgmt:")) return managementDetailData(key.slice(5));
   const rows = portfolioRows(false, false);
   const totals = allTotals();
   const capex = totals.orcado + totals.aditivado;
@@ -6569,143 +6569,203 @@ function analystsForDemands(demands = []) {
   return [...new Map(names.map((name) => [normalizeSearchText(name), name])).values()];
 }
 
-function renderWorksManagement() {
-  const scopedDemands = managementFilteredDemands();
-  const summary = managementDemandSummary(scopedDemands);
-  const { completed, active, canceled, onTime, late, noDate, punctualPercent, averageDelay } = summary;
-  const producedValue = completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
-  const analysts = analystsForDemands(scopedDemands);
+function managementAnalystLabel(demand) {
+  return String(demand.analistaResponsavel || "").trim() || "Não informado";
+}
 
+function managementProduction(demands) {
+  const completed = demands.filter((demand) => demand.coluna === "concluido");
+  const eligible = completed.filter((demand) => demandHasRecordedValue(demand) && Number.isFinite(Number(demand.valorGerado)) && managementDemandArea(demand) > 0);
+  const area = eligible.reduce((sum, demand) => sum + managementDemandArea(demand), 0);
+  const eligibleValue = eligible.reduce((sum, demand) => sum + demandProducedValue(demand), 0);
+  return { completed, eligible, area, eligibleValue, value: completed.reduce((sum, demand) => sum + demandProducedValue(demand), 0), valueM2: area ? eligibleValue / area : null };
+}
+
+function managementDemandArea(demand) {
+  const work = workById(demand.obraId);
+  const equivalent = Number(work?.areaEquivalente);
+  const built = Number(work?.areaConstruida);
+  return Number.isFinite(equivalent) && equivalent > 0 ? equivalent : Number.isFinite(built) && built > 0 ? built : 0;
+}
+
+function managementMetricDemands(metric, demands = managementFilteredDemands()) {
+  const summary = managementDemandSummary(demands);
+  if (["completed", "value"].includes(metric)) return summary.completed;
+  if (["area", "valueM2"].includes(metric)) return managementProduction(demands).eligible;
+  if (metric === "active") return summary.active;
+  if (["onTime", "late", "noDate"].includes(metric)) return summary[metric].map((row) => row.demand);
+  if (metric === "deadline") return demands.filter((demand) => demand.coluna !== "cancelado");
+  if (metric === "assessed") return [...summary.onTime, ...summary.late].map((row) => row.demand);
+  if (metric === "responsible") return demands.filter((demand) => String(demand.analistaResponsavel || "").trim());
+  return demands;
+}
+
+function managementGroupLabel(demand, group) {
+  if (group === "analyst") return managementAnalystLabel(demand);
+  if (group === "sprint") return sprintById(demand.sprintId)?.nome || "Sem sprint";
+  if (group === "type") return demandTypeLabel(demand.tipo);
+  if (group === "classification") return workById(demand.obraId)?.classificacaoObra || "Não informado";
+  return "";
+}
+
+function managementChartRows(demands, metric, group = "analyst") {
+  const groups = new Map();
+  managementMetricDemands(metric, demands).forEach((demand) => {
+    const label = managementGroupLabel(demand, group);
+    const key = normalizeSearchText(label);
+    if (!groups.has(key)) groups.set(key, { label, demands: [] });
+    groups.get(key).demands.push(demand);
+  });
+  return [...groups.values()].map(({ label, demands: items }) => {
+    const summary = managementDemandSummary(items);
+    const production = managementProduction(items);
+    let value = items.length;
+    if (metric === "value") value = production.value;
+    if (metric === "valueM2") value = production.valueM2;
+    if (metric === "assessed") value = summary.punctualPercent;
+    if (metric === "late") value = summary.averageDelay;
+    return { label, value, count: items.length };
+  }).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "pt-BR"));
+}
+
+function managementLeaders(demands, metric) {
+  const ranked = managementChartRows(demands.filter((demand) => String(demand.analistaResponsavel || "").trim()), metric);
+  if (!ranked.length || ranked[0].value <= 0) return [];
+  return ranked.filter((row) => Math.abs(row.value - ranked[0].value) < 1e-9);
+}
+
+function managementDetailAttributes(metric, group = "", value = "") {
+  return `data-action="open-management-detail" data-metric="${escapeAttribute(metric)}" data-group="${escapeAttribute(group)}" data-value="${escapeAttribute(value)}"`;
+}
+
+function managementDetailData(metric = "all", group = "", value = "") {
+  const scoped = managementFilteredDemands();
+  let demands = managementMetricDemands(metric, scoped);
+  if (group === "leader") {
+    const names = new Set(managementLeaders(scoped, metric).map((row) => normalizeSearchText(row.label)));
+    demands = demands.filter((demand) => names.has(normalizeSearchText(managementAnalystLabel(demand))));
+  } else if (group) {
+    demands = demands.filter((demand) => normalizeSearchText(managementGroupLabel(demand, group)) === normalizeSearchText(value));
+  }
+  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", value: "Valor produzido", valueM2: "Produção por m²", area: "Área produzida", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
+  const production = managementProduction(demands);
+  const ratioNote = " R$/m² considera somente concluídas com valor registrado e área positiva. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
+  return {
+    eyebrow: "Visão Gerencial · demandas do indicador",
+    title: `${titles[metric] || titles.all}${group === "leader" ? " · liderança" : value ? ` · ${escapeAttribute(value)}` : ""}`,
+    subtitle: `Respeita todos os filtros e a etapa selecionada. Clique no código para abrir a demanda.${ratioNote}`,
+    metrics: [
+      { label: "Demandas", value: String(demands.length) },
+      { label: "Valor produzido", value: money(production.value) },
+      { label: "Valor da base de R$/m²", value: money(production.eligibleValue) },
+      { label: "Área da base de R$/m²", value: `${number(production.area, 2)} m²` },
+      { label: "Produção por m²", value: production.valueM2 === null ? "—" : `${money(production.valueM2)}/m²` },
+    ],
+    columns: ["Demanda", "Obra", "Atividade", "Analista", "Sprint", "Etapa", "Entrega prevista", "Entrega real", "Valor produzido", "Área (m²)"],
+    rows: demands.map((demand) => [
+      `<button class="management-demand-link" type="button" data-action="open-demand-detail" data-id="${escapeAttribute(demand.id)}">${escapeAttribute(demand.id)}</button>`,
+      escapeAttribute(workById(demand.obraId)?.nome || "Obra não localizada"),
+      escapeAttribute(demandTypeLabel(demand.tipo)),
+      escapeAttribute(managementAnalystLabel(demand)),
+      escapeAttribute(sprintById(demand.sprintId)?.nome || "Sem sprint"),
+      escapeAttribute(demandStatusLabel(demand)),
+      dateText(demand.dataPrevistaEntrega),
+      dateText(demand.dataEntregaReal),
+      demand.coluna === "concluido" && demandHasRecordedValue(demand) ? money(demandProducedValue(demand)) : "—",
+      managementDemandArea(demand) ? number(managementDemandArea(demand), 2) : "—",
+    ]),
+  };
+}
+
+function renderManagementBars(demands, metric, group = "analyst") {
+  const rows = managementChartRows(demands, metric, group);
+  const max = metric === "assessed" ? 100 : Math.max(...rows.map((row) => row.value), 1);
+  return rows.length ? `<div class="management-bar-list">${rows.map((row) => {
+    const formatted = metric === "value" ? money(row.value) : metric === "valueM2" ? `${money(row.value)}/m²` : metric === "assessed" ? `${number(row.value)}% · ${row.count} avaliadas` : metric === "late" ? `${number(row.value, 1)} dias · ${row.count} atrasadas` : String(row.value);
+    return `<button class="management-bar" type="button" ${managementDetailAttributes(metric, group, row.label)} aria-label="${escapeAttribute(`${row.label}: ${formatted}. Ver demandas`)}"><span class="management-bar-caption"><strong>${escapeAttribute(row.label)}</strong><span>${formatted}</span></span><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width:${Math.min(row.value / max * 100, 100)}%"></span></span></button>`;
+  }).join("")}</div>` : `<div class="empty-state">Nenhuma demanda nesta base.</div>`;
+}
+
+function managementPanel(title, subtitle, body, metric = "all") {
+  return `<section class="panel management-panel"><div class="panel-header"><div><h2>${title}</h2><p class="panel-subtitle">${subtitle}</p></div><button class="management-see-all" type="button" ${managementDetailAttributes(metric)} aria-label="Ver demandas: ${title}">Ver demandas</button></div>${body}</section>`;
+}
+
+function renderManagementLeaders(demands) {
+  const entries = [ { metric: "completed", label: "Mais demandas concluídas" }, { metric: "valueM2", label: "Maior produção por m²" }, { metric: "value", label: "Maior valor produzido" } ];
+  return `<div class="management-grid management-leaders">${entries.map(({ metric, label }) => {
+    const leaders = managementLeaders(demands, metric);
+    const reading = !leaders.length ? "Sem produção nesta base" : metric === "completed" ? `${leaders[0].value} demandas` : metric === "valueM2" ? `${money(leaders[0].value)}/m²` : money(leaders[0].value);
+    return `<button class="management-leader" type="button" ${managementDetailAttributes(metric, "leader")}><small>${label}</small><strong>${leaders.length ? leaders.map((row) => escapeAttribute(row.label)).join(" · ") : "—"}</strong><span>${reading}</span><em>${leaders.length > 1 ? "Empate · ver demandas dos líderes" : "Ver demandas"}</em></button>`;
+  }).join("")}</div>`;
+}
+
+function renderManagementDeadlines(summary) {
+  const rows = [ { metric: "onTime", label: "No prazo", tone: "green" }, { metric: "late", label: "Com atraso", tone: "red" }, { metric: "noDate", label: "Sem data suficiente", tone: "gray" } ];
+  const count = summary.onTime.length + summary.late.length + summary.noDate.length;
+  const total = Math.max(count, 1);
+  const punctual = summary.onTime.length / total * 100;
+  const delayed = summary.late.length / total * 100;
+  const gradient = count ? `conic-gradient(var(--green) 0 ${punctual}%, var(--red) ${punctual}% ${punctual + delayed}%, #9aaaba ${punctual + delayed}% 100%)` : "#e5eaf2";
+  return `<div class="management-deadlines"><button class="donut-chart" type="button" style="background:${gradient}" ${managementDetailAttributes("deadline")} aria-label="Ver ${count} demandas da situação dos prazos"><span>${count}</span><small>demandas</small></button><div class="management-deadline-legend">${rows.map(({ metric, label, tone }) => `<button type="button" class="management-legend" data-tone="${tone}" ${managementDetailAttributes(metric)}><i aria-hidden="true"></i><span>${label}</span><strong>${summary[metric].length} (${number(summary[metric].length / total * 100)}%)</strong></button>`).join("")}</div></div>`;
+}
+
+function renderWorksManagement() {
+  const demands = managementFilteredDemands();
+  const summary = managementDemandSummary(demands);
+  const production = managementProduction(demands);
+  const ratio = production.valueM2 === null ? "—" : `${money(production.valueM2)}/m²`;
+  const metric = (label, value, hint, tone, key) => kpi(label, value, hint, tone, "", `mgmt:${key}`);
   return `
-    ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, capacidade, eficiência de prazo e valor entregue pela equipe", `
+    ${renderWorksToolbar("worksManagement", "Visão Gerencial", "Produção, carga de trabalho e prazos da equipe · clique nos resultados para ver as demandas", `
       <button class="secondary-action" type="button" data-view="worksOperational">Operacional</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
     `)}
-
     ${renderOperationalFilters()}
     ${renderOperationalFilterBanner()}
     ${renderManagementStatusTabs()}
-
-    <section class="kpi-grid">
-      ${kpi("Demandas no filtro", String(scopedDemands.length), "Mesma base da carteira operacional", "blue")}
-      ${kpi("Dentro do prazo", `${onTime.length} (${number(punctualPercent)}%)`, `${onTime.length + late.length} demandas com prazo avaliado`, "green")}
-      ${kpi("Atrasadas", String(late.length), late.length ? `${number(averageDelay, 1)} dias de atraso médio` : "Nenhuma demanda vencida", late.length ? "red" : "green")}
-      ${kpi("Valor produzido", money(producedValue), "EV inicial, revisão ou SIC", "orange")}
-      ${kpi("Em fluxo", String(active.length), "Demandas abertas, incluindo A iniciar", "blue")}
-      ${kpi("Concluídas", String(completed.length), "Entregas finalizadas", "green")}
-      ${kpi("Analistas responsáveis", String(analysts.length), "Líderes nas demandas do filtro", "green")}
-      ${kpi("Sem data suficiente", String(noDate.length), "Sem previsão ou conclusão necessária", noDate.length ? "orange" : "green")}
-    </section>
-
-    <div class="content-grid three">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Demandas por analista</h2>
-            <p class="panel-subtitle">Responsáveis pelas demandas do filtro atual</p>
-          </div>
-        </div>
-        ${barList(productionByAnalyst(scopedDemands), "valor", (value) => String(value))}
+    <div class="works-management">
+      <section class="kpi-grid management-kpis">
+        ${metric("Demandas no filtro", String(demands.length), "Carteira selecionada", "blue", "all")}
+        ${metric("Concluídas", String(summary.completed.length), "Entregas finalizadas", "green", "completed")}
+        ${metric("Valor produzido", money(production.value), "Somente demandas concluídas", "orange", "value")}
+        ${metric("Produção por m²", ratio, `${production.eligible.length} concluídas com área e valor`, "orange", "valueM2")}
+        ${metric("Área produzida", `${number(production.area, 2)} m²`, "Área somada por demanda da base de R$/m²", "blue", "area")}
+        ${metric("Em fluxo", String(summary.active.length), "Demandas abertas, incluindo A iniciar", "blue", "active")}
+        ${metric("Dentro do prazo", `${summary.onTime.length} (${number(summary.punctualPercent)}%)`, `${summary.onTime.length + summary.late.length} demandas com prazo avaliado`, "green", "onTime")}
+        ${metric("Atrasadas", String(summary.late.length), summary.late.length ? `${number(summary.averageDelay, 1)} dias de atraso médio` : "Nenhuma demanda vencida", summary.late.length ? "red" : "green", "late")}
+        ${metric("Sem data suficiente", String(summary.noDate.length), "Sem previsão ou conclusão necessária", summary.noDate.length ? "orange" : "green", "noDate")}
+        ${metric("Analistas responsáveis", String(analystsForDemands(demands).length), "Responsáveis nas demandas do filtro", "blue", "responsible")}
       </section>
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Valor produzido por analista</h2>
-            <p class="panel-subtitle">EV emitido ou diferença aprovada</p>
-          </div>
-        </div>
-        ${barList(valueByAnalyst(completed), "valor", money)}
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Demandas por sprint</h2>
-            <p class="panel-subtitle">Distribuição das demandas do filtro atual</p>
-          </div>
-        </div>
-        ${barList(productionBySprint(scopedDemands), "valor", (value) => String(value))}
-      </section>
-    </div>
-
-    <div class="content-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Situação dos prazos</h2>
-            <p class="panel-subtitle">Demandas ativas ou concluídas; canceladas não entram no prazo</p>
-          </div>
-        </div>
-        ${renderDeliveryDonut(onTime.length, late.length, noDate.length)}
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Demandas por tipo de atividade</h2>
-            <p class="panel-subtitle">Distribuição dentro do filtro gerencial</p>
-          </div>
-        </div>
-        ${barList(demandCountByType(scopedDemands), "valor", (value) => String(value))}
-      </section>
-    </div>
-
-    <div class="content-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Por classificação da obra</h2>
-            <p class="panel-subtitle">Demandas agrupadas pela motivação do investimento</p>
-          </div>
-        </div>
-        ${barList(workCountByForDemands(scopedDemands, "classificacaoObra"), "valor", (value) => String(value))}
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Status do filtro atual</h2>
-            <p class="panel-subtitle">Leitura tática da carteira selecionada</p>
-          </div>
-        </div>
-        <div class="split-list">
-          ${splitItem("Todas", String(scopedDemands.length))}
-          ${splitItem("Pull Planning", String(scopedDemands.filter((demand) => demand.coluna === "pullPlanning").length))}
-          ${splitItem("A iniciar", String(scopedDemands.filter((demand) => demand.coluna === "fazer").length))}
-          ${splitItem("Em fluxo", String(active.length))}
-          ${splitItem("Concluídas", String(completed.length))}
-          ${splitItem("Canceladas", String(canceled.length))}
+      <section class="management-section" aria-labelledby="managementProductionTitle">
+        <div class="management-section-heading"><h2 id="managementProductionTitle">Produção e destaques por analista</h2><p>Somente concluídas do filtro. R$/m² = valor registrado ÷ área equivalente (ou construída). Cada entrega soma a área da obra novamente; sem área ou valor registrado, não entra em R$/m².</p></div>
+        ${renderManagementLeaders(demands)}
+        <div class="management-grid">
+          ${managementPanel("Concluídas por analista", "Ranking por quantidade de entregas", renderManagementBars(demands, "completed"), "completed")}
+          ${managementPanel("Valor produzido por analista", "EV emitido ou diferença aprovada · concluídas", renderManagementBars(demands, "value"), "value")}
+          ${managementPanel("Produção por m² por analista", "Valor ÷ área das entregas com dados suficientes", renderManagementBars(demands, "valueM2"), "valueM2")}
         </div>
       </section>
-    </div>
-
-    <div class="content-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Detalhe por analista</h2>
-            <p class="panel-subtitle">Concluídas, prazo, valor e carga aberta</p>
-          </div>
+      <section class="management-section" aria-labelledby="managementLoadTitle">
+        <div class="management-section-heading"><h2 id="managementLoadTitle">Carga de trabalho</h2><p>Distribuição da carteira selecionada e das demandas abertas.</p></div>
+        <div class="management-grid">
+          ${managementPanel("Demandas por analista", "Todas as demandas do filtro atual", renderManagementBars(demands, "all"))}
+          ${managementPanel("Em fluxo por analista", "Carga aberta de cada responsável", renderManagementBars(demands, "active"), "active")}
+          ${managementPanel("Demandas por sprint", "Distribuição das demandas do filtro atual", renderManagementBars(demands, "all", "sprint"))}
         </div>
-        ${renderAnalystDetailTable(scopedDemands)}
       </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Eficiência e perfil</h2>
-            <p class="panel-subtitle">Prazo, tipo de demanda e classificação</p>
-          </div>
+      <section class="management-section" aria-labelledby="managementDeadlineTitle">
+        <div class="management-section-heading"><h2 id="managementDeadlineTitle">Eficiência de prazo</h2><p>Ativas e concluídas. Canceladas não entram na avaliação de prazo.</p></div>
+        <div class="management-grid">
+          ${managementPanel("Situação dos prazos", "Clique na legenda ou no total para abrir as demandas", renderManagementDeadlines(summary), "deadline")}
+          ${managementPanel("Prazo por analista", "Percentual no prazo · somente demandas avaliadas", renderManagementBars(demands, "assessed"), "assessed")}
+          ${managementPanel("Atraso médio por analista", "Dias de atraso · somente demandas atrasadas", renderManagementBars(demands, "late"), "late")}
         </div>
-        <div class="split-list">
-          ${splitItem("No prazo", `${onTime.length} (${number(punctualPercent)}%)`)}
-          ${splitItem("Com atraso", String(late.length))}
-          ${splitItem("Sem data suficiente", String(noDate.length))}
-          ${splitItem("Tipo dominante", topLabel(demandCountByType(scopedDemands)))}
-          ${splitItem("Classificação dominante", topLabel(workCountByForDemands(scopedDemands, "classificacaoObra")))}
-        </div>
-        <div class="mini-chart-stack">
-          ${barList(demandCountByType(scopedDemands), "valor", (value) => String(value))}
-          ${barList(workCountByForDemands(scopedDemands, "classificacaoObra"), "valor", (value) => String(value))}
+      </section>
+      <section class="management-section" aria-labelledby="managementProfileTitle">
+        <div class="management-section-heading"><h2 id="managementProfileTitle">Perfil das demandas</h2><p>Atividade e classificação da obra, separados dos indicadores de prazo.</p></div>
+        <div class="management-grid management-grid-two">
+          ${managementPanel("Demandas por tipo de atividade", "Distribuição dentro do filtro gerencial", renderManagementBars(demands, "all", "type"))}
+          ${managementPanel("Por classificação da obra", "Demandas agrupadas pela motivação do investimento", renderManagementBars(demands, "all", "classification"))}
         </div>
       </section>
     </div>
@@ -20609,6 +20669,7 @@ document.addEventListener("click", async (event) => {
   if (action === "open-sic-slice") openSicSliceDetailModal(actionButton.dataset.field, actionButton.dataset.label);
   if (action === "open-sic-timeline") openSicTimelineDetailModal(actionButton.dataset.mode, actionButton.dataset.key);
   if (action === "open-kpi-detail") openKpiDetail(actionButton.dataset.kpi);
+  if (action === "open-management-detail") openKpiDetail("", managementDetailData(actionButton.dataset.metric, actionButton.dataset.group, actionButton.dataset.value));
   if (action === "apply-operational-filter") applyOperationalKpiFilter(actionButton.dataset.kpi);
   if (action === "reorder-kanban-column") {
     const column = columns.find((item) => item.id === actionButton.dataset.column);

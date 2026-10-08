@@ -3101,6 +3101,241 @@ button {
   font-weight: 700;
 }
 
+.works-management {
+  min-width: 0;
+}
+
+.works-management .management-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  align-items: stretch;
+}
+
+.works-management .kpi-card {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.works-management .kpi-card strong {
+  font-size: clamp(1.25rem, 1.5vw, 1.8rem);
+}
+
+.management-section {
+  margin-top: 24px;
+}
+
+.management-section-heading {
+  margin-bottom: 12px;
+}
+
+.management-section-heading h2 {
+  margin: 0 0 5px;
+  color: var(--navy);
+  font-size: 1.1rem;
+}
+
+.management-section-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.management-grid-two {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+.works-management .management-grid > .management-panel {
+  min-width: 0;
+  margin: 0;
+}
+
+.management-panel .panel-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.management-panel .panel-header > div {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.management-panel .panel-subtitle {
+  margin-bottom: 0;
+  line-height: 1.4;
+}
+
+.management-see-all,
+.management-demand-link {
+  border: 0;
+  border-radius: 5px;
+  background: #eaf3fc;
+  color: var(--blue);
+  padding: 6px 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.management-see-all {
+  font-size: 0.73rem;
+}
+
+.management-bar-list {
+  display: grid;
+  gap: 6px;
+}
+
+.management-bar {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.management-bar-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.management-bar-caption > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.management-bar .bar-track {
+  width: 100%;
+}
+
+.management-bar .bar-fill {
+  min-width: 0;
+}
+
+.management-leaders {
+  margin-bottom: 16px;
+}
+
+.management-leader {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #c9dff1;
+  border-top: 4px solid var(--blue);
+  border-radius: 8px;
+  background: linear-gradient(145deg, #f3f8fd, #fff);
+  color: var(--navy);
+  padding: 16px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.management-leader strong {
+  font-size: 1.15rem;
+}
+
+.management-leader small,
+.management-leader em {
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.management-leader em {
+  color: var(--blue);
+}
+
+.management-deadlines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.management-deadlines .donut-chart {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 112px;
+  border: 0;
+  padding: 0;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.management-deadlines .donut-chart::after {
+  inset: 23px;
+}
+
+.management-deadlines .donut-chart span {
+  font-size: 1.4rem;
+}
+
+.management-deadline-legend {
+  display: grid;
+  flex: 1 1 170px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.management-legend {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--navy);
+  padding: 9px 4px;
+  text-align: left;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.management-legend i {
+  height: 9px;
+  border-radius: 50%;
+  background: #9aaaba;
+}
+
+.management-legend[data-tone="green"] i {
+  background: var(--green);
+}
+
+.management-legend[data-tone="red"] i {
+  background: var(--red);
+}
+
+.management-bar:hover,
+.management-legend:hover,
+.management-leader:hover {
+  background: #eaf3fc;
+}
+
+.works-management button:focus-visible,
+.management-demand-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
 .management-tabs {
   display: flex;
   flex-wrap: wrap;
