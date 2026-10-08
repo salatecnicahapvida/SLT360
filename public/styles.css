@@ -3202,12 +3202,11 @@ button {
 .management-ranking {
   display: grid;
   gap: 6px;
-  max-height: 360px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   list-style: none;
   margin: 0;
-  padding: 0 3px 0 0;
-  scrollbar-width: thin;
+  padding: 0;
 }
 
 .management-rank {

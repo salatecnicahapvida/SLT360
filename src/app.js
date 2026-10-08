@@ -6695,7 +6695,7 @@ function managementPanel(title, subtitle, body, metric = "all", className = "") 
 }
 
 function managementRankingRows(demands, metric) {
-  const assigned = demands.filter((demand) => String(demand.analistaResponsavel || "").trim());
+  const assigned = demands.filter((demand) => demand.coluna === "concluido" && String(demand.analistaResponsavel || "").trim());
   const rows = managementChartRows(assigned, metric);
   const represented = new Set(rows.map((row) => normalizeSearchText(row.label)));
   analystsForDemands(assigned).forEach((label) => {
@@ -6713,7 +6713,7 @@ function renderManagementRanking(demands, metric) {
     const tied = rows.filter((item) => Math.abs(item.value - row.value) < 1e-9).length > 1;
     const formatted = managementMetricText(metric, row.value);
     return `<li><button class="management-rank" type="button" data-position="${position}" ${managementDetailAttributes(metric, "analyst", row.label)} style="--chart-color:${managementChartColor("analyst", row.label)}" aria-label="${escapeAttribute(`${position}º lugar${tied ? ', empate' : ''}: ${row.label}, ${formatted}. Ver demandas`)}"><span class="management-rank-position">${position}º</span><span class="management-rank-reading"><strong>${escapeAttribute(row.label)}</strong><span>${formatted}</span><span class="management-rank-track" aria-hidden="true"><i style="width:${row.value / max * 100}%"></i></span>${tied ? '<small>Empate</small>' : ''}</span></button></li>`;
-  }).join("")}</ol>` : `<div class="empty-state">Nenhum analista com demanda neste filtro.</div>`;
+  }).join("")}</ol>` : `<div class="empty-state">Nenhum analista com produção concluída neste filtro.</div>`;
   return `${ranking}<div class="management-ranking-footer"><span>${rows.length} analistas · ordem decrescente</span>${unassigned.length ? `<button class="management-see-all" type="button" ${managementDetailAttributes(metric, "analyst", "Não informado")}>${unassigned.length} demandas sem responsável</button>` : ""}</div>`;
 }
 

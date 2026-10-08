@@ -1087,8 +1087,8 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
 
  const deliveryRanking=page.locator('.management-ranking[data-metric="completed"]');
- await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana','Bruno']);
- await expect(deliveryRanking.locator('.management-rank-reading > span:not(.management-rank-track)')).toHaveText(['2','0']);
+ await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana']);
+ await expect(deliveryRanking.locator('.management-rank-reading > span:not(.management-rank-track)')).toHaveText(['2']);
  await expect(page.locator('.works-management')).not.toContainText('Somente no diretório');
  for(const title of ['Carga de trabalho','Demandas por analista','Em fluxo por analista','Demandas por sprint'])await expect(page.getByRole('heading',{name:title,exact:true})).toHaveCount(0);
  await expect(kpiValue('Produção em m²')).toHaveText('200,00 m²');
@@ -1115,8 +1115,8 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 0 (0%)');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 0 (0%)');
  await expect(kpiValue('Canceladas')).toHaveText('0');
- await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana']);
- await expect(deliveryRanking.locator('.management-rank-reading > span:not(.management-rank-track)')).toHaveText(['0']);
+ await expect(deliveryRanking).toHaveCount(0);
+ await expect(page.getByText('Nenhum analista com produção concluída neste filtro.',{exact:true})).toHaveCount(3);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
  expect(b.errors).toEqual([]);
@@ -1221,7 +1221,7 @@ test('management drilldowns match chart groups, filters and production rankings 
  expect(b.errors).toEqual([]);
 });
 
-test('management rankings include every filtered analyst with zero production and preserve filtered drilldowns',async({page})=>{
+test('management rankings exclude analysts without completed demands and preserve filtered drilldowns',async({page})=>{
  const demands=[
   {id:'rank-done',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',valorGerado:100,sicIds:[]},
   {id:'rank-active',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Bruno',valorGerado:99999,sicIds:[]},
@@ -1234,17 +1234,16 @@ test('management rankings include every filtered analyst with zero production an
  const ranking=metric=>page.locator(`.management-ranking[data-metric="${metric}"]`);
  const names=metric=>ranking(metric).locator('.management-rank-reading > strong');
  const values=metric=>ranking(metric).locator('.management-rank-reading > span:not(.management-rank-track)');
- await expect(names('completed')).toHaveText(['Ana','Davi','Bruno','Carla']);
- await expect(values('completed')).toHaveText(['1','1','0','0']);
- await expect(names('value')).toHaveText(['Ana','Bruno','Carla','Davi']);
- await expect(values('value')).toHaveText(['R$ 100,00','R$ 0,00','R$ 0,00','R$ 0,00']);
- await expect(names('area')).toHaveText(['Ana','Bruno','Carla','Davi']);
- await expect(values('area')).toHaveText(['100,00 m²','0,00 m²','0,00 m²','0,00 m²']);
+ await expect(names('completed')).toHaveText(['Ana','Davi']);
+ await expect(values('completed')).toHaveText(['1','1']);
+ await expect(names('value')).toHaveText(['Ana','Davi']);
+ await expect(values('value')).toHaveText(['R$ 100,00','R$ 0,00']);
+ await expect(names('area')).toHaveText(['Ana','Davi']);
+ await expect(values('area')).toHaveText(['100,00 m²','0,00 m²']);
  await expect(page.locator('.works-management')).not.toContainText('Sem demanda');
  const modal=page.locator('.kpi-modal-card');
  const close=async()=>{await modal.getByRole('button',{name:'Fechar',exact:true}).first().click();};
- await ranking('completed').locator('[data-value="Bruno"]').click();
- await expect(modal).toContainText('Nenhum item encontrado');await close();
+ await expect(page.locator('.management-rank[data-value="Bruno"],.management-rank[data-value="Carla"]')).toHaveCount(0);
  await ranking('completed').locator('[data-value="Davi"]').click();
  await expect(modal.locator('.management-demand-link')).toHaveText(['rank-no-area']);await close();
  const analystFilter=page.locator('[data-operational-filter-group="analyst"]');
@@ -1252,7 +1251,7 @@ test('management rankings include every filtered analyst with zero production an
  await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 0 (0%)');
  await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Em atraso: 0 (0%)');
  await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('Sem data suficiente: 1 (100%)');
- for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Bruno']);
+ for(const metric of ['completed','value','area'])await expect(ranking(metric)).toHaveCount(0);
  await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
  await page.locator('.management-tabs [data-filter="completed"]').click();
  await expect(page.locator('[data-kpi="mgmt:active"]')).toContainText('No prazo: 0 (0%)');
@@ -1260,10 +1259,36 @@ test('management rankings include every filtered analyst with zero production an
  await expect(page.locator('[data-kpi="mgmt:active"]')).not.toContainText('Sem data suficiente');
  for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Ana','Davi']);
  await page.locator('.management-tabs [data-filter="canceled"]').click();
- for(const metric of ['completed','value','area'])await expect(names(metric)).toHaveText(['Carla']);
+ for(const metric of ['completed','value','area'])await expect(ranking(metric)).toHaveCount(0);
  await page.locator('.management-tabs [data-filter="planning"]').click();
  await expect(page.locator('.management-ranking')).toHaveCount(0);
- await expect(page.getByText('Nenhum analista com demanda neste filtro.',{exact:true})).toHaveCount(3);
+ await expect(page.getByText('Nenhum analista com produção concluída neste filtro.',{exact:true})).toHaveCount(3);
+ expect(b.errors).toEqual([]);
+});
+
+test('management ranking panels grow to show the last analyst without internal scrolling',async({page})=>{
+ const analystNames=Array.from({length:15},(_,index)=>`Analista ${String(index+1).padStart(2,'0')}`);
+ const demands=analystNames.map((name,index)=>({id:`height-${index}`,obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:name,valorGerado:(index+1)*100,sicIds:[]}));
+ const b=await backend(page,'Admin',false,{analystNames,demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ for(const {width,zoom} of [{width:1440,zoom:1},{width:390,zoom:1},{width:1440,zoom:1.5}]){
+  await page.setViewportSize({width,height:1000});
+  await page.evaluate(value=>{document.body.style.zoom=String(value);},zoom);
+  for(const metric of ['completed','value','area']){
+   const ranking=page.locator(`.management-ranking[data-metric="${metric}"]`);
+   await expect(ranking.locator('.management-rank')).toHaveCount(15);
+   const size=await ranking.evaluate(list=>{
+    const last=list.lastElementChild.getBoundingClientRect(),body=list.getBoundingClientRect(),panel=list.closest('.management-panel').getBoundingClientRect();
+    return {maxHeight:getComputedStyle(list).maxHeight,overflow:getComputedStyle(list).overflowY,hasScroll:list.scrollHeight>list.clientHeight+1,lastFits:last.bottom<=body.bottom+1&&last.bottom<=panel.bottom+1,height:list.clientHeight};
+   });
+   expect(size.maxHeight).toBe('none');
+   expect(size.overflow).toBe('visible');
+   expect(size.hasScroll).toBe(false);
+   expect(size.lastFits).toBe(true);
+   expect(size.height).toBeGreaterThan(360);
+  }
+ }
  expect(b.errors).toEqual([]);
 });
 
