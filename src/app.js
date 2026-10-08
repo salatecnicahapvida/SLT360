@@ -6594,7 +6594,7 @@ function managementMetricDemands(metric, demands = managementFilteredDemands()) 
   if (metric === "active") return summary.active;
   if (["onTime", "late", "noDate"].includes(metric)) return summary[metric].map((row) => row.demand);
   if (metric === "deadline") return demands.filter((demand) => demand.coluna !== "cancelado");
-  if (metric === "assessed") return [...summary.onTime, ...summary.late].map((row) => row.demand);
+  if (metric === "assessed") return demands.filter((demand) => ["onTime", "late"].includes(managementDeadlineReading(demand).status));
   if (metric === "responsible") return demands.filter((demand) => String(demand.analistaResponsavel || "").trim());
   return demands;
 }
