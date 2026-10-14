@@ -6619,7 +6619,8 @@ function managementDeadlineReading(demand) {
 function managementDemandSummary(demands = []) {
   const scoped = arrayOrFallback(demands);
   const completed = scoped.filter((demand) => demand.coluna === "concluido");
-  const active = scoped.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
+  const onHold = scoped.filter((demand) => ["pullPlanning", "pausado"].includes(demand.coluna));
+  const active = scoped.filter((demand) => !["concluido", "cancelado", "pullPlanning", "pausado"].includes(demand.coluna));
   const canceled = scoped.filter((demand) => demand.coluna === "cancelado");
   const deadlineRows = scoped.map((demand) => ({ demand, ...managementDeadlineReading(demand) }));
   const onTime = deadlineRows.filter((row) => row.status === "onTime");
@@ -6630,6 +6631,7 @@ function managementDemandSummary(demands = []) {
     scoped,
     completed,
     active,
+    onHold,
     canceled,
     onTime,
     late,
@@ -6669,6 +6671,7 @@ function managementMetricDemands(metric, demands = managementFilteredDemands()) 
   if (["completed", "value"].includes(metric)) return summary.completed;
   if (metric === "area") return managementProduction(demands).eligible;
   if (metric === "active") return summary.active;
+  if (metric === "onHold") return summary.onHold;
   if (metric === "canceled") return summary.canceled;
   if (["onTime", "late", "noDate"].includes(metric)) return summary[metric].map((row) => row.demand);
   if (metric === "deadline") return demands.filter((demand) => demand.coluna !== "cancelado");
@@ -6725,7 +6728,7 @@ function managementDetailData(metric = "all", group = "", value = "", column = "
     demands = demands.filter((demand) => normalizeSearchText(managementGroupLabel(demand, group)) === normalizeSearchText(value));
   }
   if (column) demands = demands.filter((demand) => demand.coluna === column);
-  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", canceled: "Demandas canceladas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
+  const titles = { all: "Demandas no filtro", completed: "Demandas concluídas", canceled: "Demandas canceladas", value: "Valor produzido", area: "Produção em m²", active: "Demandas em fluxo", onHold: "Demandas On Hold", onTime: "Demandas dentro do prazo", late: "Demandas atrasadas", noDate: "Demandas sem data suficiente", responsible: "Demandas por responsável", deadline: "Situação dos prazos", assessed: "Prazo por analista" };
   const production = managementProduction(demands);
   const areaNote = " A produção em m² soma a área equivalente (ou construída) das demandas concluídas, mesmo sem valor financeiro registrado. A área é somada por demanda, inclusive em novas entregas da mesma obra.";
   return {
@@ -6895,6 +6898,7 @@ function renderWorksManagement() {
         ${metric("Demandas no filtro", String(demands.length), "Carteira selecionada", "blue", "all")}
         ${metric("Concluídas", String(summary.completed.length), completedHint, "green", "completed")}
         ${metric("Em fluxo", String(summary.active.length), activeHint, "blue", "active")}
+        ${metric("On Hold", String(summary.onHold.length), `Pull Planning: ${summary.onHold.filter((demand) => demand.coluna === "pullPlanning").length}<br>Pausado: ${summary.onHold.filter((demand) => demand.coluna === "pausado").length}`, "orange", "onHold")}
         ${metric("Canceladas", String(summary.canceled.length), "", "red", "canceled")}
         ${metric("Valor produzido", money(production.value), missingHint(missingValue, "valor"), "orange", "value")}
         ${metric("Produção em m²", `${number(production.area, 2)} m²`, missingHint(missingArea, "área"), "blue", "area")}
@@ -6931,7 +6935,8 @@ function managementFilteredDemands() {
   if (managementStatusFilter === "completed") return demands.filter((demand) => demand.coluna === "concluido");
   if (managementStatusFilter === "planning") return demands.filter((demand) => demand.coluna === "pullPlanning");
   if (managementStatusFilter === "todo") return demands.filter((demand) => demand.coluna === "fazer");
-  if (managementStatusFilter === "progress") return demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna));
+  if (managementStatusFilter === "progress") return demands.filter((demand) => !["concluido", "cancelado", "pullPlanning", "pausado"].includes(demand.coluna));
+  if (managementStatusFilter === "onHold") return demands.filter((demand) => ["pullPlanning", "pausado"].includes(demand.coluna));
   if (managementStatusFilter === "canceled") return demands.filter((demand) => demand.coluna === "cancelado");
   return demands;
 }
@@ -6942,7 +6947,8 @@ function renderManagementStatusTabs() {
     { id: "completed", label: "Concluídas", count: demands.filter((demand) => demand.coluna === "concluido").length },
     { id: "planning", label: "Pull Planning", count: demands.filter((demand) => demand.coluna === "pullPlanning").length },
     { id: "todo", label: "A fazer", count: demands.filter((demand) => demand.coluna === "fazer").length },
-    { id: "progress", label: "Em fluxo", count: demands.filter((demand) => !["concluido", "cancelado"].includes(demand.coluna)).length },
+    { id: "progress", label: "Em fluxo", count: demands.filter((demand) => !["concluido", "cancelado", "pullPlanning", "pausado"].includes(demand.coluna)).length },
+    { id: "onHold", label: "On Hold", count: demands.filter((demand) => ["pullPlanning", "pausado"].includes(demand.coluna)).length },
     { id: "canceled", label: "Canceladas", count: demands.filter((demand) => demand.coluna === "cancelado").length },
     { id: "all", label: "Todas", count: demands.length },
   ];
