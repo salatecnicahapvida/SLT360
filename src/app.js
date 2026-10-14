@@ -6352,6 +6352,17 @@ function sprintIdsFromFormData(formData) {
 
 // Sugere todas as sprints cujo período se sobrepõe ao planejamento.
 // A sugestão não altera demandas já cadastradas e pode ser editada pelo usuário.
+function refreshSprintPicker(form) {
+  const picker = form?.querySelector(".sprint-picker");
+  if (!picker) return;
+  const checked = [...picker.querySelectorAll('input[name="sprintId"]:checked')];
+  const names = checked.map((input) => sprintById(input.value)?.nome || input.value);
+  const label = picker.querySelector(".sprint-picker-value");
+  const count = picker.querySelector(".sprint-picker-count");
+  if (label) label.textContent = names.join(", ") || "Selecionar sprints";
+  if (count) count.textContent = checked.length ? checked.length + " selecionada(s)" : "Nenhuma selecionada";
+}
+
 function suggestedDemandSprintIds(startValue, endValue) {
   const start = dateOnly(startValue);
   const end = dateOnly(endValue);
@@ -6373,6 +6384,7 @@ function suggestSprintsInDemandForm(form, startValue, endValue) {
   options.forEach((option) => {
     option.checked = suggested.includes(option.value);
   });
+  refreshSprintPicker(form);
   const hint = form.querySelector("[data-sprint-auto-hint]");
   if (hint) hint.textContent = "Sugestão pelas datas: " + demandSprintPeriodText(suggested) + ". Você pode ajustar a seleção.";
 }
@@ -16391,10 +16403,12 @@ function sprintOptions(selected) {
 }
 function sprintCheckboxes(selected) {
   const selectedIds = new Set(demandSprintIds({ sprintIds: Array.isArray(selected) ? selected : selected ? [selected] : [] }));
-  return `<div class="sprint-checkbox-list" role="group" aria-label="Sprints">${(state.sprints || []).map((sprint) => `
-    <label class="sprint-checkbox-option"><input type="checkbox" name="sprintId" value="${escapeAttribute(sprint.id)}" ${selectedIds.has(String(sprint.id)) ? "checked" : ""} />
-      <span>${escapeAttribute(sprint.nome)} <small>${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}</small></span>
-    </label>`).join("") || '<span class="muted">Nenhuma sprint cadastrada.</span>'}</div>`;
+  const label = [...selectedIds].map((id) => sprintById(id)?.nome || id).join(", ") || "Selecionar sprints";
+  return `<details class="sprint-picker"><summary class="sprint-picker-summary"><span class="sprint-picker-value">${escapeAttribute(label)}</span><span class="sprint-picker-count">${selectedIds.size ? selectedIds.size + " selecionada(s)" : "Nenhuma selecionada"}</span></summary>
+    <div class="sprint-checkbox-list" role="group" aria-label="Sprints">${(state.sprints || []).map((sprint) => `
+      <label class="sprint-checkbox-option"><input type="checkbox" name="sprintId" value="${escapeAttribute(sprint.id)}" ${selectedIds.has(String(sprint.id)) ? "checked" : ""} />
+        <span>${escapeAttribute(sprint.nome)} <small>${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}</small></span>
+      </label>`).join("") || '<span class="muted">Nenhuma sprint cadastrada.</span>'}</div></details>`;
 }
 
 function canAdvanceSicToDirectorApproval() {
@@ -16821,9 +16835,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
       ? draft.sprintIds
       : draft.sprintId
         ? [draft.sprintId]
-        : fallbackSprint?.id
-          ? [fallbackSprint.id]
-          : []
+        : suggestedDemandSprintIds(draft.dataPrevistaInicio || todayISO(), draft.dataPrevistaEntrega || fallbackSprint?.dataFim || addDaysISO(todayISO(), 15))
   );
   const sprint = sprintById(sprintIds.at(-1)) || null;
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
@@ -17315,6 +17327,7 @@ function openSicDemandModal(workId = "") {
   const selectedWork = isDemandWorkEligible(candidate) ? candidate : null;
   const suggestedAnalyst = registeredAnalystName(historicalAnalystForWork(selectedWork));
   const selectedSprint = currentSprint();
+  const suggestedSicSprintIds = suggestedDemandSprintIds(todayISO(), addDaysISO(todayISO(), 15));
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
@@ -17337,7 +17350,7 @@ function openSicDemandModal(workId = "") {
           </section>
           <label class="field modal-section">
             <span>Sprints</span>
-            ${sprintCheckboxes(selectedSprint?.id ? [selectedSprint.id] : [])}
+            ${sprintCheckboxes(suggestedSicSprintIds.length ? suggestedSicSprintIds : selectedSprint?.id ? [selectedSprint.id] : [])}
             <small class="muted" data-sprint-auto-hint>${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Ao ajustar a entrega prevista, serão sugeridas as sprints do período.</small>
           </label>
           <section class="modal-section sic-work-link-panel">
@@ -21539,6 +21552,10 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches('.sprint-picker input[name="sprintId"]')) {
+    refreshSprintPicker(event.target.closest("form"));
+    return;
+  }
   if (event.target.matches('#demandWizardStep1 [name="dataPrevistaInicio"], #demandWizardStep1 [name="dataPrevistaEntrega"]')) {
     const form = event.target.closest("#demandWizardStep1");
     suggestSprintsInDemandForm(form, form.querySelector('[name="dataPrevistaInicio"]')?.value, form.querySelector('[name="dataPrevistaEntrega"]')?.value);
