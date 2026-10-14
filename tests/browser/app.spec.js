@@ -876,13 +876,14 @@ test('existing operational card saves sprint together with the other edits',asyn
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const form=page.locator('#demandDetailForm');
- await form.locator('[name="sprintId"]').selectOption(['sprint-16','sprint-17']);
+ await form.locator('[name="sprintId"][value="sprint-16"]').check();
+ await form.locator('[name="sprintId"][value="sprint-17"]').check();
  await expect(form).toBeVisible();
  await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
  await expect(form.locator('[name="obraId"]')).toHaveValue('test-work');
  await expect(form.getByText('Contexto da unidade',{exact:true})).toHaveCount(0);
  await expect(form.getByText('Sprint atual',{exact:true})).toHaveCount(0);
- await expect(form.locator('[name="sprintId"]')).toHaveCount(1);
+ await expect(form.locator('.sprint-checkbox-list')).toHaveCount(1);
  await form.locator('[name="descricao"]').fill('Descrição atualizada no mesmo salvamento');
  await form.locator('[name="prioridade"]').selectOption('Alta');
  await form.locator('[name="dataPrevistaEntrega"]').fill('2026-09-27');
@@ -894,7 +895,8 @@ test('existing operational card saves sprint together with the other edits',asyn
  }).toBe(JSON.stringify({sprintIds:['sprint-16','sprint-17'],sprintId:'sprint-17'}));
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const reopened=page.locator('#demandDetailForm');
- await expect(reopened.locator('[name="sprintId"]')).toHaveValues(['sprint-16','sprint-17']);
+ await expect(reopened.locator('[name="sprintId"][value="sprint-16"]')).toBeChecked();
+ await expect(reopened.locator('[name="sprintId"][value="sprint-17"]')).toBeChecked();
  await expect(reopened.locator('[name="descricao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
  await expect(reopened.locator('[name="prioridade"]')).toHaveValue('Alta');
  await expect(reopened.locator('[name="dataPrevistaEntrega"]')).toHaveValue('2026-09-27');
@@ -923,7 +925,7 @@ test('SIC card exposes the same editable identification fields used at creation'
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-action="open-demand-detail"][data-id="test-demand"]').click();
  const form=page.locator('#demandDetailForm');
- await expect(form.locator('[name="sprintId"]')).toHaveCount(1);
+ await expect(form.locator('.sprint-checkbox-list')).toHaveCount(1);
  await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
  await expect(form.locator('[name="lecomNumber"]')).toHaveValue('LECOM-2026-001');
  await expect(form.locator('[name="obraNumber"]')).toHaveCount(0);
@@ -956,7 +958,7 @@ test('budget demand forms, including extra demand, use one work selector and kee
   await expect(step1.getByText('Classificação',{exact:true})).toHaveCount(0);
   await expect(step1.locator('[data-demand-unit-search]')).toHaveCount(0);
   await expect(step1.locator('[name="tipo"]')).toHaveAttribute('type','hidden');
-  await expect(step1.locator('[name="sprintId"]')).toHaveCount(1);
+  await expect(step1.locator('.sprint-checkbox-list')).toHaveCount(1);
   await expect(step1.locator('[name="obraBusca"]')).toHaveCount(1);
   await expect(step1.locator('#demandWorkOptions option[value="Obra de teste"]')).toHaveText('2026');
   await expect(step1.locator('#demandWorkOptions option[value="Obra histórica Norte - AM"]')).toHaveText('2025');
@@ -1719,7 +1721,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(step1.locator('[name="analistasSelecionados"]')).toHaveValue('[]');
 
  const descriptionBox=await step1.locator('[name="descricao"]').boundingBox();
- const sprintBox=await step1.locator('[name="sprintId"]').boundingBox();
+ const sprintBox=await step1.locator('.sprint-checkbox-list').boundingBox();
  const workBox=await step1.locator('[name="obraBusca"]').boundingBox();
  expect(descriptionBox.y).toBeLessThan(sprintBox.y);
  expect(sprintBox.y).toBeLessThan(workBox.y);
@@ -1756,7 +1758,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  const sicForm=page.locator('#demandForm');
- await expect(sicForm.locator('[name="sprintId"]')).toHaveValues(['sprint-017']);
+ await expect(sicForm.locator('[name="sprintId"][value="sprint-017"]')).toBeChecked();
  await expect(sicForm.locator('[name="obraNumber"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="obraNome"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="motivo"]')).toHaveValue('RevisaoProjeto');
@@ -1765,7 +1767,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(sicForm.getByText('Disciplinas afetadas',{exact:true})).toHaveCount(0);
  await expect(sicForm.getByText('Arquivo em anexo',{exact:true})).toHaveCount(0);
  await expect(sicForm.locator('[name="sicFiles"]')).toHaveCount(0);
- await expect(sicForm.locator('[name="sprintId"] option')).toHaveText(['Sem sprint','Sprint 16','Sprint 17']);
+ await expect(sicForm.locator('.sprint-checkbox-option > span')).toContainText(['Sprint 16','Sprint 17']);
  await sicForm.locator('[data-sic-work-search]').fill('Obra histórica Norte');
  await sicForm.locator('[data-sic-work-results]').getByRole('button',{name:/Obra histórica Norte/}).click();
  await expect(sicForm.locator('[data-sic-work-results]')).toContainText('Ano: 2025');
