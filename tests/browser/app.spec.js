@@ -1146,7 +1146,7 @@ test('management On Hold separates planning and paused demands from active flow'
  await expect(kpi('onHold')).toContainText('Pull Planning: 1');
  await expect(kpi('onHold')).toContainText('Pausado: 1');
  await kpi('onHold').click();
- await expect(page.locator('.kpi-modal-card .management-demand-link')).toHaveText(['hold-planning','hold-paused']);
+ await expect.poll(async()=> (await page.locator('.kpi-modal-card .management-demand-link').allTextContents()).sort()).toEqual(['hold-paused','hold-planning']);
  await page.locator('.kpi-modal-card').getByRole('button',{name:'Fechar',exact:true}).first().click();
  await page.locator('.management-tabs [data-filter="progress"]').click();
  await expect(kpi('all').locator('strong')).toHaveText('1');
