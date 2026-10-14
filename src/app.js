@@ -19416,6 +19416,8 @@ async function handleDemandCompletionSubmit(form) {
   }
   const demandSnapshot = clone(demand);
   const historySnapshot = clone(state.history || []);
+  const learningWork = workById(demand.obraId);
+  const learningWorkSnapshot = learningWork ? clone(learningWork) : null;
   demand.valorGerado = valorGerado;
   if (!editValue) {
     demand.dataEntregaReal = dataEntregaReal;
@@ -19424,6 +19426,7 @@ async function handleDemandCompletionSubmit(form) {
   const updated = editValue ? demand : await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
   if (updated === false) {
     if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    if (learningWork && learningWorkSnapshot) Object.assign(learningWork, learningWorkSnapshot);
     state.history = historySnapshot;
     return;
   }
@@ -19447,6 +19450,7 @@ async function handleDemandCompletionSubmit(form) {
     await saveStateAndWait();
   } catch (error) {
     if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+    if (learningWork && learningWorkSnapshot) Object.assign(learningWork, learningWorkSnapshot);
     state.history = historySnapshot;
     showFormError(error?.message || "A conclusão não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
     return;
