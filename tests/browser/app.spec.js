@@ -1075,7 +1075,7 @@ test('management view recalculates every indicator and analyst chart from the fi
 
  const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
- await expect(page.locator('.management-kpis .kpi-card > small')).toHaveText(['Demandas no filtro','Concluídas','Em fluxo','Canceladas','Valor produzido','Produção em m²']);
+ await expect(page.locator('.management-kpis .kpi-card > small')).toHaveText(['Demandas no filtro','Concluídas','Em fluxo','On Hold','Canceladas','Valor produzido','Produção em m²']);
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues no prazo: 1 (50%)');
  await expect(page.locator('[data-kpi="mgmt:completed"]')).toContainText('Entregues em atraso: 1 (50%)');
  await expect(kpiValue('Em fluxo')).toHaveText('2');
@@ -1088,7 +1088,7 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(kpiValue('Canceladas')).toHaveText('1');
  for(const key of ['canceled','value','area'])await expect(page.locator(`[data-kpi="mgmt:${key}"] > span`)).toBeEmpty();
  await expect(page.locator('.works-management')).not.toContainText('A iniciar');
- await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','Canceladas 1','Todas 5']);
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 2','On Hold 0','Canceladas 1','Todas 5']);
 
  const deliveryRanking=page.locator('.management-ranking[data-metric="completed"]');
  await expect(deliveryRanking.locator('.management-rank-reading > strong')).toHaveText(['Ana']);
@@ -1107,7 +1107,7 @@ test('management view recalculates every indicator and analyst chart from the fi
  await managementAnalystFilter.locator('[data-operational-filter="analyst"][value="Ana"]').check();
  await expect(kpiValue('Demandas no filtro')).toHaveText('3');
  await expect(kpiValue('Canceladas')).toHaveText('0');
- await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 1','Canceladas 0','Todas 3']);
+ await expect(page.locator('.management-tabs button')).toHaveText(['Concluídas 2','Pull Planning 0','A fazer 1','Em fluxo 1','On Hold 0','Canceladas 0','Todas 3']);
  await page.locator('.filter-panel [data-action="clear-operational-filters"]').click();
  await expect(kpiValue('Demandas no filtro')).toHaveText('5');
 
@@ -1123,6 +1123,33 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.getByText('Nenhum analista com produção concluída neste filtro.',{exact:true})).toHaveCount(3);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
+ expect(b.errors).toEqual([]);
+});
+
+test('management On Hold separates planning and paused demands from active flow',async({page})=>{
+ const demands=[
+  {id:'hold-planning',obraId:'test-work',tipo:'EmissaoInicial',coluna:'pullPlanning',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'hold-paused',obraId:'test-work',tipo:'SIC',coluna:'pausado',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'flow-doing',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',analistaResponsavel:'Bruno',dataPrevistaEntrega:'2099-01-01',sicIds:[]},
+  {id:'flow-done',obraId:'test-work',tipo:'EmissaoInicial',coluna:'concluido',analistaResponsavel:'Ana',sicIds:[]},
+  {id:'flow-canceled',obraId:'test-work',tipo:'SIC',coluna:'cancelado',analistaResponsavel:'Bruno',sicIds:[]},
+ ];
+ const b=await backend(page,'Admin',false,{analystNames:['Ana','Bruno'],demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
+ const kpi=key=>page.locator(`[data-kpi="mgmt:${key}"]`);
+ await expect(kpi('all').locator('strong')).toHaveText('5');
+ await expect(kpi('active').locator('strong')).toHaveText('1');
+ await expect(kpi('onHold').locator('strong')).toHaveText('2');
+ await expect(kpi('onHold')).toContainText('Pull Planning: 1');
+ await expect(kpi('onHold')).toContainText('Pausado: 1');
+ await kpi('onHold').click();
+ await expect(page.locator('.kpi-modal-card .management-demand-link')).toHaveText(['hold-planning','hold-paused']);
+ await page.locator('.kpi-modal-card').getByRole('button',{name:'Fechar',exact:true}).first().click();
+ await page.locator('.management-tabs [data-filter="progress"]').click();
+ await expect(kpi('all').locator('strong')).toHaveText('1');
+ await page.locator('.management-tabs [data-filter="onHold"]').click();
+ await expect(kpi('all').locator('strong')).toHaveText('2');
  expect(b.errors).toEqual([]);
 });
 
@@ -1149,8 +1176,8 @@ test('management drilldowns match chart groups, filters and production rankings 
  await expect(kpi('completed')).toContainText('Entregues em atraso: 1 (20%)');
  await expect(kpi('completed')).toContainText('Sem data suficiente: 1 (20%)');
  const assertPartition=async()=>{
-  const counts=await Promise.all(['all','completed','active','canceled'].map(async key=>Number(await kpi(key).locator('strong').textContent())));
-  expect(counts[1]+counts[2]+counts[3]).toBe(counts[0]);
+  const counts=await Promise.all(['all','completed','active','onHold','canceled'].map(async key=>Number(await kpi(key).locator('strong').textContent())));
+  expect(counts[1]+counts[2]+counts[3]+counts[4]).toBe(counts[0]);
  };
  await assertPartition();
  await expect(page.locator('.management-rank[data-metric="area"] .management-rank-reading > strong')).toHaveText(['Ana','Carla','Bruno']);
