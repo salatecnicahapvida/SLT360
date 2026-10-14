@@ -8190,6 +8190,15 @@ button.alert-item {
   resize: vertical;
 }
 
+.field select.sprint-multi-select {
+  min-height: 126px;
+  padding: 6px;
+}
+
+.field select.sprint-multi-select option {
+  padding: 7px 9px;
+}
+
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
