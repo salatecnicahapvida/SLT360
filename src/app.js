@@ -6350,6 +6350,33 @@ function sprintIdsFromFormData(formData) {
   return normalizeSelectedSprintIds(formData.getAll("sprintId"));
 }
 
+// Sugere todas as sprints cujo período se sobrepõe ao planejamento.
+// A sugestão não altera demandas já cadastradas e pode ser editada pelo usuário.
+function suggestedDemandSprintIds(startValue, endValue) {
+  const start = dateOnly(startValue);
+  const end = dateOnly(endValue);
+  if (!start && !end) return [];
+  const from = start && end ? (start < end ? start : end) : start || end;
+  const to = start && end ? (start > end ? start : end) : start || end;
+  return normalizeSelectedSprintIds((state.sprints || []).filter((sprint) => {
+    const begin = dateOnly(sprint.dataInicio);
+    const finish = dateOnly(sprint.dataFim);
+    return begin && finish && begin <= to && finish >= from;
+  }).map((sprint) => sprint.id));
+}
+
+function suggestSprintsInDemandForm(form, startValue, endValue) {
+  const select = form?.querySelector('select[name="sprintId"][multiple]');
+  if (!select) return;
+  const suggested = suggestedDemandSprintIds(startValue, endValue);
+  if (!suggested.length) return; // Nenhuma data correspondente: manter seleção manual.
+  select.querySelectorAll("option").forEach((option) => {
+    option.selected = suggested.includes(option.value);
+  });
+  const hint = form.querySelector("[data-sprint-auto-hint]");
+  if (hint) hint.textContent = "Sugestão pelas datas: " + demandSprintPeriodText(suggested) + ". Você pode ajustar a seleção.";
+}
+
 function sprintByReference(value, sprints) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -16875,8 +16902,19 @@ function renderDemandWizardStep1(draft) {
             <select name="sprintId" class="sprint-multi-select" multiple size="4">
               ${sprintOptions(demandSprintIds(draft))}
             </select>
-            <small class="muted">${escapeAttribute(demandSprintPeriodText(draft))}. Você pode vincular a demanda a mais de uma sprint.</small>
+            <small class="muted" data-sprint-auto-hint>${escapeAttribute(demandSprintPeriodText(draft))}. Você pode vincular a demanda a mais de uma sprint.</small>
           </label>
+          <div class="form-grid modal-section">
+            <label class="field">
+              <span>Início previsto</span>
+              <input type="date" name="dataPrevistaInicio" value="${escapeAttribute(draft.dataPrevistaInicio || todayISO())}" />
+            </label>
+            <label class="field">
+              <span>Entrega prevista</span>
+              <input type="date" name="dataPrevistaEntrega" value="${escapeAttribute(draft.dataPrevistaEntrega || sprint?.dataFim || "")}" />
+            </label>
+          </div>
+          <small class="muted">Ao alterar as datas, o sistema pré-seleciona as sprints correspondentes; você pode ajustar manualmente.</small>
 
           <section class="modal-section">
             <div class="section-title">
@@ -17129,7 +17167,8 @@ function handleDemandWizardStep1(form) {
     sprintId: sprint?.id || "",
     ...analystAssignment,
     descricao: formData.get("descricao"),
-    dataPrevistaEntrega: sprint?.dataFim || "",
+    dataPrevistaInicio: formData.get("dataPrevistaInicio") || todayISO(),
+    dataPrevistaEntrega: formData.get("dataPrevistaEntrega") || sprint?.dataFim || "",
   });
   openDemandWizardModal(demandWizardDraft.tipo, 2, demandWizardDraft);
 }
@@ -17292,7 +17331,7 @@ function openSicDemandModal(workId = "") {
             <select name="sprintId" class="sprint-multi-select" multiple size="4">
               ${sprintOptions(selectedSprint?.id ? [selectedSprint.id] : [])}
             </select>
-            <small class="muted">${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Você pode selecionar mais de uma sprint.</small>
+            <small class="muted" data-sprint-auto-hint>${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Ao ajustar a entrega prevista, serão sugeridas as sprints do período.</small>
           </label>
           <section class="modal-section sic-work-link-panel">
             <div class="section-title with-action">
@@ -21493,6 +21532,16 @@ function isTextEditingTarget(target) {
 }
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches('#demandWizardStep1 [name="dataPrevistaInicio"], #demandWizardStep1 [name="dataPrevistaEntrega"]')) {
+    const form = event.target.closest("#demandWizardStep1");
+    suggestSprintsInDemandForm(form, form.querySelector('[name="dataPrevistaInicio"]')?.value, form.querySelector('[name="dataPrevistaEntrega"]')?.value);
+    return;
+  }
+  if (event.target.matches('#demandForm.sic-demand-card [name="dataPrevistaEntrega"]')) {
+    const form = event.target.closest("#demandForm");
+    suggestSprintsInDemandForm(form, todayISO(), event.target.value);
+    return;
+  }
   if (event.target.matches('#sicDirectorDecisionForm [name="directorValueDecision"]')) {
     const form = event.target.closest("#sicDirectorDecisionForm");
     const revisedField = form?.querySelector(".sic-revised-value-field");
