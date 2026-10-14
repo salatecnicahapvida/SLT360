@@ -876,7 +876,7 @@ test('existing operational card saves sprint together with the other edits',asyn
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const form=page.locator('#demandDetailForm');
- await form.locator('[name="sprintId"]').selectOption('sprint-17');
+ await form.locator('[name="sprintId"]').selectOption(['sprint-16','sprint-17']);
  await expect(form).toBeVisible();
  await expect(form.locator('[name="obraBusca"]')).toHaveValue('Obra de teste');
  await expect(form.locator('[name="obraId"]')).toHaveValue('test-work');
@@ -888,9 +888,13 @@ test('existing operational card saves sprint together with the other edits',asyn
  await form.locator('[name="dataPrevistaEntrega"]').fill('2026-09-27');
  await form.getByRole('button',{name:'Salvar',exact:true}).click();
  await expect(form).toHaveCount(0);
+ await expect.poll(()=>{
+  const changes=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='test-budget-demand');
+  return JSON.stringify({sprintIds:changes.at(-1)?.document?.sprintIds,sprintId:changes.at(-1)?.document?.sprintId});
+ }).toBe(JSON.stringify({sprintIds:['sprint-16','sprint-17'],sprintId:'sprint-17'}));
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const reopened=page.locator('#demandDetailForm');
- await expect(reopened.locator('[name="sprintId"]')).toHaveValue('sprint-17');
+ await expect(reopened.locator('[name="sprintId"]')).toHaveValues(['sprint-16','sprint-17']);
  await expect(reopened.locator('[name="descricao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
  await expect(reopened.locator('[name="prioridade"]')).toHaveValue('Alta');
  await expect(reopened.locator('[name="dataPrevistaEntrega"]')).toHaveValue('2026-09-27');
@@ -1725,7 +1729,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
  await page.locator('.demand-type-option[data-type="SIC"]').click();
  const sicForm=page.locator('#demandForm');
- await expect(sicForm.locator('[name="sprintId"]')).toHaveValue('sprint-017');
+ await expect(sicForm.locator('[name="sprintId"]')).toHaveValues(['sprint-017']);
  await expect(sicForm.locator('[name="obraNumber"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="obraNome"]')).toHaveCount(0);
  await expect(sicForm.locator('[name="motivo"]')).toHaveValue('RevisaoProjeto');
