@@ -33,6 +33,10 @@ O build compila diretamente `src/boot-entry.js` e seus imports. Não há cópia 
 
 As permissões vêm do banco. Admin administra o sistema; Gestor e Analista recebem consulta/edição por módulo. **Projetos está descontinuado como módulo operacional e não concede acesso pela interface.** As tabelas e identificadores legados de Projetos permanecem apenas como estrutura técnica compartilhada; `projects_works`, por exemplo, continua sendo usado pelo Portfólio de Obras e herda a permissão de escrita de **Obras**.
 
+## Indicadores da Visão Gerencial
+
+O KPI **On Hold** considera exclusivamente Pull Planning e Pausado. Essas etapas não entram no KPI **Em fluxo**. A conciliação da carteira é: Concluídas + Em fluxo + On Hold + Canceladas = Demandas no filtro.
+
 ## Publicação e dados
 
 Push em `main` executa testes e publica `dist/` no GitHub Pages. Migrações de banco e Edge Functions são etapas separadas: consulte [implantação](docs/IMPLANTACAO.md).
