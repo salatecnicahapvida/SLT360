@@ -14106,3 +14106,10 @@ button.analyst-chip {
 .sprint-picker .sprint-checkbox-option{padding:7px;align-items:center}
 .sprint-picker .sprint-checkbox-option span{gap:3px 8px}
 .sprint-picker .sprint-checkbox-option small{white-space:nowrap}
+
+/* Sprint picker: pequeno e com area clicavel restrita aos controles */
+.sprint-picker{width:min(100%,300px);max-width:300px;align-self:flex-start}
+.sprint-picker-summary{padding:8px 10px;min-height:36px}
+.sprint-picker-value{max-width:125px}
+.sprint-picker .sprint-checkbox-list{max-height:175px}
+.sprint-picker .sprint-checkbox-option{width:100%;box-sizing:border-box}
