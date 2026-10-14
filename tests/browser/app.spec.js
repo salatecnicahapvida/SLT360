@@ -3048,6 +3048,31 @@ test('operational completion requires real delivery date, EV decision and genera
 });
 
 
+test('new work learns lead after first completed demand without changing older works',async({page})=>{
+ const newWork={...structuredClone(payload.state.works[0]),id:'new-lead-work',nome:'Obra recém cadastrada',leadLearningEnabled:true,leadLearnedName:'',leadLearnedDemandId:''};
+ const oldWork={...structuredClone(payload.state.works[0]),id:'older-work',nome:'Obra antiga'};
+ const first={...structuredClone(payload.state.demands[1]),id:'first-lead-demand',obraId:'new-lead-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
+ const b=await backend(page,'Admin',false,{workRecords:[newWork,oldWork],demandRecords:[first],analystNames:['Ana','Bruno']});
+ await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="first-lead-demand"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await detail.locator('[name="coluna"]').selectOption('concluido');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+ await page.getByRole('button',{name:/Não houve mudança no EV/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-10-14');
+ await completion.locator('[name="valorGerado"]').fill('0,00');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
+ await expect.poll(()=>b.requests.flatMap(req=>req.changes).find(change=>change.entity==='projects_works'&&change.key==='new-lead-work'&&change.document?.leadLearnedDemandId==='first-lead-demand')?.document?.leadLearnedName).toBe('Ana');
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="EmissaoInicial"]').click();
+ const form=page.locator('#demandWizardStep1');
+ await form.locator('[data-demand-work-search]').fill('Obra recém cadastrada');
+ await expect(form.locator('[name="analistasSelecionados"]')).toHaveValue(/Ana/);
+ expect(b.errors).toEqual([]);
+});
+
 test('saving the EV from the completion flow resumes the final required fields',async({page})=>{
  const demand={...structuredClone(payload.state.demands[1]),id:'finish-after-ev',obraId:'test-work',tipo:'EmissaoInicial',coluna:'fazendo',dataEntregaReal:'',analistaResponsavel:'Ana',sicIds:[],anexos:[]};
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
