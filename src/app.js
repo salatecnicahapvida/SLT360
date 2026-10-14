@@ -910,8 +910,11 @@ function normalizeDemandLabels(labels = []) {
 }
 
 function normalizeDemandRecord(item = {}, works = []) {
+  const sprintIds = demandSprintIds(item);
   const demand = normalizeDemandAnalysts({
     ...item,
+    sprintIds,
+    sprintId: sprintIds.at(-1) || "",
     coluna: item.coluna === "validacaoST" ? "validacaoObras" : item.coluna,
     etiquetas: normalizeDemandLabels(item.etiquetas),
     projetosEnvolvidos: arrayOrFallback(item.projetosEnvolvidos),
@@ -2403,7 +2406,7 @@ function exportWorksOperationalReport() {
       demand.unidadeCnpj || "",
       demand.unidadeCentro || "",
       demandAnalystNames(demand).join(" | ") || "A definir",
-      sprintById(demand.sprintId)?.nome || demand.sprintId || "",
+      demandSprintIds(demand).length ? demandSprintNames(demand, " | ") : "",
       demandStatusLabel(demand),
       demand.prioridade || "",
       demand.dataPrevistaInicio || "",
@@ -5453,13 +5456,12 @@ function strategicKpiDetailData(key) {
 function demandRows(demands) {
   return demands.map((demand) => {
     const work = workById(demand.obraId);
-    const sprint = sprintById(demand.sprintId);
     return [
       `<strong>${demand.id}</strong>`,
       work?.nome || "Obra não localizada",
       demandTypeLabel(demand.tipo),
       demand.analistaResponsavel || "—",
-      sprint?.nome || "—",
+      demandSprintIds(demand).length ? demandSprintNames(demand, " | ") : "—",
       demandStatusLabel(demand),
       isDemandLate(demand) ? "Atrasada" : dateText(demand.dataPrevistaEntrega),
     ];
@@ -5690,10 +5692,10 @@ function renderWorksOperational() {
 function filteredDemands() {
   return state.demands.filter((demand) => {
     const work = workById(demand.obraId);
-    const sprint = sprintById(demand.sprintId);
+    const sprintIds = demandSprintIds(demand);
     const sicInfo = demandSicInfo(demand) || {};
     const text = normalizeSearchText(
-      `${demand.id} ${work?.nome || ""} ${demandAnalystNames(demand).join(" ")} ${normalizeDemandLabels(demand.etiquetas).join(" ")} ${demand.tipo} ${demand.observacao || ""} ${sicInfo.lecomNumber || ""} ${sicInfo.numeroSic || ""} ${sicInfo.tituloSic || ""} ${sicInfo.obraNumber || ""} ${sicInfo.obraNome || ""}`
+      `${demand.id} ${work?.nome || ""} ${demandAnalystNames(demand).join(" ")} ${normalizeDemandLabels(demand.etiquetas).join(" ")} ${demandSprintNames(demand, " ")} ${demand.tipo} ${demand.observacao || ""} ${sicInfo.lecomNumber || ""} ${sicInfo.numeroSic || ""} ${sicInfo.tituloSic || ""} ${sicInfo.obraNumber || ""} ${sicInfo.obraNome || ""}`
     );
     const query = normalizeSearchText([searchTerm, operationalFilters.query].filter(Boolean).join(" ")).trim();
     if (query && !query.split(/\s+/).every((part) => text.includes(part))) return false;
@@ -5706,8 +5708,8 @@ function filteredDemands() {
     if (operationalFilters.dateFrom && (!plannedDelivery || plannedDelivery < operationalFilters.dateFrom)) return false;
     if (operationalFilters.dateTo && (!plannedDelivery || plannedDelivery > operationalFilters.dateTo)) return false;
     if (selectedSprints.length) {
-      const matchesUnassignedSprint = selectedSprints.includes(unassignedSprintFilterValue) && !sprint;
-      const matchesSprint = Boolean(sprint && selectedSprints.includes(sprint.id));
+      const matchesUnassignedSprint = selectedSprints.includes(unassignedSprintFilterValue) && !sprintIds.length;
+      const matchesSprint = sprintIds.some((sprintId) => selectedSprints.includes(sprintId));
       if (!matchesUnassignedSprint && !matchesSprint) return false;
     }
     if (selectedAnalysts.length) {
@@ -5921,7 +5923,6 @@ function renderOperationalList(filtered) {
 function renderOperationalListRow(demand) {
   const work = workById(demand.obraId);
   const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
-  const sprint = sprintById(demand.sprintId);
   const isSic = demandTypeKey(demand.tipo) === "SIC";
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandProducedValue(demand);
@@ -5940,7 +5941,7 @@ function renderOperationalListRow(demand) {
         }
       </td>
       <td>${demand.analistaResponsavel || "—"}</td>
-      <td>${sprint?.nome || "—"}</td>
+      <td>${demandSprintIds(demand).length ? escapeAttribute(demandSprintNames(demand, " | ")) : "—"}</td>
       <td><span class="status-dot" data-status="${demand.coluna}"></span>${demandStatusLabel(demand)}</td>
       <td><span class="tag">${demand.prioridade}</span></td>
       <td class="numeric">${demandHasRecordedValue(demand) ? money(value) : "—"}</td>
@@ -5954,9 +5955,13 @@ function renderDemandCard(demand) {
   const work = workById(demand.obraId);
   const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
   const description = String(demand.observacao || demand.sicMetadata?.descricaoSic || "").trim();
-  const sprint = sprintById(demand.sprintId);
-  const sprintName = sprint?.nome || demand.sprintId || "Sem sprint";
-  const sprintFlag = sprintFlagLabel(sprintName);
+  const sprintIds = demandSprintIds(demand);
+  const sprintFlags = sprintIds.length
+    ? sprintIds.map((sprintId) => {
+        const sprintName = sprintById(sprintId)?.nome || sprintId;
+        return `<span class="sprint-flag" title="${escapeAttribute(sprintName)}">${escapeAttribute(sprintFlagLabel(sprintName))}</span>`;
+      }).join("")
+    : '<span class="sprint-flag" title="Sem sprint">S/N</span>';
   const timing = demandTimingInfo(demand);
   const cardDateLabels = demandCardDateLabels(demand, timing.dateLabel);
   const stageTime = demandStageTimeInfo(demand);
@@ -5977,7 +5982,7 @@ function renderDemandCard(demand) {
           <span class="demand-type-badge" data-type="${escapeAttribute(demandTypeKey(demand.tipo))}" title="${escapeAttribute(demandTypeLabel(demand.tipo))}">${escapeAttribute(demandTypeCardLabel(demand.tipo))}</span>
         </div>
         <div class="demand-card-actions">
-          <span class="sprint-flag" title="${escapeAttribute(sprintName)}">${sprintFlag}</span>
+          ${sprintFlags}
           <span class="priority-pill">${demand.prioridade || "Média"}</span>
           <span class="demand-drag-handle" data-demand-drag-handle title="Arrastar card" aria-hidden="true">⠿</span>
         </div>
@@ -6298,6 +6303,51 @@ function currentSprint() {
 
 function sprintById(id) {
   return (state.sprints || []).find((sprint) => sprint.id === id);
+}
+
+function demandSprintIds(demand = {}) {
+  const stored = Array.isArray(demand?.sprintIds) ? demand.sprintIds : [];
+  const legacy = String(demand?.sprintId || "").trim();
+  return [...new Set([...stored, legacy].map((id) => String(id || "").trim()).filter(Boolean))];
+}
+
+function normalizeSelectedSprintIds(values = []) {
+  const selected = [...new Set((Array.isArray(values) ? values : [values]).map((id) => String(id || "").trim()).filter(Boolean))];
+  const position = new Map((state.sprints || []).map((sprint, index) => [String(sprint.id), { sprint, index }]));
+  return selected.sort((leftId, rightId) => {
+    const left = position.get(leftId);
+    const right = position.get(rightId);
+    if (!left && !right) return selected.indexOf(leftId) - selected.indexOf(rightId);
+    if (!left) return 1;
+    if (!right) return -1;
+    const leftDate = dateOnly(left.sprint.dataInicio) || dateOnly(left.sprint.dataFim) || "9999-12-31";
+    const rightDate = dateOnly(right.sprint.dataInicio) || dateOnly(right.sprint.dataFim) || "9999-12-31";
+    return leftDate.localeCompare(rightDate) || left.index - right.index;
+  });
+}
+
+function demandPrimarySprint(demand) {
+  const ids = demandSprintIds(demand);
+  return ids.length ? sprintById(ids.at(-1)) : null;
+}
+
+function demandSprintNames(demand, separator = " · ") {
+  const ids = demandSprintIds(demand);
+  if (!ids.length) return "Sem sprint";
+  return ids.map((id) => sprintById(id)?.nome || id).join(separator);
+}
+
+function demandSprintPeriodText(value) {
+  const ids = Array.isArray(value) ? value : demandSprintIds(value);
+  const periods = ids.map((id) => sprintById(id)).filter(Boolean);
+  if (!periods.length) return "Sem período vinculado";
+  return periods
+    .map((sprint) => `${sprint.nome}: ${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}`)
+    .join(" · ");
+}
+
+function sprintIdsFromFormData(formData) {
+  return normalizeSelectedSprintIds(formData.getAll("sprintId"));
 }
 
 function sprintByReference(value, sprints) {
@@ -15893,7 +15943,6 @@ function openDemandDetailModal(id) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand) return;
   const work = workById(demand.obraId);
-  const sprint = sprintById(demand.sprintId);
   const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
   const stageTime = demandStageTimeInfo(demand);
   const directorWaiver = sicDirectorWaiverData(demand);
@@ -15908,7 +15957,7 @@ function openDemandDetailModal(id) {
           <div>
             <span class="eyebrow">${demand.id} — ${demandTypeLabel(demand.tipo)}</span>
             <h2 id="demandDetailTitle">${work?.nome || "Obra não localizada"}</h2>
-            <p class="muted">${work?.chaveUnica || work?.codigoOriginal || "sem código"} · ${sprint?.nome || "Sem sprint"}</p>
+            <p class="muted">${work?.chaveUnica || work?.codigoOriginal || "sem código"} · ${escapeAttribute(demandSprintNames(demand, " → "))}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
@@ -15943,11 +15992,11 @@ function openDemandDetailModal(id) {
                 </select>
               </label>
               <label class="field">
-                <span>Sprint</span>
-                <select name="sprintId">
-                  ${sprintOptions(demand.sprintId)}
+                <span>Sprints</span>
+                <select name="sprintId" class="sprint-multi-select" multiple size="4">
+                  ${sprintOptions(demandSprintIds(demand))}
                 </select>
-                <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+                <small class="muted">${escapeAttribute(demandSprintPeriodText(demand))}. Selecione uma ou mais; a sprint mais recente será a referência de conclusão e produção.</small>
               </label>
             </div>
           </section>
@@ -16304,8 +16353,9 @@ function demandTypeOptions(selected, includeSic = true) {
 }
 
 function sprintOptions(selected) {
-  return [`<option value="">Sem sprint</option>`]
-    .concat((state.sprints || []).map((sprint) => `<option value="${sprint.id}" ${sprint.id === selected ? "selected" : ""}>${sprint.nome}</option>`))
+  const selectedIds = new Set((Array.isArray(selected) ? selected : selected ? [selected] : []).map((id) => String(id)));
+  return [`<option value="" ${selectedIds.size ? "" : "selected"}>Sem sprint</option>`]
+    .concat((state.sprints || []).map((sprint) => `<option value="${sprint.id}" ${selectedIds.has(String(sprint.id)) ? "selected" : ""}>${sprint.nome}</option>`))
     .join("");
 }
 
@@ -16727,7 +16777,17 @@ function demandWizardDefaultDraft(type, draft = {}) {
     ? workById(draft.obraId) || demandWorkCatalog().find((item) => String(item.id) === String(draft.obraId))
     : null;
   const work = isDemandWorkEligible(candidate) ? candidate : null;
-  const sprint = sprintById(draft.sprintId) || currentSprint();
+  const fallbackSprint = currentSprint();
+  const sprintIds = normalizeSelectedSprintIds(
+    Array.isArray(draft.sprintIds)
+      ? draft.sprintIds
+      : draft.sprintId
+        ? [draft.sprintId]
+        : fallbackSprint?.id
+          ? [fallbackSprint.id]
+          : []
+  );
+  const sprint = sprintById(sprintIds.at(-1)) || null;
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   const analystAssignment = normalizeDemandAnalysts(draft);
   const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : registeredAnalystName(historicalAnalystForWork(work));
@@ -16744,6 +16804,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
     unidadeMunicipio: draft.unidadeMunicipio || "",
     unidadeCentro: draft.unidadeCentro || "",
     unidadeSource: draft.unidadeSource || "",
+    sprintIds,
     sprintId: sprint?.id || "",
     analistaResponsavel: analystAssignment.analistaResponsavel || suggestedAnalyst,
     analistasComplementares: analystAssignment.analistasComplementares,
@@ -16780,7 +16841,7 @@ function demandUnitContextFields(unit, mode = "existente", fallback = {}) {
 }
 
 function renderDemandWizardStep1(draft) {
-  const sprint = sprintById(draft.sprintId) || currentSprint();
+  const sprint = demandPrimarySprint(draft);
   const title = demandTypeLabel(draft.tipo);
   return `
     <div class="modal-backdrop" data-action="close-modal">
@@ -16810,11 +16871,11 @@ function renderDemandWizardStep1(draft) {
 
           <input type="hidden" name="tipo" value="${escapeAttribute(draft.tipo)}" />
           <label class="field modal-section">
-            <span>Sprint</span>
-            <select name="sprintId">
-              ${sprintOptions(sprint?.id || "")}
+            <span>Sprints</span>
+            <select name="sprintId" class="sprint-multi-select" multiple size="4">
+              ${sprintOptions(demandSprintIds(draft))}
             </select>
-            <small class="muted">${sprint ? `${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}` : "Sem período vinculado"}</small>
+            <small class="muted">${escapeAttribute(demandSprintPeriodText(draft))}. Você pode vincular a demanda a mais de uma sprint.</small>
           </label>
 
           <section class="modal-section">
@@ -16944,7 +17005,7 @@ function demandWizardHiddenFields(draft) {
     <input type="hidden" name="unidadeCentro" value="${escapeAttribute(draft.unidadeCentro)}" />
     <input type="hidden" name="unidadeSource" value="${escapeAttribute(draft.unidadeSource)}" />
     <input type="hidden" name="tipo" value="${escapeAttribute(draft.tipo)}" />
-    <input type="hidden" name="sprintId" value="${escapeAttribute(draft.sprintId)}" />
+    ${demandSprintIds(draft).map((sprintId) => `<input type="hidden" name="sprintId" value="${escapeAttribute(sprintId)}" />`).join("")}
     <input type="hidden" name="analistaResponsavel" value="${escapeAttribute(draft.analistaResponsavel)}" />
     <input type="hidden" name="analistasSelecionados" value="${escapeAttribute(JSON.stringify(demandAnalystNames(draft)))}" />
     <input type="hidden" name="descricao" value="${escapeAttribute(draft.descricao)}" />
@@ -17054,7 +17115,8 @@ function handleDemandWizardStep1(form) {
     showFormError("Selecione uma unidade existente pelo assistente de busca antes de avançar.", form);
     return;
   }
-  const sprint = sprintById(formData.get("sprintId")) || currentSprint();
+  const sprintIds = sprintIdsFromFormData(formData);
+  const sprint = sprintIds.length ? sprintById(sprintIds.at(-1)) : null;
   const unitContext = demandUnitContextFields(unit, unidadeModo);
   const analystAssignment = selectedAnalysts.analistaResponsavel
     ? selectedAnalysts
@@ -17063,6 +17125,7 @@ function handleDemandWizardStep1(form) {
     obraId: work.id,
     obraBusca: work.nome,
     ...unitContext,
+    sprintIds,
     sprintId: sprint?.id || "",
     ...analystAssignment,
     descricao: formData.get("descricao"),
@@ -17225,11 +17288,11 @@ function openSicDemandModal(workId = "") {
             ${analystChipOptions({ analistaResponsavel: suggestedAnalyst })}
           </section>
           <label class="field modal-section">
-            <span>Sprint</span>
-            <select name="sprintId">
-              ${sprintOptions(selectedSprint?.id || "")}
+            <span>Sprints</span>
+            <select name="sprintId" class="sprint-multi-select" multiple size="4">
+              ${sprintOptions(selectedSprint?.id ? [selectedSprint.id] : [])}
             </select>
-            <small class="muted">${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}</small>
+            <small class="muted">${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Você pode selecionar mais de uma sprint.</small>
           </label>
           <section class="modal-section sic-work-link-panel">
             <div class="section-title with-action">
@@ -18420,13 +18483,15 @@ async function handleDemandSubmit(form) {
   }
   obraId = linkedWork.id;
 
+  const sprintIds = sprintIdsFromFormData(formData);
   const demandCreatedAt = new Date().toISOString();
   state.demands.unshift({
     id: demandId,
     obraId,
     ...unitContext,
     tipo,
-    sprintId: formData.get("sprintId") || currentSprint()?.id || "",
+    sprintIds,
+    sprintId: sprintIds.at(-1) || "",
     ...analystAssignment,
     prioridade: formData.get("prioridade"),
     etiquetas: normalizeDemandLabels(formData.get("etiquetas")),
@@ -18675,7 +18740,8 @@ async function handleDemandDetailSubmit(form) {
     showFormError("Uma SIC já postada no EV não pode ser transferida para outra obra. Edite os demais campos ou crie uma nova SIC na obra correta.", form);
     return;
   }
-  const previousSprint = demand.sprintId || "";
+  const previousSprintIds = demandSprintIds(demand);
+  const previousSprintLabel = demandSprintNames(demand, " → ");
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
@@ -18691,7 +18757,8 @@ async function handleDemandDetailSubmit(form) {
     demand.unidadeSource = "Portfólio de obras";
   }
   demand.tipo = formData.get("tipo") || demand.tipo;
-  demand.sprintId = formData.get("sprintId") || "";
+  demand.sprintIds = sprintIdsFromFormData(formData);
+  demand.sprintId = demand.sprintIds.at(-1) || "";
   demand.prioridade = formData.get("prioridade") || demand.prioridade;
   demand.etiquetas = normalizeDemandLabels(formData.get("etiquetas"));
   if (isSicDemand) {
@@ -18803,13 +18870,13 @@ async function handleDemandDetailSubmit(form) {
       valorNovo: "Responsáveis, datas ou locais dos arquivos atualizados",
     });
   }
-  if (previousSprint !== demand.sprintId) {
+  if (JSON.stringify(previousSprintIds) !== JSON.stringify(demandSprintIds(demand))) {
     addHistory({
       entidade: "demanda",
       entidadeId: demand.id,
-      campo: "sprint",
-      valorAnterior: previousSprint || "Sem sprint",
-      valorNovo: sprintById(demand.sprintId)?.nome || "Sem sprint",
+      campo: "sprints",
+      valorAnterior: previousSprintLabel,
+      valorNovo: demandSprintNames(demand, " → "),
     });
   }
   if (previousPriority !== demand.prioridade) {
