@@ -16036,11 +16036,11 @@ function openDemandDetailModal(id) {
                   ${workDemandTypeDefinitions.map((type) => `<option value="${type.id}" ${type.id === demandTypeKey(demand.tipo) ? "selected" : ""}>${type.label}</option>`).join("")}
                 </select>
               </label>
-              <label class="field">
+              <div class="field">
                 <span>Sprints</span>
                 ${sprintCheckboxes(demandSprintIds(demand))}
                 <small class="muted">${escapeAttribute(demandSprintPeriodText(demand))}. Selecione uma ou mais; a sprint mais recente será a referência de conclusão e produção.</small>
-              </label>
+              </div>
             </div>
           </section>
 
@@ -16920,11 +16920,11 @@ function renderDemandWizardStep1(draft) {
           </label>
 
           <input type="hidden" name="tipo" value="${escapeAttribute(draft.tipo)}" />
-          <label class="field modal-section">
+          <div class="field modal-section">
             <span>Sprints</span>
             ${sprintCheckboxes(demandSprintIds(draft))}
             <small class="muted" data-sprint-auto-hint>${escapeAttribute(demandSprintPeriodText(draft))}. Você pode vincular a demanda a mais de uma sprint.</small>
-          </label>
+          </div>
           <div class="form-grid modal-section">
             <label class="field">
               <span>Início previsto</span>
@@ -17348,11 +17348,11 @@ function openSicDemandModal(workId = "") {
             </div>
             ${analystChipOptions({ analistaResponsavel: suggestedAnalyst })}
           </section>
-          <label class="field modal-section">
+          <div class="field modal-section">
             <span>Sprints</span>
             ${sprintCheckboxes(suggestedSicSprintIds.length ? suggestedSicSprintIds : selectedSprint?.id ? [selectedSprint.id] : [])}
             <small class="muted" data-sprint-auto-hint>${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Ao ajustar a entrega prevista, serão sugeridas as sprints do período.</small>
-          </label>
+          </div>
           <section class="modal-section sic-work-link-panel">
             <div class="section-title with-action">
               <span>Projeto / obra vinculada</span>
@@ -20588,6 +20588,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  document.querySelectorAll("details.sprint-picker[open]").forEach((details) => {
+    if (!details.contains(event.target)) details.removeAttribute("open");
+  });
   document.querySelectorAll("details.operational-multiselect[open]").forEach((details) => {
     if (!details.contains(event.target)) details.removeAttribute("open");
   });
