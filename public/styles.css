@@ -14085,3 +14085,11 @@ button.analyst-chip {
     grid-template-columns: 1fr;
   }
 }
+
+/* Seleção de múltiplas sprints com caixas de marcação */
+.sprint-checkbox-list{display:grid;gap:8px;max-height:240px;overflow:auto;padding:10px;border:1px solid var(--border, #cbd5e1);border-radius:10px;background:var(--surface, #fff)}
+.sprint-checkbox-option{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:7px 9px;border-radius:8px}
+.sprint-checkbox-option:hover{background:rgba(91,126,173,.09)}
+.sprint-checkbox-option input[type="checkbox"]{width:17px;height:17px;margin-top:2px;flex:none;accent-color:var(--primary,#2563eb)}
+.sprint-checkbox-option span{display:flex;flex-wrap:wrap;gap:5px 12px;align-items:baseline;font-weight:600}
+.sprint-checkbox-option small{font-size:.79rem;font-weight:400;color:var(--muted,#64748b)}
