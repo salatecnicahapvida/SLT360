@@ -16840,7 +16840,7 @@ function demandWizardDefaultDraft(type, draft = {}) {
   const sprint = sprintById(sprintIds.at(-1)) || null;
   const unitMode = draft.unidadeModo === "existente" ? "existente" : "nova";
   const analystAssignment = normalizeDemandAnalysts(draft);
-  const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : registeredAnalystName(historicalAnalystForWork(work));
+  const suggestedAnalyst = analystAssignment.analistaResponsavel ? "" : demandLeadForWork(work);
   return {
     tipo: demandTypeKey(type) || "EmissaoInicial",
     obraId: work?.id || "",
@@ -17126,6 +17126,24 @@ function historicalRecordForWork(work) {
     || null;
 }
 
+function demandLeadForWork(work) {
+  if (!work) return "";
+  // Obras antigas continuam usando exclusivamente a regra histórica.
+  if (work.leadLearningEnabled === true) return registeredAnalystName(work.leadLearnedName);
+  return registeredAnalystName(historicalAnalystForWork(work));
+}
+
+function learnWorkLeadFromCompletion(demand) {
+  const work = workById(demand?.obraId);
+  if (!work || work.leadLearningEnabled !== true || work.leadLearnedDemandId || demand?.coluna !== "concluido") return false;
+  const leader = registeredAnalystName(demand.analistaResponsavel);
+  if (!leader) return false;
+  work.leadLearnedName = leader;
+  work.leadLearnedDemandId = demand.id;
+  addHistory({ entidade: "obra", entidadeId: work.id, campo: "analistaLiderAprendido", valorAnterior: "Não informado", valorNovo: leader });
+  return true;
+}
+
 function historicalAnalystForWork(work) {
   const analyst = String(historicalRecordForWork(work)?.technician || "").trim();
   return analyst && !["nao informado", "sem tecnico", "-", "—"].includes(normalizeSearchText(analyst)) ? analyst : "";
@@ -17134,7 +17152,7 @@ function historicalAnalystForWork(work) {
 function suggestHistoricalAnalystInForm(form, work) {
   const selector = form?.querySelector("[data-demand-analyst-selector]");
   if (!selector || analystAssignmentFromForm(form).analistaResponsavel) return;
-  const analyst = registeredAnalystName(historicalAnalystForWork(work));
+  const analyst = demandLeadForWork(work);
   if (!analyst) return;
   selector.outerHTML = globalThis.SLT_CLOUD.cleanHTML(analystChipOptions({ analistaResponsavel: analyst }));
 }
@@ -17325,7 +17343,7 @@ function updateSicWorkSearch(input) {
 function openSicDemandModal(workId = "") {
   const candidate = workById(workId);
   const selectedWork = isDemandWorkEligible(candidate) ? candidate : null;
-  const suggestedAnalyst = registeredAnalystName(historicalAnalystForWork(selectedWork));
+  const suggestedAnalyst = demandLeadForWork(selectedWork);
   const selectedSprint = currentSprint();
   const suggestedSicSprintIds = suggestedDemandSprintIds(todayISO(), addDaysISO(todayISO(), 15));
   const selectedLabel = selectedWork ? workOptionLabel(selectedWork) : "";
@@ -18376,6 +18394,9 @@ async function handleWorkSubmit(form) {
   const work = {
     id,
     ...workFields,
+    leadLearningEnabled: !sourceHistoricalRecordId,
+    leadLearnedName: "",
+    leadLearnedDemandId: "",
     chaveUnica: workFields.chaveUnica || generatedKey,
     status: "Planejada",
     ev: {
@@ -20313,11 +20334,15 @@ async function updateDemandColumn(id, nextColumnId, {
       valorNovo: normalizedMovementReason,
     });
   }
+  const learnedWork = nextColumnId === "concluido" ? workById(demand.obraId) : null;
+  const learnedWorkSnapshot = learnedWork ? clone(learnedWork) : null;
+  if (nextColumnId === "concluido") learnWorkLeadFromCompletion(demand);
   if (persist) {
     try {
       await saveStateAndWait();
     } catch (error) {
       if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+      if (learnedWork && learnedWorkSnapshot) Object.assign(learnedWork, learnedWorkSnapshot);
       state.history = historySnapshot;
       showToast(error?.message || "A movimentação do card não foi confirmada no banco. Recarregue os dados.");
       render();
