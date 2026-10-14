@@ -876,6 +876,8 @@ test('existing operational card saves sprint together with the other edits',asyn
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const form=page.locator('#demandDetailForm');
+ await expect(form.locator('.sprint-picker')).not.toHaveAttribute('open','');
+ await form.locator('.sprint-picker summary').click();
  await form.locator('[name="sprintId"][value="sprint-16"]').check();
  await form.locator('[name="sprintId"][value="sprint-17"]').check();
  await expect(form).toBeVisible();
@@ -895,6 +897,7 @@ test('existing operational card saves sprint together with the other edits',asyn
  }).toBe(JSON.stringify({sprintIds:['sprint-16','sprint-17'],sprintId:'sprint-17'}));
  await page.locator('[data-action="open-demand-detail"][data-id="test-budget-demand"]').click();
  const reopened=page.locator('#demandDetailForm');
+ await reopened.locator('.sprint-picker summary').click();
  await expect(reopened.locator('[name="sprintId"][value="sprint-16"]')).toBeChecked();
  await expect(reopened.locator('[name="sprintId"][value="sprint-17"]')).toBeChecked();
  await expect(reopened.locator('[name="descricao"]')).toHaveValue('Descrição atualizada no mesmo salvamento');
@@ -1125,6 +1128,33 @@ test('management view recalculates every indicator and analyst chart from the fi
  await expect(page.getByText('Nenhum analista com produção concluída neste filtro.',{exact:true})).toHaveCount(3);
  const managementGridTops=await page.locator('.works-management .management-grid').evaluateAll(grids=>grids.map(grid=>{const panels=[...grid.children].filter(child=>child.classList.contains('panel'));return panels.map(panel=>Math.round(panel.getBoundingClientRect().top));}).filter(row=>row.length>1));
  for(const row of managementGridTops)expect(new Set(row).size).toBe(1);
+ expect(b.errors).toEqual([]);
+});
+
+test('sprints auto-select by date range and remain editable in compact picker',async({page})=>{
+ const sprints=[
+  {id:'date-a',nome:'Sprint A',dataInicio:'2026-10-01',dataFim:'2026-10-14',status:'Ativa'},
+  {id:'date-b',nome:'Sprint B',dataInicio:'2026-10-15',dataFim:'2026-10-28',status:'Planejada'},
+  {id:'date-c',nome:'Sprint C',dataInicio:'2026-10-29',dataFim:'2026-11-11',status:'Planejada'},
+ ];
+ const b=await backend(page,'Admin',false,{sprintRecords:sprints});
+ await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="EmissaoInicial"]').click();
+ const form=page.locator('#demandWizardStep1');
+ await expect(form.locator('.sprint-picker')).not.toHaveAttribute('open','');
+ await form.locator('[name="dataPrevistaInicio"]').fill('2026-10-10');
+ await form.locator('[name="dataPrevistaEntrega"]').fill('2026-10-20');
+ await expect(form.locator('.sprint-picker-value')).toContainText('Sprint A');
+ await expect(form.locator('.sprint-picker-value')).toContainText('Sprint B');
+ await form.locator('.sprint-picker summary').click();
+ await expect(form.locator('[name="sprintId"][value="date-a"]')).toBeChecked();
+ await expect(form.locator('[name="sprintId"][value="date-b"]')).toBeChecked();
+ await expect(form.locator('[name="sprintId"][value="date-c"]')).not.toBeChecked();
+ await form.locator('[name="sprintId"][value="date-a"]').uncheck();
+ await expect(form.locator('.sprint-picker-value')).not.toContainText('Sprint A');
+ await expect(form.locator('.sprint-picker-value')).toContainText('Sprint B');
  expect(b.errors).toEqual([]);
 });
 
@@ -1721,7 +1751,7 @@ test('new demands suggest the historical analyst, persist labels and give SICs a
  await expect(step1.locator('[name="analistasSelecionados"]')).toHaveValue('[]');
 
  const descriptionBox=await step1.locator('[name="descricao"]').boundingBox();
- const sprintBox=await step1.locator('.sprint-checkbox-list').boundingBox();
+ const sprintBox=await step1.locator('.sprint-picker').boundingBox();
  const workBox=await step1.locator('[name="obraBusca"]').boundingBox();
  expect(descriptionBox.y).toBeLessThan(sprintBox.y);
  expect(sprintBox.y).toBeLessThan(workBox.y);
