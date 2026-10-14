@@ -14093,3 +14093,16 @@ button.analyst-chip {
 .sprint-checkbox-option input[type="checkbox"]{width:17px;height:17px;margin-top:2px;flex:none;accent-color:var(--primary,#2563eb)}
 .sprint-checkbox-option span{display:flex;flex-wrap:wrap;gap:5px 12px;align-items:baseline;font-weight:600}
 .sprint-checkbox-option small{font-size:.79rem;font-weight:400;color:var(--muted,#64748b)}
+
+/* Seletor de sprints: recolhido por padrão, compacto e sem ocupar o modal todo */
+.sprint-picker{width:min(100%,440px);max-width:100%;border:1px solid var(--border,#cbd5e1);border-radius:10px;background:var(--surface,#fff);overflow:hidden}
+.sprint-picker-summary{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;list-style:none;font-weight:600;min-height:42px}
+.sprint-picker-summary::-webkit-details-marker{display:none}
+.sprint-picker-summary:after{content:"⌄";font-size:19px;line-height:1;color:var(--muted,#64748b)}
+.sprint-picker[open] .sprint-picker-summary:after{content:"⌃"}
+.sprint-picker-value{min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sprint-picker-count{margin-left:auto;font-size:.75rem;font-weight:500;color:var(--muted,#64748b);white-space:nowrap}
+.sprint-picker .sprint-checkbox-list{border:0;border-top:1px solid var(--border,#cbd5e1);border-radius:0;padding:5px 8px;max-height:190px;gap:1px}
+.sprint-picker .sprint-checkbox-option{padding:7px;align-items:center}
+.sprint-picker .sprint-checkbox-option span{gap:3px 8px}
+.sprint-picker .sprint-checkbox-option small{white-space:nowrap}
