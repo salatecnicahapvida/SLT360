@@ -1152,6 +1152,15 @@ test('sprints auto-select by date range and remain editable in compact picker',a
  await expect(form.locator('[name="sprintId"][value="date-a"]')).toBeChecked();
  await expect(form.locator('[name="sprintId"][value="date-b"]')).toBeChecked();
  await expect(form.locator('[name="sprintId"][value="date-c"]')).not.toBeChecked();
+ // Clicar no espaco em branco do campo jamais pode marcar uma sprint.
+ await form.locator('.sprint-picker').evaluate((picker) => {
+   const event = new MouseEvent('click',{bubbles:true});
+   picker.dispatchEvent(event);
+ });
+ await expect(form.locator('[name="sprintId"][value="date-c"]')).not.toBeChecked();
+ await form.locator('[name="descricao"]').click();
+ await expect(form.locator('.sprint-picker')).not.toHaveAttribute('open','');
+ await form.locator('.sprint-picker summary').click();
  await form.locator('[name="sprintId"][value="date-a"]').uncheck();
  await expect(form.locator('.sprint-picker-value')).not.toContainText('Sprint A');
  await expect(form.locator('.sprint-picker-value')).toContainText('Sprint B');
