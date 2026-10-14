@@ -6366,12 +6366,12 @@ function suggestedDemandSprintIds(startValue, endValue) {
 }
 
 function suggestSprintsInDemandForm(form, startValue, endValue) {
-  const select = form?.querySelector('select[name="sprintId"][multiple]');
-  if (!select) return;
+  const options = form?.querySelectorAll('.sprint-checkbox-list input[name="sprintId"]');
+  if (!options?.length) return;
   const suggested = suggestedDemandSprintIds(startValue, endValue);
   if (!suggested.length) return; // Nenhuma data correspondente: manter seleção manual.
-  select.querySelectorAll("option").forEach((option) => {
-    option.selected = suggested.includes(option.value);
+  options.forEach((option) => {
+    option.checked = suggested.includes(option.value);
   });
   const hint = form.querySelector("[data-sprint-auto-hint]");
   if (hint) hint.textContent = "Sugestão pelas datas: " + demandSprintPeriodText(suggested) + ". Você pode ajustar a seleção.";
@@ -16026,9 +16026,7 @@ function openDemandDetailModal(id) {
               </label>
               <label class="field">
                 <span>Sprints</span>
-                <select name="sprintId" class="sprint-multi-select" multiple size="4">
-                  ${sprintOptions(demandSprintIds(demand))}
-                </select>
+                ${sprintCheckboxes(demandSprintIds(demand))}
                 <small class="muted">${escapeAttribute(demandSprintPeriodText(demand))}. Selecione uma ou mais; a sprint mais recente será a referência de conclusão e produção.</small>
               </label>
             </div>
@@ -16390,6 +16388,13 @@ function sprintOptions(selected) {
   return [`<option value="" ${selectedIds.size ? "" : "selected"}>Sem sprint</option>`]
     .concat((state.sprints || []).map((sprint) => `<option value="${sprint.id}" ${selectedIds.has(String(sprint.id)) ? "selected" : ""}>${sprint.nome}</option>`))
     .join("");
+}
+function sprintCheckboxes(selected) {
+  const selectedIds = new Set(demandSprintIds({ sprintIds: Array.isArray(selected) ? selected : selected ? [selected] : [] }));
+  return `<div class="sprint-checkbox-list" role="group" aria-label="Sprints">${(state.sprints || []).map((sprint) => `
+    <label class="sprint-checkbox-option"><input type="checkbox" name="sprintId" value="${escapeAttribute(sprint.id)}" ${selectedIds.has(String(sprint.id)) ? "checked" : ""} />
+      <span>${escapeAttribute(sprint.nome)} <small>${dateText(sprint.dataInicio)} → ${dateText(sprint.dataFim)}</small></span>
+    </label>`).join("") || '<span class="muted">Nenhuma sprint cadastrada.</span>'}</div>`;
 }
 
 function canAdvanceSicToDirectorApproval() {
@@ -16905,9 +16910,7 @@ function renderDemandWizardStep1(draft) {
           <input type="hidden" name="tipo" value="${escapeAttribute(draft.tipo)}" />
           <label class="field modal-section">
             <span>Sprints</span>
-            <select name="sprintId" class="sprint-multi-select" multiple size="4">
-              ${sprintOptions(demandSprintIds(draft))}
-            </select>
+            ${sprintCheckboxes(demandSprintIds(draft))}
             <small class="muted" data-sprint-auto-hint>${escapeAttribute(demandSprintPeriodText(draft))}. Você pode vincular a demanda a mais de uma sprint.</small>
           </label>
           <div class="form-grid modal-section">
@@ -17334,9 +17337,7 @@ function openSicDemandModal(workId = "") {
           </section>
           <label class="field modal-section">
             <span>Sprints</span>
-            <select name="sprintId" class="sprint-multi-select" multiple size="4">
-              ${sprintOptions(selectedSprint?.id ? [selectedSprint.id] : [])}
-            </select>
+            ${sprintCheckboxes(selectedSprint?.id ? [selectedSprint.id] : [])}
             <small class="muted" data-sprint-auto-hint>${selectedSprint ? `${dateText(selectedSprint.dataInicio)} → ${dateText(selectedSprint.dataFim)}` : "Sem período vinculado"}. Ao ajustar a entrega prevista, serão sugeridas as sprints do período.</small>
           </label>
           <section class="modal-section sic-work-link-panel">
