@@ -157,6 +157,35 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  expect(b.errors).toEqual([]);
 });
 
+test('Quadro Resumo applies bold only to the selected observation text and persists it',async({page})=>{
+ const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ const sic=shared.payload.obras[0].sics[0];
+ sic.quadroResumoAtivo=true;
+ sic.quadroResumoAberto=true;
+ sic.quadroResumo=[{id:'qr-test',disciplina:'Estrutura metálica',valor:20,observacoes:'Perfil U - R$ 20,00'}];
+ const b=await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const frame=page.frameLocator('iframe.sic-approvals-frame');
+ await frame.locator('.obra-card').first().click();
+ const editor=frame.locator('[data-qrcell="observacoes"]');
+ await expect(editor).toContainText('Perfil U - R$ 20,00');
+ await editor.evaluate(el=>{
+  const text=el.firstChild;
+  const range=el.ownerDocument.createRange();
+  range.setStart(text,0);range.setEnd(text,8);
+  const selection=el.ownerDocument.defaultView.getSelection();
+  selection.removeAllRanges();selection.addRange(range);
+ });
+ await frame.locator('[data-qrbold]').click();
+ await expect(editor.locator('strong')).toHaveText('Perfil U');
+ await expect.poll(()=>shared.payload.obras[0].sics[0].quadroResumo[0].observacoes).toBe('**Perfil U** - R$ 20,00');
+ await frame.getByRole('button',{name:'Voltar'}).click();
+ await frame.locator('.obra-card').first().click();
+ await expect(frame.locator('[data-qrcell="observacoes"] strong')).toHaveText('Perfil U');
+ expect(b.errors).toEqual([]);
+});
+
 test('removing a SIC approval card only removes it from the weekly agenda',async({page})=>{
  const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  const b=await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
