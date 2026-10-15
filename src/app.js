@@ -8,8 +8,10 @@ import {
   approvalSnapshotFor,
   approvalWeekStatus,
   matchApprovalCard,
+  nextApprovalWeekDraft,
   portfolioApprovedAdditives,
   portfolioEVWithoutRisk,
+  reconcileApprovalWeeks,
   selectableApprovalWeeks,
 } from './sic-director-queue.js';
 let unmountSicApprovals = () => {};
@@ -19884,8 +19886,96 @@ let sicDirectorQueueContext = null;
 
 function approvalWeekOptionLabel(week) {
   const period = week?.start && week?.end ? `${dateText(week.start)} a ${dateText(week.end)}` : "datas a definir";
-  const status = approvalWeekStatus(week) === "provisional" ? " · Provisória" : "";
+  const status = approvalWeekStatus(week, todayISO()) === "provisional" ? " · Provisória" : "";
   return `${week?.label || "Semana"} — ${period}${status}`;
+}
+
+async function synchronizeApprovalCalendar(row) {
+  const payload = row?.payload;
+  if (!payload || !Array.isArray(payload.weeks)) return row;
+  const calendar = reconcileApprovalWeeks(payload.weeks, todayISO());
+  if (!calendar.changed) return row;
+  const normalizedPayload = { ...payload, weeks: calendar.weeks };
+  if (!globalThis.SLT_CLOUD.canWrite("works")) return { ...row, payload: normalizedPayload };
+  const saved = await globalThis.SLT_CLOUD.saveSicApprovalSnapshot(normalizedPayload, row.revision);
+  if (saved) return { payload: normalizedPayload, revision: saved.revision };
+  const latest = await globalThis.SLT_CLOUD.sicApprovalSnapshot();
+  const latestCalendar = reconcileApprovalWeeks(latest?.payload?.weeks, todayISO());
+  return latest?.payload
+    ? { ...latest, payload: { ...latest.payload, weeks: latestCalendar.weeks } }
+    : row;
+}
+
+function refreshApprovalWeekCreator(form) {
+  const host = form?.querySelector("[data-sic-week-creator]");
+  if (!host || !sicDirectorQueueContext) return;
+  const creating = String(new FormData(form).get("approvalWeekId") || "") === "__new__";
+  if (!creating) {
+    host.innerHTML = "";
+    delete host.dataset.active;
+    return;
+  }
+  if (host.dataset.active === "true") return;
+  const draft = nextApprovalWeekDraft(sicDirectorQueueContext.payload.weeks, todayISO());
+  host.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
+    <div class="info-box">
+      <strong>Criar nova semana de apresentação</strong>
+      <span>O período é sugerido pelo calendário, mas você pode alterar as datas quando a reunião da Diretoria for remarcada.</span>
+    </div>
+    <div class="form-grid three-columns">
+      <label class="field"><span>Nome da semana *</span><input name="approvalWeekLabel" required value="${escapeAttribute(draft.label)}" maxlength="80"></label>
+      <label class="field"><span>Data inicial *</span><input name="approvalWeekStart" type="date" required value="${escapeAttribute(draft.start)}"></label>
+      <label class="field"><span>Data final *</span><input name="approvalWeekEnd" type="date" required value="${escapeAttribute(draft.end)}"></label>
+    </div>
+    <small class="muted">Semanas criadas manualmente já nascem ativas. Apenas semanas geradas por adiamento ficam provisórias até sua data inicial.</small>
+  `);
+  host.dataset.active = "true";
+}
+
+async function createApprovalWeekFromForm(form, context, data) {
+  const label = String(data.get("approvalWeekLabel") || "").trim();
+  const start = String(data.get("approvalWeekStart") || "").trim();
+  const end = String(data.get("approvalWeekEnd") || "").trim();
+  if (!label || !start || !end) {
+    showFormError("Informe o nome, a data inicial e a data final da nova semana.", form);
+    return null;
+  }
+  if (start > end) {
+    showFormError("A data final da semana não pode ser anterior à data inicial.", form);
+    return null;
+  }
+  const existing = Array.isArray(context.payload.weeks) ? context.payload.weeks : [];
+  const duplicateLabel = existing.some(item => normalizeSearchText(item?.label) === normalizeSearchText(label));
+  if (duplicateLabel) {
+    showFormError("Já existe uma semana com esse nome. Escolha a semana existente ou altere o nome.", form);
+    return null;
+  }
+  const overlap = existing.find(item => item?.start && item?.end && start <= item.end && end >= item.start);
+  if (overlap) {
+    showFormError(`O período informado coincide com ${overlap.label || "outra semana"}. Ajuste as datas ou selecione a semana existente.`, form);
+    return null;
+  }
+  const now = new Date().toISOString();
+  const week = {
+    id: `w-calendar-${start}-${Date.now()}`,
+    label,
+    start,
+    end,
+    importedAt: now,
+    fingerprint: null,
+    placeholder: false,
+    createdByPostpone: false,
+    status: "open",
+  };
+  const nextPayload = { ...context.payload, weeks: [...existing, week] };
+  const saved = await globalThis.SLT_CLOUD.saveSicApprovalSnapshot(nextPayload, context.revision);
+  if (!saved) {
+    showFormError("Outro usuário alterou o calendário. Feche este formulário, abra novamente e confirme a nova semana.", form);
+    return null;
+  }
+  context.payload = nextPayload;
+  context.revision = saved.revision;
+  return week;
 }
 
 function approvalCardForQueue(form) {
@@ -19974,6 +20064,7 @@ function queueFinancialValue(value) {
 
 function refreshSicDirectorQueueForm(form) {
   if (!form || !sicDirectorQueueContext) return;
+  refreshApprovalWeekCreator(form);
   const data = new FormData(form);
   const weekId = String(data.get("approvalWeekId") || "");
   const card = approvalCardForQueue(form);
@@ -20036,10 +20127,9 @@ async function openSicDirectorQueueModal(id) {
     <div class="modal-backdrop"><div class="modal-card sic-director-queue-modal"><header><div><span class="eyebrow">${escapeAttribute(demand.id)}</span><h2>Preparando Aprovação da Diretoria</h2><p class="muted">Carregando semanas e dados compartilhados…</p></div></header></div></div>
   `);
   try {
-    const row = await globalThis.SLT_CLOUD.sicApprovalSnapshot();
+    const row = await synchronizeApprovalCalendar(await globalThis.SLT_CLOUD.sicApprovalSnapshot());
     const payload = row?.payload;
-    const weeks = selectableApprovalWeeks(payload?.weeks);
-    if (!weeks.length) throw new Error("Não existe semana aberta ou provisória para receber esta SIC.");
+    const weeks = selectableApprovalWeeks(payload?.weeks, todayISO());
     const match = matchApprovalCard(payload?.obras, work);
     const eligibleCards = (payload.obras || [])
       .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
@@ -20063,7 +20153,8 @@ async function openSicDirectorQueueModal(id) {
           </header>
           <div class="modal-body">
             <div class="error-box" id="formError"></div>
-            <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}</select><small>Semanas encerradas não aceitam novas SICs.</small></label>
+            <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}<option value="__new__" ${weeks.length ? "" : "selected"}>+ Criar nova semana de apresentação</option></select><small>O calendário encerra semanas passadas e ativa automaticamente as provisórias quando a data inicial chega.</small></label>
+            <div data-sic-week-creator></div>
             ${cardSelector}
             <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
             <div data-sic-director-dynamic></div>
@@ -20086,11 +20177,19 @@ async function handleSicDirectorQueueSubmit(form) {
   if (!context || !demand || context.demandId !== demand.id) return;
   const data = new FormData(form);
   const weekId = String(data.get("approvalWeekId") || "");
-  const week = selectableApprovalWeeks(context.payload.weeks).find((item) => String(item.id) === weekId);
+  let week = selectableApprovalWeeks(context.payload.weeks, todayISO()).find((item) => String(item.id) === weekId);
   const cardIdValue = String(data.get("approvalCardId") || "");
   const card = approvalCardForQueue(form);
-  if (!week || !cardIdValue) {
-    showFormError("Escolha a semana e confirme o card da obra.", form);
+  if (!cardIdValue) {
+    showFormError("Confirme o card da obra.", form);
+    return;
+  }
+  if (weekId === "__new__") {
+    week = await createApprovalWeekFromForm(form, context, data);
+    if (!week) return;
+  }
+  if (!week) {
+    showFormError("Escolha uma semana ativa ou crie uma nova semana de apresentação.", form);
     return;
   }
   const sicValueRaw = String(data.get("approvalSicValue") || "").trim();
