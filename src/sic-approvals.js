@@ -28,27 +28,14 @@ export function mountSicApprovals(target, cloud, portfolioWorks = []) {
   let writing = Promise.resolve();
   let checking = false;
   function load() {
-    if (!fetching) fetching = cloud.sicApprovalSnapshot().then(async row => {
+    if (!fetching) fetching = cloud.sicApprovalSnapshot().then(row => {
       if (!Array.isArray(row?.payload?.obras) || !Array.isArray(row?.payload?.weeks) || !Array.isArray(row?.payload?.snapshots)) {
         throw new Error('A base compartilhada de Aprovação de SIC’s está incompleta.');
       }
-      let effectiveRow = row;
       const calendar = reconcileApprovalWeeks(row.payload.weeks);
-      if (calendar.changed) {
-        const normalizedPayload = { ...row.payload, weeks: calendar.weeks };
-        if (cloud.canWrite('works')) {
-          const saved = await cloud.saveSicApprovalSnapshot(normalizedPayload, row.revision);
-          effectiveRow = saved
-            ? { payload: normalizedPayload, revision: saved.revision }
-            : await cloud.sicApprovalSnapshot();
-        } else {
-          effectiveRow = { ...row, payload: normalizedPayload };
-        }
-      }
-      const displayCalendar = reconcileApprovalWeeks(effectiveRow.payload.weeks);
       snapshot = {
-        ...effectiveRow,
-        payload: stripLivePortfolioAlerts({ ...effectiveRow.payload, weeks: displayCalendar.weeks }),
+        ...row,
+        payload: stripLivePortfolioAlerts({ ...row.payload, weeks: calendar.weeks }),
       };
       displayPayload = decoratePayloadWithPortfolioAlerts(snapshot.payload, portfolioWorks);
       return snapshot;
