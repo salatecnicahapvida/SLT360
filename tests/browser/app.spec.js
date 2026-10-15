@@ -1772,6 +1772,34 @@ for(const type of ['EmissaoInicial','ReemissaoCompleta','DemandaExtra']){
  });
 }
 
+test('SIC creation rejects an existing LECOM even when punctuation differs and the card is paused',async({page})=>{
+ const duplicate={
+  ...structuredClone(payload.state.demands[0]),
+  id:'DEM-LECOM-EXISTENTE',
+  coluna:'pausado',
+  analistaResponsavel:'Técnico A',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'LECOM 1.389.229'},
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[duplicate],analystNames:['Técnico A']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.getByRole('button',{name:'Nova demanda',exact:true}).click();
+ await page.locator('.demand-type-option[data-type="SIC"]').click();
+ const form=page.locator('#demandForm');
+ await expect(form.locator('[name="lecomNumber"]')).toHaveAttribute('required','');
+ await form.locator('label.analyst-chip').filter({hasText:'Técnico A'}).click();
+ await form.locator('[data-sic-work-search]').fill('Obra de teste');
+ await form.locator('[data-sic-work-results]').getByRole('button',{name:/Obra de teste/}).click();
+ await form.locator('[name="lecomNumber"]').fill('1389229');
+ await form.locator('[name="tituloSic"]').fill('Retorno do LECOM para ajustes');
+ await form.locator('[name="descricao"]').fill('Tentativa de cadastro repetido após devolutiva do analista.');
+ await form.getByRole('button',{name:'Salvar demanda',exact:true}).click();
+ await expect(form.locator('#formError')).toContainText('Já existe um card de SIC com o LECOM 1389229');
+ await expect(form.locator('#formError')).toContainText('DEM-LECOM-EXISTENTE');
+ await expect(form.locator('#formError')).toContainText('Pausado');
+ expect(b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands')).toHaveLength(0);
+ expect(b.errors).toEqual([]);
+});
+
 test('new demands suggest the historical analyst, persist labels and give SICs a 15-day due date',async({page})=>{
  const sprints=[
   {id:'sprint-016',nome:'Sprint 16',dataInicio:'2026-08-31',dataFim:'2026-09-13',status:'Encerrada'},
