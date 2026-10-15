@@ -355,9 +355,10 @@
   .sic-desc-edit {
     width: 100%; border: 1.5px dashed var(--cinza-borda); border-radius: 8px; background: var(--cinza-bg);
     padding: 10px 12px; font-family: inherit; font-size: 12.5px; color: #334; line-height: 1.55;
-    resize: vertical; min-height: 64px; outline: none; transition: border-color .15s, background .15s;
+    min-height: 64px; outline: none; transition: border-color .15s, background .15s;
   }
   .sic-desc-edit:focus { border-color: var(--azul-claro); background: #fff; border-style: solid; }
+  .sic-desc-edit:empty::before { content:attr(data-placeholder); color:#8793a7; pointer-events:none; }
   .sic-desc-hint { font-size: 10.5px; color: var(--texto-suave); margin-top: 4px; }
   .sic-desc-with-summary { margin: 9px 0 10px; padding: 9px 10px; background: #f7f9fc; border: 1px solid #d9e2ef; border-radius: 9px; }
   .sic-desc-with-summary .sic-desc-caption { font-size: 9.5px; font-weight: 800; color: var(--azul-claro); text-transform: uppercase; letter-spacing: .45px; margin-bottom: 6px; }
@@ -396,14 +397,8 @@
   .sic-summary-input:focus, .sic-summary-money:focus, .sic-summary-note:focus { border-color:var(--azul-claro); background:#fff; box-shadow:0 0 0 2px rgba(46,107,191,.08); }
   .sic-summary-money { text-align:right; font-weight:800; color:var(--azul); }
   .sic-summary-note-wrap { width:100%; }
-  .sic-summary-formatbar { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
-  .sic-summary-bold {
-    display:inline-flex; align-items:center; justify-content:center; width:26px; height:24px;
-    border:1px solid #b9c9df; border-radius:5px; background:#fff; color:var(--azul);
-    font-family:Georgia,serif; font-size:13px; font-weight:900; cursor:pointer;
-  }
-  .sic-summary-bold:hover, .sic-summary-bold:focus-visible { border-color:var(--azul-claro); background:var(--azul-suave); outline:none; }
-  .sic-summary-format-hint { color:var(--texto-suave); font-size:9.5px; }
+  .sic-summary-input { min-height:32px; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; cursor:text; }
+  .sic-summary-input:empty::before { content:attr(data-placeholder); color:#8793a7; pointer-events:none; }
   .sic-summary-note { min-height:38px; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; cursor:text; }
   .sic-summary-note:empty::before { content:attr(data-placeholder); color:#8793a7; pointer-events:none; }
   .sic-summary-note strong, .sic-summary-note b { color:inherit; font-weight:800; }
@@ -1905,15 +1900,11 @@ function renderSicQuadroResumo(o,s){
   const body=rows.map((r,idx)=>`
     <tr data-qrrow data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}">
       <td class="sic-summary-drag-cell"><span class="sic-summary-drag" draggable="true" data-qrdrag data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" title="Arraste para reposicionar esta linha" aria-label="Reposicionar linha">⋮⋮</span></td>
-      <td><input class="sic-summary-input" data-qrcell="disciplina" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" value="${esc(r.disciplina||'')}" placeholder="Ex.: Demolições e remoções"></td>
+      <td><div class="sic-summary-input" contenteditable="true" role="textbox" aria-multiline="true" data-richtext data-placeholder="Ex.: Demolições e remoções" data-qrcell="disciplina" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}">${renderSicSummaryRichText(r.disciplina||'')}</div></td>
       <td><input class="sic-summary-money" data-qrcell="valor" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" value="${esc(Number(r.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}))}"></td>
       <td>
         <div class="sic-summary-note-wrap">
-          <div class="sic-summary-formatbar">
-            <button type="button" class="sic-summary-bold" data-qrbold title="Negrito (Ctrl+B)" aria-label="Aplicar ou remover negrito"><strong>B</strong></button>
-            <span class="sic-summary-format-hint">Selecione o texto e clique em B</span>
-          </div>
-          <div class="sic-summary-note" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Escreva a justificativa ou observação para esta disciplina" data-qrcell="observacoes" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}">${renderSicSummaryRichText(r.observacoes||'')}</div>
+          <div class="sic-summary-note" contenteditable="true" role="textbox" aria-multiline="true" data-richtext data-placeholder="Escreva a justificativa ou observação para esta disciplina" data-qrcell="observacoes" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}">${renderSicSummaryRichText(r.observacoes||'')}</div>
         </div>
       </td>
       <td><button class="sic-summary-remove" data-qrremove data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" title="Excluir linha">×</button></td>
@@ -2020,7 +2011,7 @@ async function saveSicQuadroCell(el){
     const n=parseMoneyInput(el.value);
     if(n===null){ showToast('Informe um valor válido para a disciplina.','err'); el.value=Number(row.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); return; }
     row.valor=round2(n);
-  }else if(field==='disciplina') row.disciplina=el.value;
+  }else if(field==='disciplina') row.disciplina=el.isContentEditable?serializeSicSummaryRichText(el):el.value;
   else if(field==='observacoes') row.observacoes=el.isContentEditable?serializeSicSummaryRichText(el):el.value;
   const ok=await persistAll(state.obras,state.weeks,state.snapshots);
   if(!ok){ showToast('Não foi possível salvar o Quadro Resumo.','err'); return; }
@@ -2029,19 +2020,15 @@ async function saveSicQuadroCell(el){
   }
 }
 
-async function toggleSicSummaryBold(editor,savedRange=null){
-  if(!editor) return;
+function toggleRichTextBold(editor){
+  if(!editor) return false;
   editor.focus();
   const selection=window.getSelection();
-  if(savedRange && selection){
-    selection.removeAllRanges();
-    selection.addRange(savedRange);
-  }
   const selectionInside=selection && selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode);
   if(!selectionInside || selection.isCollapsed){
     editor.focus();
     showToast('Selecione o trecho que deseja colocar em negrito.','err');
-    return;
+    return false;
   }
   const range=selection.getRangeAt(0);
   const anchorBold=selection.anchorNode?.parentElement?.closest('strong,b');
@@ -2064,9 +2051,17 @@ async function toggleSicSummaryBold(editor,savedRange=null){
     selection.removeAllRanges();
     selection.addRange(highlighted);
   }
-  editor.dispatchEvent(new Event('input',{bubbles:true}));
-  await saveSicQuadroCell(editor);
+  editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'formatBold'}));
+  return true;
 }
+
+document.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey) || e.altKey || e.key.toLowerCase()!=='b') return;
+  const editor=e.target.closest?.('[contenteditable="true"][data-richtext]');
+  if(!editor) return;
+  e.preventDefault();
+  toggleRichTextBold(editor);
+});
 
 function renderSicItem(o, s){
   const wm = state.weeks.find(w=>w.id===s.weekId);
@@ -2091,11 +2086,11 @@ function renderSicItem(o, s){
     ${s.quadroResumoAtivo ? `
       <div class="sic-desc-with-summary">
         <div class="sic-desc-caption">Descrição da SIC / Revisão</div>
-        <textarea class="sic-desc-edit" data-descedit data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" rows="2">${esc(s.descricao||'')}</textarea>
+        <div class="sic-desc-edit" contenteditable="true" role="textbox" aria-multiline="true" data-richtext data-placeholder="Descrição da SIC / Revisão" data-descedit data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}">${renderSicSummaryRichText(s.descricao||'')}</div>
         <div class="sic-desc-hint">Descrição importada da planilha e editável.<span class="sic-saved-tag" data-saved-sic="${esc(s.id)}">salvo ✓</span></div>
       </div>
       ${renderSicQuadroResumo(o,s)}` : `
-      <textarea class="sic-desc-edit" data-descedit data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" rows="3">${esc(s.descricao||'')}</textarea>
+      <div class="sic-desc-edit" contenteditable="true" role="textbox" aria-multiline="true" data-richtext data-placeholder="Descrição da SIC / Revisão" data-descedit data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}">${renderSicSummaryRichText(s.descricao||'')}</div>
       <div class="sic-desc-hint">Texto editável — ajuste antes de apresentar.<span class="sic-saved-tag" data-saved-sic="${esc(s.id)}">salvo ✓</span></div>
       <div style="margin-top:7px"><button class="sic-summary-create" data-qrcreate data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}">▦ Quadro Resumo</button></div>`}
     <div class="sic-bottom">
@@ -2185,17 +2180,6 @@ function attachPanelEvents(o){
   document.querySelectorAll('[data-qrremove]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(confirm('Excluir esta linha do Quadro Resumo?')) await removeSicQuadroRow(btn.dataset.obraid,btn.dataset.sicid,btn.dataset.rowid);
   }));
-  document.querySelectorAll('[data-qrbold]').forEach(btn=>{
-    btn.addEventListener('mousedown',e=>{
-      const selection=window.getSelection();
-      btn._qrSelectionRange=selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-      e.preventDefault();
-    });
-    btn.addEventListener('click',async()=>{
-      await toggleSicSummaryBold(btn.closest('td')?.querySelector('[data-qrcell="observacoes"]'),btn._qrSelectionRange);
-      btn._qrSelectionRange=null;
-    });
-  });
   document.querySelectorAll('[data-qrdrag]').forEach(handle=>{
     handle.addEventListener('dragstart',e=>{
       qrDragState={obraId:handle.dataset.obraid,sicId:handle.dataset.sicid,rowId:handle.dataset.rowid};
@@ -2231,19 +2215,6 @@ function attachPanelEvents(o){
     if(el.tagName==='TEXTAREA'){
       el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px';
       el.addEventListener('input',()=>{ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; });
-    }
-    if(el.isContentEditable){
-      el.addEventListener('paste',e=>{
-        e.preventDefault();
-        document.execCommand('insertText',false,e.clipboardData?.getData('text/plain')||'');
-      });
-      el.addEventListener('keydown',async e=>{
-        if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='b'){
-          e.preventDefault();
-          await toggleSicSummaryBold(el);
-        }
-      });
-      el.addEventListener('blur',()=>{ if(!serializeSicSummaryRichText(el)) el.innerHTML=''; });
     }
     el.addEventListener('blur',async()=>{ await saveSicQuadroCell(el); });
     if(el.dataset.qrcell==='valor') el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
@@ -2281,12 +2252,16 @@ function attachPanelEvents(o){
       if(e.key==='Escape'){ e.preventDefault(); state.sicEditId=null; document.getElementById('panel-body').innerHTML=renderPanelBody(o); attachPanelEvents(o); }
     });
   });
-  document.querySelectorAll('[data-descedit]').forEach(ta=>{
-    ta.style.height = 'auto';
-    ta.style.height = (ta.scrollHeight+2)+'px';
-    ta.addEventListener('input', ()=>{ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+2)+'px'; });
-    ta.addEventListener('blur', async ()=>{
-      await saveSicDescricao(ta.dataset.obraid, ta.dataset.sicid, ta.value, ta.dataset.sicid);
+  document.querySelectorAll('[data-richtext]').forEach(editor=>{
+    editor.addEventListener('paste',e=>{
+      e.preventDefault();
+      document.execCommand('insertText',false,e.clipboardData?.getData('text/plain')||'');
+    });
+    editor.addEventListener('blur',()=>{ if(!serializeSicSummaryRichText(editor)) editor.innerHTML=''; });
+  });
+  document.querySelectorAll('[data-descedit]').forEach(editor=>{
+    editor.addEventListener('blur', async ()=>{
+      await saveSicDescricao(editor.dataset.obraid, editor.dataset.sicid, serializeSicSummaryRichText(editor), editor.dataset.sicid);
     });
   });
   document.querySelectorAll('[data-approve]').forEach(chk=>{

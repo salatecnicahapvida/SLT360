@@ -157,7 +157,7 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  expect(b.errors).toEqual([]);
 });
 
-test('Quadro Resumo applies bold only to the selected observation text and persists it',async({page})=>{
+test('Ctrl+B formats editable text throughout Aprovação de SICs without a toolbar button',async({page})=>{
  const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  const sic=shared.payload.obras[0].sics[0];
  sic.quadroResumoAtivo=true;
@@ -178,9 +178,39 @@ test('Quadro Resumo applies bold only to the selected observation text and persi
   const selection=el.ownerDocument.defaultView.getSelection();
   selection.removeAllRanges();selection.addRange(range);
  });
- await frame.locator('[data-qrbold]').click();
+ await expect(frame.locator('[data-qrbold]')).toHaveCount(0);
+ await editor.press('Control+b');
  await expect(editor.locator('strong')).toHaveText('Perfil U');
+ await editor.blur();
  await expect.poll(()=>shared.payload.obras[0].sics[0].quadroResumo[0].observacoes).toBe('**Perfil U** - R$ 20,00');
+ const discipline=frame.locator('[data-qrcell="disciplina"]');
+ await discipline.evaluate(el=>{
+  el.focus();
+  const text=el.firstChild;
+  const range=el.ownerDocument.createRange();
+  range.setStart(text,0);range.setEnd(text,9);
+  const selection=el.ownerDocument.defaultView.getSelection();
+  selection.removeAllRanges();selection.addRange(range);
+ });
+ await discipline.press('Control+b');
+ await expect(discipline.locator('strong')).toHaveText('Estrutura');
+ await discipline.blur();
+ await expect.poll(()=>shared.payload.obras[0].sics[0].quadroResumo[0].disciplina).toBe('**Estrutura** metálica');
+ const description=frame.locator('[data-descedit]').first();
+ const originalDescription=shared.payload.obras[0].sics[0].descricao;
+ await description.evaluate(el=>{
+  el.focus();
+  const text=el.firstChild;
+  const range=el.ownerDocument.createRange();
+  range.setStart(text,0);range.setEnd(text,Math.min(8,text.length));
+  const selection=el.ownerDocument.defaultView.getSelection();
+  selection.removeAllRanges();selection.addRange(range);
+ });
+ await description.press('Control+b');
+ await expect(description.locator('strong')).not.toHaveCount(0);
+ await description.blur();
+ await expect.poll(()=>shared.payload.obras[0].sics[0].descricao).not.toBe(originalDescription);
+ expect(shared.payload.obras[0].sics[0].descricao).toMatch(/^\*\*.+\*\*/);
  await frame.getByRole('button',{name:'Voltar'}).click();
  await frame.locator('.obra-card').first().click();
  await expect(frame.locator('[data-qrcell="observacoes"] strong')).toHaveText('Perfil U');
