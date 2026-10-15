@@ -2029,9 +2029,13 @@ async function saveSicQuadroCell(el){
   }
 }
 
-async function toggleSicSummaryBold(editor){
+async function toggleSicSummaryBold(editor,savedRange=null){
   if(!editor) return;
   const selection=window.getSelection();
+  if(savedRange && selection){
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
   const selectionInside=selection && selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode);
   if(!selectionInside || selection.isCollapsed){
     editor.focus();
@@ -2161,8 +2165,15 @@ function attachPanelEvents(o){
     if(confirm('Excluir esta linha do Quadro Resumo?')) await removeSicQuadroRow(btn.dataset.obraid,btn.dataset.sicid,btn.dataset.rowid);
   }));
   document.querySelectorAll('[data-qrbold]').forEach(btn=>{
-    btn.addEventListener('mousedown',e=>e.preventDefault());
-    btn.addEventListener('click',async()=>{ await toggleSicSummaryBold(btn.closest('td')?.querySelector('[data-qrcell="observacoes"]')); });
+    btn.addEventListener('mousedown',e=>{
+      const selection=window.getSelection();
+      btn._qrSelectionRange=selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+      e.preventDefault();
+    });
+    btn.addEventListener('click',async()=>{
+      await toggleSicSummaryBold(btn.closest('td')?.querySelector('[data-qrcell="observacoes"]'),btn._qrSelectionRange);
+      btn._qrSelectionRange=null;
+    });
   });
   document.querySelectorAll('[data-qrdrag]').forEach(handle=>{
     handle.addEventListener('dragstart',e=>{
