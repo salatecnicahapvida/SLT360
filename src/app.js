@@ -911,6 +911,50 @@ function normalizeDemandLabels(labels = []) {
   return [...new Map(normalized.map((label) => [normalizeSearchText(label), label])).values()].slice(0, 6);
 }
 
+function normalizeSicLecom(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .replace(/^lecom/, "");
+}
+
+function sicLecomFromDemand(demand = {}) {
+  const metadata = demand.sicMetadata && typeof demand.sicMetadata === "object" ? demand.sicMetadata : {};
+  return metadata.lecomNumber || demand.lecomNumber || demand.lecom || "";
+}
+
+function findSicLecomConflict(value, excludeDemandId = "") {
+  const key = normalizeSicLecom(value);
+  if (!key) return null;
+  const demands = [
+    ...(state.demands || []).map((demand) => ({ demand, archived: false })),
+    ...(state.deletedDemands || []).map((demand) => ({ demand, archived: true })),
+  ];
+  const demandMatch = demands.find(({ demand }) => (
+    demand.id !== excludeDemandId
+    && demandTypeKey(demand.tipo) === "SIC"
+    && normalizeSicLecom(sicLecomFromDemand(demand)) === key
+  ));
+  if (demandMatch) return { ...demandMatch, source: "demand" };
+  const sic = (state.sics || []).find((item) => (
+    item.demandaId !== excludeDemandId
+    && normalizeSicLecom(item.lecomNumber || item.lecom) === key
+  ));
+  return sic ? { sic, archived: false, source: "ev" } : null;
+}
+
+function sicLecomConflictMessage(value, conflict) {
+  if (conflict?.source === "ev") {
+    return `O LECOM ${value} já pertence à SIC ${conflict.sic.id || "registrada"} no EV. Abra o registro existente em vez de criar outro card.`;
+  }
+  const demand = conflict?.demand || {};
+  const work = workById(demand.obraId)?.nome || demand.sicMetadata?.obraNome || demand.obraNome || "obra não informada";
+  const stage = conflict?.archived ? "arquivado" : (columnById(demand.coluna)?.label || demand.coluna || "etapa não informada");
+  return `Já existe um card de SIC com o LECOM ${value}: ${demand.id || "card existente"} — ${work} (${stage}). Abra e atualize esse card em vez de criar outro.`;
+}
+
 function normalizeDemandRecord(item = {}, works = []) {
   const sprintIds = demandSprintIds(item);
   const demand = normalizeDemandAnalysts({
@@ -15882,8 +15926,8 @@ function renderDemandSicMetadata(demand) {
       </div>
       <div class="form-grid">
         <label class="field">
-          <span>Nº do LECOM</span>
-          <input name="lecomNumber" value="${fieldValue(info.lecomNumber)}" placeholder="Ex.: LECOM-2026-0000" />
+          <span>Nº do LECOM *</span>
+          <input name="lecomNumber" value="${fieldValue(info.lecomNumber)}" placeholder="Ex.: 1.389.229" autocomplete="off" required />
         </label>
         <label class="field">
           <span>Título da SIC</span>
@@ -17395,8 +17439,8 @@ function openSicDemandModal(workId = "") {
             </div>
             <div class="form-grid">
               <label class="field">
-                <span>Nº do LECOM</span>
-                <input name="lecomNumber" placeholder="Ex.: LECOM-2026-0000" />
+                <span>Nº do LECOM *</span>
+                <input name="lecomNumber" placeholder="Ex.: 1.389.229" autocomplete="off" required />
               </label>
               <label class="field">
                 <span>Título da SIC *</span>
@@ -18539,8 +18583,14 @@ async function handleDemandSubmit(form) {
     const motivo = normalizeSicMotivo(formData.get("motivo") || "RevisaoProjeto");
     const anexos = [];
 
-    if (!tituloSic || !descricaoSic || !analistaSalaTecnica) {
-      showFormError("Preencha título, descrição da SIC e analista da Sala Técnica.", form);
+    if (!lecomNumber || !tituloSic || !descricaoSic || !analistaSalaTecnica) {
+      showFormError("Preencha o número do LECOM, título, descrição da SIC e analista da Sala Técnica.", form);
+      return;
+    }
+    const lecomConflict = findSicLecomConflict(lecomNumber);
+    if (lecomConflict) {
+      showFormError(sicLecomConflictMessage(lecomNumber, lecomConflict), form);
+      form.querySelector('[name="lecomNumber"]')?.focus();
       return;
     }
 
@@ -18623,7 +18673,10 @@ async function handleDemandSubmit(form) {
     state.demands = state.demands.filter((demand) => demand.id !== demandId);
     state.history = state.history.filter((entry) => !(entry.entidade === "demanda" && entry.entidadeId === demandId));
     if (submitButton) submitButton.disabled = false;
-    showFormError("A demanda não foi confirmada no banco e foi retirada da tela. Recarregue os dados antes de tentar novamente.", form);
+    const bankMessage = String(error?.message || "");
+    showFormError(/LECOM.+já existe/i.test(bankMessage)
+      ? bankMessage
+      : "A demanda não foi confirmada no banco e foi retirada da tela. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
   closeModal();
@@ -18822,11 +18875,25 @@ async function handleDemandDetailSubmit(form) {
     showFormError("Uma SIC já postada no EV não pode ser transferida para outra obra. Edite os demais campos ou crie uma nova SIC na obra correta.", form);
     return;
   }
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  if (isSicDemand) {
+    const lecomNumber = String(formData.get("lecomNumber") || "").trim();
+    if (!lecomNumber) {
+      showFormError("Informe o número do LECOM antes de salvar a SIC.", form);
+      form.querySelector('[name="lecomNumber"]')?.focus();
+      return;
+    }
+    const lecomConflict = findSicLecomConflict(lecomNumber, demand.id);
+    if (lecomConflict) {
+      showFormError(sicLecomConflictMessage(lecomNumber, lecomConflict), form);
+      form.querySelector('[name="lecomNumber"]')?.focus();
+      return;
+    }
+  }
   const previousSprintIds = demandSprintIds(demand);
   const previousSprintLabel = demandSprintNames(demand, " → ");
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
-  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
 
   Object.assign(demand, analystAssignment);
   demand.obraId = selectedWork.id;
@@ -18996,7 +19063,10 @@ async function handleDemandDetailSubmit(form) {
     if (workIndex >= 0 && workSnapshot) state.works[workIndex] = workSnapshot;
     state.sics = sicsSnapshot;
     state.history = historySnapshot;
-    showFormError("As alterações do card não foram confirmadas no banco. Revise sua permissão ou recarregue os dados antes de tentar novamente.", form);
+    const bankMessage = String(error?.message || "");
+    showFormError(/LECOM.+já existe/i.test(bankMessage)
+      ? bankMessage
+      : "As alterações do card não foram confirmadas no banco. Revise sua permissão ou recarregue os dados antes de tentar novamente.", form);
     return;
   }
   closeModal();
