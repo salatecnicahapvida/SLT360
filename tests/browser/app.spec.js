@@ -171,6 +171,7 @@ test('Quadro Resumo applies bold only to the selected observation text and persi
  const editor=frame.locator('[data-qrcell="observacoes"]');
  await expect(editor).toContainText('Perfil U - R$ 20,00');
  await editor.evaluate(el=>{
+  el.focus();
   const text=el.firstChild;
   const range=el.ownerDocument.createRange();
   range.setStart(text,0);range.setEnd(text,8);
