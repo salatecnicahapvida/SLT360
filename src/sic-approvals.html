@@ -395,7 +395,18 @@
   }
   .sic-summary-input:focus, .sic-summary-money:focus, .sic-summary-note:focus { border-color:var(--azul-claro); background:#fff; box-shadow:0 0 0 2px rgba(46,107,191,.08); }
   .sic-summary-money { text-align:right; font-weight:800; color:var(--azul); }
-  .sic-summary-note { min-height:38px; resize:vertical; line-height:1.35; }
+  .sic-summary-note-wrap { width:100%; }
+  .sic-summary-formatbar { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .sic-summary-bold {
+    display:inline-flex; align-items:center; justify-content:center; width:26px; height:24px;
+    border:1px solid #b9c9df; border-radius:5px; background:#fff; color:var(--azul);
+    font-family:Georgia,serif; font-size:13px; font-weight:900; cursor:pointer;
+  }
+  .sic-summary-bold:hover, .sic-summary-bold:focus-visible { border-color:var(--azul-claro); background:var(--azul-suave); outline:none; }
+  .sic-summary-format-hint { color:var(--texto-suave); font-size:9.5px; }
+  .sic-summary-note { min-height:38px; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; cursor:text; }
+  .sic-summary-note:empty::before { content:attr(data-placeholder); color:#8793a7; pointer-events:none; }
+  .sic-summary-note strong, .sic-summary-note b { color:inherit; font-weight:800; }
   .sic-summary-remove { border:0; background:transparent; color:#9b2d24; cursor:pointer; font-size:15px; line-height:1; padding:7px 4px; border-radius:5px; }
   .sic-summary-remove:hover { background:#fdeae7; }
   .sic-summary-drag-cell { text-align:center !important; vertical-align:middle !important; padding:5px 2px !important; }
@@ -769,6 +780,32 @@ function fmtDate(d){
 function esc(s){
   if(s===null||s===undefined) return '';
   return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderSicSummaryRichText(value){
+  return esc(value||'')
+    .replace(/\*\*([\s\S]+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\r\n|\r|\n/g,'<br>');
+}
+function serializeSicSummaryRichText(root){
+  const isBlock=node=>node?.nodeType===1 && ['DIV','P','LI'].includes(node.tagName);
+  const readChildren=parent=>{
+    let result='';
+    Array.from(parent.childNodes||[]).forEach(child=>{
+      const block=isBlock(child);
+      if(block && result && !result.endsWith('\n')) result+='\n';
+      result+=readNode(child);
+      if(block && child.nextSibling && !result.endsWith('\n')) result+='\n';
+    });
+    return result;
+  };
+  const readNode=node=>{
+    if(node.nodeType===3) return node.nodeValue||'';
+    if(node.nodeType!==1) return '';
+    if(node.tagName==='BR') return '\n';
+    const content=readChildren(node);
+    return (node.tagName==='STRONG'||node.tagName==='B') && content ? `**${content}**` : content;
+  };
+  return readChildren(root).replace(/\u00a0/g,' ').replace(/\n+$/,'');
 }
 function slugify(s){
   return s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -1870,7 +1907,15 @@ function renderSicQuadroResumo(o,s){
       <td class="sic-summary-drag-cell"><span class="sic-summary-drag" draggable="true" data-qrdrag data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" title="Arraste para reposicionar esta linha" aria-label="Reposicionar linha">⋮⋮</span></td>
       <td><input class="sic-summary-input" data-qrcell="disciplina" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" value="${esc(r.disciplina||'')}" placeholder="Ex.: Demolições e remoções"></td>
       <td><input class="sic-summary-money" data-qrcell="valor" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" value="${esc(Number(r.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}))}"></td>
-      <td><textarea class="sic-summary-note" data-qrcell="observacoes" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" placeholder="Escreva a justificativa ou observação para esta disciplina">${esc(r.observacoes||'')}</textarea></td>
+      <td>
+        <div class="sic-summary-note-wrap">
+          <div class="sic-summary-formatbar">
+            <button type="button" class="sic-summary-bold" data-qrbold title="Negrito (Ctrl+B)" aria-label="Aplicar ou remover negrito"><strong>B</strong></button>
+            <span class="sic-summary-format-hint">Selecione o texto e clique em B</span>
+          </div>
+          <div class="sic-summary-note" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Escreva a justificativa ou observação para esta disciplina" data-qrcell="observacoes" data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}">${renderSicSummaryRichText(r.observacoes||'')}</div>
+        </div>
+      </td>
       <td><button class="sic-summary-remove" data-qrremove data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" data-rowid="${esc(r.id)}" title="Excluir linha">×</button></td>
     </tr>`).join('');
   return `
@@ -1976,12 +2021,26 @@ async function saveSicQuadroCell(el){
     if(n===null){ showToast('Informe um valor válido para a disciplina.','err'); el.value=Number(row.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); return; }
     row.valor=round2(n);
   }else if(field==='disciplina') row.disciplina=el.value;
-  else if(field==='observacoes') row.observacoes=el.value;
+  else if(field==='observacoes') row.observacoes=el.isContentEditable?serializeSicSummaryRichText(el):el.value;
   const ok=await persistAll(state.obras,state.weeks,state.snapshots);
   if(!ok){ showToast('Não foi possível salvar o Quadro Resumo.','err'); return; }
   if(field==='valor'){
     document.getElementById('panel-body').innerHTML=renderPanelBody(obra); attachPanelEvents(obra);
   }
+}
+
+async function toggleSicSummaryBold(editor){
+  if(!editor) return;
+  const selection=window.getSelection();
+  const selectionInside=selection && selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode);
+  if(!selectionInside || selection.isCollapsed){
+    editor.focus();
+    showToast('Selecione o trecho que deseja colocar em negrito.','err');
+    return;
+  }
+  document.execCommand('bold',false,null);
+  editor.dispatchEvent(new Event('input',{bubbles:true}));
+  await saveSicQuadroCell(editor);
 }
 
 function renderSicItem(o, s){
@@ -2101,6 +2160,10 @@ function attachPanelEvents(o){
   document.querySelectorAll('[data-qrremove]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(confirm('Excluir esta linha do Quadro Resumo?')) await removeSicQuadroRow(btn.dataset.obraid,btn.dataset.sicid,btn.dataset.rowid);
   }));
+  document.querySelectorAll('[data-qrbold]').forEach(btn=>{
+    btn.addEventListener('mousedown',e=>e.preventDefault());
+    btn.addEventListener('click',async()=>{ await toggleSicSummaryBold(btn.closest('td')?.querySelector('[data-qrcell="observacoes"]')); });
+  });
   document.querySelectorAll('[data-qrdrag]').forEach(handle=>{
     handle.addEventListener('dragstart',e=>{
       qrDragState={obraId:handle.dataset.obraid,sicId:handle.dataset.sicid,rowId:handle.dataset.rowid};
@@ -2136,6 +2199,19 @@ function attachPanelEvents(o){
     if(el.tagName==='TEXTAREA'){
       el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px';
       el.addEventListener('input',()=>{ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; });
+    }
+    if(el.isContentEditable){
+      el.addEventListener('paste',e=>{
+        e.preventDefault();
+        document.execCommand('insertText',false,e.clipboardData?.getData('text/plain')||'');
+      });
+      el.addEventListener('keydown',async e=>{
+        if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='b'){
+          e.preventDefault();
+          await toggleSicSummaryBold(el);
+        }
+      });
+      el.addEventListener('blur',()=>{ if(!serializeSicSummaryRichText(el)) el.innerHTML=''; });
     }
     el.addEventListener('blur',async()=>{ await saveSicQuadroCell(el); });
     if(el.dataset.qrcell==='valor') el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
