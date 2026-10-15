@@ -2043,7 +2043,27 @@ async function toggleSicSummaryBold(editor,savedRange=null){
     showToast('Selecione o trecho que deseja colocar em negrito.','err');
     return;
   }
-  document.execCommand('bold',false,null);
+  const range=selection.getRangeAt(0);
+  const anchorBold=selection.anchorNode?.parentElement?.closest('strong,b');
+  const focusBold=selection.focusNode?.parentElement?.closest('strong,b');
+  if(anchorBold && anchorBold===focusBold && editor.contains(anchorBold)){
+    const parent=anchorBold.parentNode;
+    while(anchorBold.firstChild) parent.insertBefore(anchorBold.firstChild,anchorBold);
+    parent.removeChild(anchorBold);
+    parent.normalize();
+  }else{
+    const strong=document.createElement('strong');
+    try{
+      range.surroundContents(strong);
+    }catch(_){
+      strong.appendChild(range.extractContents());
+      range.insertNode(strong);
+    }
+    const highlighted=document.createRange();
+    highlighted.selectNodeContents(strong);
+    selection.removeAllRanges();
+    selection.addRange(highlighted);
+  }
   editor.dispatchEvent(new Event('input',{bubbles:true}));
   await saveSicQuadroCell(editor);
 }
