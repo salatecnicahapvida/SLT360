@@ -8,6 +8,44 @@ const normalize = value => String(value || '')
 
 const roundMoney = value => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+function localISODate(value = new Date()) {
+  if (typeof value === 'string') return value.slice(0, 10);
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateAtNoon(isoDate) {
+  const date = new Date(`${isoDate}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function mondayFridayFor(isoDate) {
+  const date = dateAtNoon(isoDate);
+  if (!date) return { start: '', end: '' };
+  const day = date.getDay();
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  date.setDate(date.getDate() - daysFromMonday);
+  const start = localISODate(date);
+  const friday = new Date(date);
+  friday.setDate(friday.getDate() + 4);
+  return { start, end: localISODate(friday) };
+}
+
+function mondayFridayAfter(isoDate) {
+  const date = dateAtNoon(isoDate);
+  if (!date) return { start: '', end: '' };
+  date.setDate(date.getDate() + 1);
+  while (date.getDay() !== 1) date.setDate(date.getDate() + 1);
+  const start = localISODate(date);
+  const friday = new Date(date);
+  friday.setDate(friday.getDate() + 4);
+  return { start, end: localISODate(friday) };
+}
+
 function activeEVLine(line) {
   const status = normalize(line?.status);
   return status !== 'nao se aplica';
@@ -71,16 +109,63 @@ export function matchApprovalCard(cards, work) {
   return { card: null, reason: 'not-found', ambiguous: false };
 }
 
-export function approvalWeekStatus(week) {
+export function approvalWeekStatus(week, today = localISODate()) {
   const explicit = String(week?.status || '').toLowerCase();
-  if (['open', 'provisional', 'closed'].includes(explicit)) return explicit;
-  return week?.placeholder ? 'provisional' : 'open';
+  let status = ['open', 'provisional', 'closed'].includes(explicit)
+    ? explicit
+    : week?.placeholder ? 'provisional' : 'open';
+  const start = localISODate(week?.start || '');
+  const end = localISODate(week?.end || '');
+  if (end && today && end < today) status = 'closed';
+  else if (status === 'provisional' && start && today && start <= today) status = 'open';
+  return status;
 }
 
-export function selectableApprovalWeeks(weeks) {
+export function reconcileApprovalWeeks(weeks, today = localISODate()) {
+  let changed = false;
+  const reconciled = (Array.isArray(weeks) ? weeks : []).map(week => {
+    const status = approvalWeekStatus(week, today);
+    const wasProvisional = String(week?.status || '').toLowerCase() === 'provisional' || Boolean(week?.placeholder);
+    const placeholder = status === 'provisional';
+    if (status !== String(week?.status || '').toLowerCase() || placeholder !== Boolean(week?.placeholder)) changed = true;
+    const normalized = { ...week, status, placeholder };
+    if (wasProvisional && status === 'open' && !week?.activatedAt) {
+      normalized.activatedAt = new Date().toISOString();
+      changed = true;
+    }
+    return normalized;
+  });
+  return { weeks: reconciled, changed };
+}
+
+export function selectableApprovalWeeks(weeks, today = localISODate()) {
   return (Array.isArray(weeks) ? weeks : [])
-    .filter(week => approvalWeekStatus(week) !== 'closed')
+    .filter(week => approvalWeekStatus(week, today) !== 'closed')
     .sort((a, b) => String(a?.start || '').localeCompare(String(b?.start || '')));
+}
+
+export function nextApprovalWeekDraft(weeks, today = localISODate()) {
+  const reconciled = reconcileApprovalWeeks(weeks, today).weeks;
+  let candidate = mondayFridayFor(today);
+  const overlaps = (range, week) => {
+    const start = localISODate(week?.start || '');
+    const end = localISODate(week?.end || '');
+    return Boolean(start && end && range.start <= end && range.end >= start);
+  };
+  let conflict = reconciled.find(week => overlaps(candidate, week));
+  while (conflict) {
+    candidate = mondayFridayAfter(conflict.end);
+    conflict = reconciled.find(week => overlaps(candidate, week));
+  }
+  const numbers = reconciled
+    .map(week => String(week?.label || '').match(/semana\s*(\d+)/i)?.[1])
+    .map(Number)
+    .filter(Number.isFinite);
+  return {
+    label: `Semana ${Math.max(0, ...numbers) + 1}`,
+    start: candidate.start,
+    end: candidate.end,
+  };
 }
 
 export function approvalSnapshotFor(payload, cardId, weekId) {
