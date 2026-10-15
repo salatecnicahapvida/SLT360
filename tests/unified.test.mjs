@@ -70,6 +70,20 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
       sicMetadata:{lecomNumber:'1.234.567',descricaoSic:'SIC criada pelo Kanban'},
       sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:12.34,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
     })]);
+  await assert.rejects(
+    db.query(`insert into slt_budget_demands(record_key,work_id,type,extra)
+      values('duplicate-lecom','w','SIC',$1::jsonb)`,[JSON.stringify({sicMetadata:{lecomNumber:'1234567'}})]),
+    (error)=>error?.code==='23505' && /LECOM já existe no card d/i.test(error.message),
+    'pontuação não permite recriar um LECOM ativo',
+  );
+  await db.query(`insert into slt_budget_archived_demands(record_key,work_id,type,extra)
+    values('archived-lecom','w','SIC',$1::jsonb)`,[JSON.stringify({sicMetadata:{lecomNumber:'9.876.543'}})]);
+  await assert.rejects(
+    db.query(`insert into slt_budget_demands(record_key,work_id,type,extra)
+      values('duplicate-archived-lecom','w','SIC',$1::jsonb)`,[JSON.stringify({sicMetadata:{lecomNumber:'9876543'}})]),
+    (error)=>error?.code==='23505' && /archived-lecom/i.test(error.message),
+    'um LECOM arquivado continua reservado para impedir outro card',
+  );
   let queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
   assert.equal(queued.obras[0].ev.total,100,'preserva o EV histórico correto do card');
   assert.equal(queued.obras[0].sics.length,1);
