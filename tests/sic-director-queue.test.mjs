@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
   decoratePayloadWithPortfolioAlerts,
   matchApprovalCard,
+  nextApprovalWeekDraft,
   portfolioApprovedAdditives,
   portfolioEVWithoutRisk,
+  reconcileApprovalWeeks,
   selectableApprovalWeeks,
   stripLivePortfolioAlerts,
 } from '../src/sic-director-queue.js';
@@ -38,11 +40,37 @@ test('prioriza vínculo explícito e não associa código 0000 de forma insegura
 
 test('oferece somente semanas abertas ou provisórias, sem selecionar histórico fechado', () => {
   const weeks = selectableApprovalWeeks([
-    { id: 'w6', start: '2026-09-21', status: 'closed' },
-    { id: 'w8', start: '2026-10-05', status: 'provisional' },
-    { id: 'w7', start: '2026-09-28', status: 'open' },
-  ]);
+    { id: 'w6', start: '2026-09-21', end: '2026-09-25', status: 'closed' },
+    { id: 'w8', start: '2026-10-05', end: '2026-10-09', status: 'provisional' },
+    { id: 'w7', start: '2026-09-28', end: '2026-10-02', status: 'open' },
+  ], '2026-10-01');
   assert.deepEqual(weeks.map(item => item.id), ['w7', 'w8']);
+});
+
+test('ativa semana provisória na data inicial e encerra automaticamente períodos passados', () => {
+  const result = reconcileApprovalWeeks([
+    { id: 'w7', start: '2026-09-28', end: '2026-10-02', status: 'open', placeholder: false },
+    { id: 'w8', start: '2026-10-05', end: '2026-10-09', status: 'provisional', placeholder: true },
+    { id: 'w9', start: '2026-10-12', end: '2026-10-16', status: 'provisional', placeholder: true },
+  ], '2026-10-06');
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.weeks.map(item => [item.id, item.status, item.placeholder]), [
+    ['w7', 'closed', false],
+    ['w8', 'open', false],
+    ['w9', 'provisional', true],
+  ]);
+});
+
+test('sugere a semana atual quando não existe pauta e evita períodos sobrepostos', () => {
+  const current = nextApprovalWeekDraft([
+    { id: 'w8', label: 'Semana 8', start: '2026-10-05', end: '2026-10-09', status: 'closed' },
+  ], '2026-10-15');
+  assert.deepEqual(current, { label: 'Semana 9', start: '2026-10-12', end: '2026-10-16' });
+
+  const following = nextApprovalWeekDraft([
+    { id: 'w9', label: 'Semana 9', start: '2026-10-12', end: '2026-10-16', status: 'open' },
+  ], '2026-10-15');
+  assert.deepEqual(following, { label: 'Semana 10', start: '2026-10-19', end: '2026-10-23' });
 });
 
 test('sinaliza divergência de EV sem alterar nem persistir o valor correto do card', () => {
