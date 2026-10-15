@@ -593,6 +593,7 @@ let operationalViewMode = "kanban";
 let demandPointerDragState = null;
 let demandDragSuppressClickUntil = 0;
 let pendingDemandCompletion = null;
+let pendingDirectSicCompletion = null;
 const unassignedAnalystFilterValue = "__sem_analista__";
 const unassignedSprintFilterValue = "__sem_sprint__";
 let operationalFilters = {
@@ -19322,10 +19323,11 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
       : "";
   const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  const isDirectSicCompletion = pendingDirectSicCompletion?.demandId === demand.id && demand.coluna === "validadoObras";
   if (pendingDemandCompletion?.demandId === demand.id) pendingDemandCompletion = null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
-      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" data-edit-value="${editValue ? "true" : "false"}" aria-labelledby="demandCompletionTitle">
+      <form class="modal-card demand-completion-card" id="demandCompletionForm" data-id="${demand.id}" data-edit-value="${editValue ? "true" : "false"}" ${isDirectSicCompletion ? `data-direct-sic-completion="${escapeAttribute(demand.id)}"` : ""} aria-labelledby="demandCompletionTitle">
         <header>
           <div>
             <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
@@ -19337,6 +19339,12 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
         <div class="modal-body">
           <div class="error-box" id="formError"></div>
           <input type="hidden" name="evSemMudanca" value="${evNoChange ? "true" : "false"}" />
+          ${isDirectSicCompletion ? `
+            <div class="completion-resume-notice">
+              <span>✓</span>
+              <div><strong>Diretoria não necessária</strong><small>A SIC continuará em Validado Obras até que o EV, a data e o valor final sejam confirmados.</small></div>
+            </div>
+          ` : ""}
           ${resumedAfterEV ? `
             <div class="completion-resume-notice">
               <span>✓</span>
@@ -19381,9 +19389,12 @@ function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV 
     return;
   }
   const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  const isDirectSicCompletion = pendingDirectSicCompletion?.demandId === demand.id && demand.coluna === "validadoObras";
   const hasEVUpdate = demandHasEVUpdateForCompletion(demand);
   const pendingEVChange = demandHasPendingEVChangeForCompletion(demand);
-  const evRequirementSatisfied = Boolean(hasEVUpdate || (!pendingEVChange && demand.evSemMudanca === true));
+  const evRequirementSatisfied = Boolean(
+    hasEVUpdate || (!isDirectSicCompletion && !pendingEVChange && demand.evSemMudanca === true)
+  );
   const evRequirementText = hasEVUpdate
     ? "EV atualizado e salvo"
     : pendingEVChange
@@ -19403,7 +19414,7 @@ function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV 
 
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop" data-action="close-modal">
-      <section class="modal-card demand-completion-card" aria-labelledby="demandCompletionEvTitle">
+      <section class="modal-card demand-completion-card" ${isDirectSicCompletion ? `data-direct-sic-completion="${escapeAttribute(demand.id)}"` : ""} aria-labelledby="demandCompletionEvTitle">
         <header>
           <div>
             <span class="eyebrow">${isSicDemand ? "Conclusão da SIC" : "Conclusão da demanda"}</span>
@@ -19415,6 +19426,12 @@ function openDemandCompletionModal(id, { forceChecklist = false, resumedAfterEV 
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
         <div class="modal-body">
+          ${isDirectSicCompletion ? `
+            <div class="completion-resume-notice">
+              <span>✓</span>
+              <div><strong>Diretoria não necessária</strong><small>A decisão foi confirmada. O card só será concluído depois da conferência do EV e dos dados finais.</small></div>
+            </div>
+          ` : ""}
           ${isSicDemand ? `
             ${resumedAfterEV ? `
               <div class="completion-resume-notice">
@@ -19464,7 +19481,16 @@ async function handleDemandCompletionSubmit(form) {
   if (!demand) return;
   const formData = new FormData(form);
   const editValue = form.dataset.editValue === "true";
+  const directSicCompletion = Boolean(
+    !editValue
+    && demand.coluna === "validadoObras"
+    && pendingDirectSicCompletion?.demandId === demand.id
+  );
   if (editValue && (demand.coluna !== "concluido" || demandTypeKey(demand.tipo) !== "SIC")) return;
+  if (!editValue && demand.coluna === "validadoObras" && demandTypeKey(demand.tipo) === "SIC" && !directSicCompletion) {
+    showFormError("Confirme primeiro que esta SIC não necessita de aprovação da Diretoria.", form);
+    return;
+  }
   const dataEntregaReal = String(formData.get("dataEntregaReal") || "").trim();
   if (!editValue && !dataEntregaReal) {
     showFormError("Informe a Data entrega real antes de concluir a demanda.", form);
@@ -19490,12 +19516,29 @@ async function handleDemandCompletionSubmit(form) {
   const historySnapshot = clone(state.history || []);
   const learningWork = workById(demand.obraId);
   const learningWorkSnapshot = learningWork ? clone(learningWork) : null;
+  if (directSicCompletion) {
+    demand.sicDirectorWaiver = {
+      ...clone(pendingDirectSicCompletion.waiver),
+      confirmedAmount: valorGerado,
+    };
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "aprovação da Diretoria",
+      valorAnterior: "Necessidade não confirmada",
+      valorNovo: `Não necessária — confirmado por ${demand.sicDirectorWaiver.waivedBy}`,
+    });
+  }
   demand.valorGerado = valorGerado;
   if (!editValue) {
     demand.dataEntregaReal = dataEntregaReal;
     demand.evSemMudanca = evSemMudanca;
   }
-  const updated = editValue ? demand : await updateDemandColumn(demand.id, "concluido", { persist: false, skipCompletionGate: true });
+  const updated = editValue ? demand : await updateDemandColumn(demand.id, "concluido", {
+    persist: false,
+    skipCompletionGate: true,
+    directSicCompletion,
+  });
   if (updated === false) {
     if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
     if (learningWork && learningWorkSnapshot) Object.assign(learningWork, learningWorkSnapshot);
@@ -19527,6 +19570,7 @@ async function handleDemandCompletionSubmit(form) {
     showFormError(error?.message || "A conclusão não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
     return;
   }
+  if (directSicCompletion) pendingDirectSicCompletion = null;
   closeModal();
   await setView("worksOperational");
   showToast(editValue ? `${demand.id}: valor da demanda atualizado para ${money(valorGerado)}.` : `${demand.id} concluída. Valor gerado: ${money(valorGerado)}.`);
@@ -19761,7 +19805,6 @@ function openSicDirectorRequirementModal(id) {
     return;
   }
   const info = demandSicInfo(demand) || {};
-  const recordedAmount = demandHasRecordedValue(demand) ? Number(demand.valorGerado) : sicWorksValidatedAmount(demand);
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop">
       <form class="modal-card sic-value-modal" id="sicDirectorRequirementForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorRequirementTitle">
@@ -19783,17 +19826,12 @@ function openSicDirectorRequirementModal(id) {
             </label>
             <label class="sic-value-decision-option">
               <input type="radio" name="directorApprovalRequired" value="no" required>
-              <span><strong>Não é necessária</strong><small>Confirme o valor e conclua a SIC diretamente.</small></span>
+              <span><strong>Não é necessária</strong><small>Seguir para a conferência do EV e para os dados finais da SIC.</small></span>
             </label>
           </fieldset>
-          <label class="field sic-direct-completion-value-field" hidden>
-            <span>Confirmar valor da SIC (R$) *</span>
-            <input name="sicDirectCompletionAmount" inputmode="decimal" autocomplete="off" value="${recordedAmount === null ? "" : escapeAttribute(currencyInputValue(recordedAmount))}" placeholder="0,00">
-            <small>O valor confirmado ficará visível no card concluído e registrado no histórico.</small>
-          </label>
           <div class="info-box">
             <strong>Registro auditável</strong>
-            <span>O sistema registrará o usuário, a data, a decisão de não enviar à Diretoria e o valor confirmado.</span>
+            <span>O sistema registrará o usuário, a data, a decisão de não enviar à Diretoria e o valor final informado na conclusão.</span>
           </div>
         </div>
         <footer class="modal-actions">
@@ -19806,8 +19844,7 @@ function openSicDirectorRequirementModal(id) {
 }
 
 async function handleSicDirectorRequirementSubmit(form) {
-  const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
-  const demand = state.demands[demandIndex];
+  const demand = state.demands.find((item) => item.id === form.dataset.id);
   if (!demand || demandTypeKey(demand.tipo) !== "SIC" || demand.coluna !== "validadoObras") {
     showFormError("A SIC não está mais em Validado Obras. Recarregue os dados antes de tentar novamente.", form);
     return;
@@ -19819,86 +19856,27 @@ async function handleSicDirectorRequirementSubmit(form) {
     return;
   }
   if (approvalRequired === "yes") {
+    if (pendingDirectSicCompletion?.demandId === demand.id) pendingDirectSicCompletion = null;
     closeModal();
     render();
     showToast("Movimentação cancelada. A SIC deve seguir para Aguardando Aprovação Diretoria.");
     return;
   }
-
-  const rawAmount = String(formData.get("sicDirectCompletionAmount") || "").trim();
-  if (!rawAmount) {
-    showFormError("Confirme o valor da SIC antes de concluir.", form);
-    form.querySelector('[name="sicDirectCompletionAmount"]')?.focus();
-    return;
-  }
-  const confirmedAmount = parseCurrency(rawAmount);
-  if (!Number.isFinite(confirmedAmount) || confirmedAmount < 0) {
-    showFormError("Informe um valor válido, igual ou maior que zero.", form);
-    return;
-  }
-
   const actor = currentUser() || {};
-  const demandSnapshot = clone(demand);
-  const historySnapshot = clone(state.history || []);
-  const completedOn = todayISO();
-  const recordedAt = new Date().toISOString();
-  demand.sicDirectorWaiver = {
-    version: 2,
-    required: false,
-    reason: "Aprovação da Diretoria não necessária",
-    sourcePhase: "validadoObras",
-    confirmedAmount,
-    waivedAt: recordedAt,
-    waivedBy: actor.nome || "Usuário SLT360",
-    waivedById: actor.id || "",
+  pendingDirectSicCompletion = {
+    demandId: demand.id,
+    workId: demand.obraId,
+    waiver: {
+      version: 2,
+      required: false,
+      reason: "Aprovação da Diretoria não necessária",
+      sourcePhase: "validadoObras",
+      waivedAt: new Date().toISOString(),
+      waivedBy: actor.nome || "Usuário SLT360",
+      waivedById: actor.id || "",
+    },
   };
-  demand.valorGerado = confirmedAmount;
-  demand.dataEntregaReal = completedOn;
-  addHistory({
-    entidade: "demanda",
-    entidadeId: demand.id,
-    campo: "aprovação da Diretoria",
-    valorAnterior: "Necessidade não confirmada",
-    valorNovo: `Não necessária — confirmado por ${demand.sicDirectorWaiver.waivedBy}`,
-  });
-  if (!demandHasRecordedValue(demandSnapshot) || Math.abs(Number(demandSnapshot.valorGerado) - confirmedAmount) >= 0.01) {
-    addHistory({
-      entidade: "demanda",
-      entidadeId: demand.id,
-      campo: "valor da SIC",
-      valorAnterior: demandHasRecordedValue(demandSnapshot) ? money(demandSnapshot.valorGerado) : "Não informado",
-      valorNovo: money(confirmedAmount),
-    });
-  }
-  addHistory({
-    entidade: "demanda",
-    entidadeId: demand.id,
-    campo: "dataEntregaReal",
-    valorAnterior: dateOnly(demandSnapshot.dataEntregaReal) ? dateText(demandSnapshot.dataEntregaReal) : "Não informada",
-    valorNovo: dateText(completedOn),
-  });
-
-  const updated = await updateDemandColumn(demand.id, "concluido", {
-    persist: false,
-    skipCompletionGate: true,
-    directSicCompletion: true,
-  });
-  if (!updated) {
-    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
-    state.history = historySnapshot;
-    return;
-  }
-  try {
-    await saveStateAndWait();
-  } catch (error) {
-    if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
-    state.history = historySnapshot;
-    showFormError(error?.message || "A conclusão não foi confirmada no banco. Recarregue os dados antes de tentar novamente.", form);
-    return;
-  }
-  closeModal();
-  render();
-  showToast(`SIC concluída sem aprovação da Diretoria, com valor de ${money(confirmedAmount)}.`);
+  openDemandCompletionModal(demand.id, { forceChecklist: true });
 }
 
 async function handleSicDirectorWaiverSubmit(form) {
@@ -21371,9 +21349,15 @@ document.addEventListener("click", async (event) => {
     if (actionButton.classList.contains("modal-backdrop") && actionButton.querySelector("form.modal-card")) {
       return;
     }
-    if (actionButton.closest(".ev-modal-card")?.querySelector("#evForm[data-completion-demand-id]")?.dataset.completionDemandId) {
+    const evCompletionDemandId = actionButton.closest(".ev-modal-card")?.querySelector("#evForm[data-completion-demand-id]")?.dataset.completionDemandId || "";
+    const directCompletionDemandId = actionButton.closest("[data-direct-sic-completion]")?.dataset.directSicCompletion || "";
+    if (evCompletionDemandId) {
       pendingDemandCompletion = null;
     }
+    if (
+      pendingDirectSicCompletion
+      && [evCompletionDemandId, directCompletionDemandId].includes(pendingDirectSicCompletion.demandId)
+    ) pendingDirectSicCompletion = null;
     workModalReturnMode = "";
     closeModal();
   }
@@ -21775,16 +21759,6 @@ document.addEventListener("change", async (event) => {
     if (revisedField) revisedField.hidden = !revised;
     if (revisedInput) revisedInput.required = revised;
     if (revised) revisedInput?.focus();
-    return;
-  }
-  if (event.target.matches('#sicDirectorRequirementForm [name="directorApprovalRequired"]')) {
-    const form = event.target.closest("#sicDirectorRequirementForm");
-    const valueField = form?.querySelector(".sic-direct-completion-value-field");
-    const valueInput = valueField?.querySelector('[name="sicDirectCompletionAmount"]');
-    const approvalNotRequired = event.target.value === "no";
-    if (valueField) valueField.hidden = !approvalNotRequired;
-    if (valueInput) valueInput.required = approvalNotRequired;
-    if (approvalNotRequired) valueInput?.focus();
     return;
   }
   if (event.target.matches('#sicDirectorQueueForm [name="approvalWeekId"], #sicDirectorQueueForm [name="approvalCardId"]')) {

@@ -3080,11 +3080,35 @@ test('any user confirms whether Diretoria is required before moving a validated 
  await requestDirectCompletion();
  confirmation=page.locator('#sicDirectorRequirementForm');
  await confirmation.locator('[name="directorApprovalRequired"][value="no"]').check();
- const amount=confirmation.locator('[name="sicDirectCompletionAmount"]');
- await expect(amount).toBeVisible();
- await expect(amount).toHaveValue('25,00');
- await amount.fill('27,50');
+ await expect(confirmation.locator('[name="sicDirectCompletionAmount"]')).toHaveCount(0);
  await confirmation.getByRole('button',{name:'Confirmar decisão'}).click();
+
+ const checklist=page.locator('.demand-completion-card');
+ await expect(checklist.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await expect(checklist).toContainText('Diretoria não necessária');
+ await expect(checklist.getByRole('button',{name:/Atualizar o EV/})).toBeVisible();
+ await expect(checklist.getByRole('button',{name:/Não houve mudança no EV/})).toBeVisible();
+ await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-direct-completion"]')).toBeVisible();
+ expect(b.requests.flatMap(request=>request.changes).some(change=>change.key==='sic-direct-completion')).toBe(false);
+
+ await checklist.getByRole('button',{name:/Atualizar o EV/}).click();
+ const evForm=page.locator('#evForm');
+ await expect(evForm).toHaveAttribute('data-completion-demand-id','sic-direct-completion');
+ await evForm.locator('.ev-line-row:visible .ev-value-input').first().fill('125,00');
+ await evForm.getByRole('button',{name:'Salvar EV',exact:true}).click();
+ const deviation=page.locator('[data-ev-haptec-confirm]');
+ if(await deviation.isVisible().catch(()=>false)){
+  await deviation.locator('[data-ev-haptec-check]').check();
+  await deviation.getByRole('button',{name:'Confirmar e salvar EV',exact:true}).click();
+ }
+
+ await expect(page.getByRole('heading',{name:'Obrigatoriedades para concluir a SIC'})).toBeVisible();
+ await page.getByRole('button',{name:/Continuar para os dados finais/}).click();
+ const completion=page.locator('#demandCompletionForm');
+ await expect(completion).toContainText('Diretoria não necessária');
+ await completion.locator('[name="dataEntregaReal"]').fill('2026-09-28');
+ await completion.locator('[name="valorGerado"]').fill('27,50');
+ await completion.getByRole('button',{name:'Concluir demanda'}).click();
 
  await expect(page.locator('.kanban-column[data-column="concluido"] article[data-id="sic-direct-completion"]')).toBeVisible();
  const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-direct-completion'&&change.document?.coluna==='concluido');
@@ -3099,8 +3123,8 @@ test('any user confirms whether Diretoria is required before moving a validated 
    waivedById:id,
   },
  });
- expect(completed.document.evSemMudanca).toBeUndefined();
- expect(completed.document.dataEntregaReal).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+ expect(completed.document.evSemMudanca).toBe(false);
+ expect(completed.document.dataEntregaReal).toBe('2026-09-28');
  expect(completed.document.sicDirectorDecision).toBeUndefined();
  expect(b.errors).toEqual([]);
 });
