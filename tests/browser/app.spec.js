@@ -18,7 +18,7 @@ const payload={state:{
     {id:'test-budget-demand',obraId:'test-work',titulo:'Orçamento de teste',tipo:'EmissaoInicial',coluna:'validacaoObras',sicIds:[],anexos:[]},
   ],
   sicApprovalWorks:[{id:'approval-test',descricao:'Obra SIC de teste',classificacao:'Teste',oiList:['TEST'],oiAliases:['TEST'],sics:[{id:'sic-test',lecom:'TEST',descricao:'SIC de teste',valor:20,weekId:'w-test',status:'pendente'}],ev:{semAditivos:100,aditivosAprovados:0,total:100,areaM2:10,valorM2:10},sap:{atribuidoAtual:120,comprometidoAtual:80,faturasAnosAnteriores:0},historyEvents:[],lastWeekId:'w-test'}],
-  sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2026-09-01',end:'2026-09-07'}],sicApprovalSnapshots:[],
+  sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2099-09-01',end:'2099-09-07',status:'open'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
 async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,historyRecords=null,omitHistoryIds=false,strictRevisions=false,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
