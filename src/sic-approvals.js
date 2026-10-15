@@ -1,4 +1,4 @@
-import { decoratePayloadWithPortfolioAlerts, stripLivePortfolioAlerts } from './sic-director-queue.js';
+import { decoratePayloadWithPortfolioAlerts, reconcileApprovalWeeks, stripLivePortfolioAlerts } from './sic-director-queue.js';
 
 const KEYS = new Set([
   'sic-approval:obras',
@@ -32,9 +32,13 @@ export function mountSicApprovals(target, cloud, portfolioWorks = []) {
       if (!Array.isArray(row?.payload?.obras) || !Array.isArray(row?.payload?.weeks) || !Array.isArray(row?.payload?.snapshots)) {
         throw new Error('A base compartilhada de Aprovação de SIC’s está incompleta.');
       }
-      snapshot = { ...row, payload: stripLivePortfolioAlerts(row.payload) };
+      const calendar = reconcileApprovalWeeks(row.payload.weeks);
+      snapshot = {
+        ...row,
+        payload: stripLivePortfolioAlerts({ ...row.payload, weeks: calendar.weeks }),
+      };
       displayPayload = decoratePayloadWithPortfolioAlerts(snapshot.payload, portfolioWorks);
-      return row;
+      return snapshot;
     }).finally(() => { fetching = null; });
     return fetching;
   }
