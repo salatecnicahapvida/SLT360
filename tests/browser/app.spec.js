@@ -2858,6 +2858,11 @@ test('Gestor chooses the week and queues only the new validated SIC for Diretori
  const kpiHeights=await queue.locator('.sic-director-kpi-grid .kpi-card').evaluateAll(elements=>elements.map(element=>element.getBoundingClientRect().height));
  expect(Math.max(...kpiHeights)).toBeLessThan(120);
  await expect(queue.locator('[name="approvalWeekId"]')).toHaveValue('');
+ await expect(queue.locator('[name="approvalWeekId"] option[value="__new__"]')).toContainText('Criar nova semana');
+ await queue.locator('[name="approvalWeekId"]').selectOption('__new__');
+ await expect(queue.locator('[name="approvalWeekLabel"]')).toBeVisible();
+ await expect(queue.locator('[name="approvalWeekStart"]')).toHaveValue(/\d{4}-\d{2}-\d{2}/);
+ await expect(queue.locator('[name="approvalWeekEnd"]')).toHaveValue(/\d{4}-\d{2}-\d{2}/);
  await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
  await queue.locator('[data-sic-card-search]').fill('obra sic');
  await expect(queue.locator('[data-sic-card-results] [data-card-id="approval-test"]')).toBeVisible();
