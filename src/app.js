@@ -18884,11 +18884,14 @@ async function handleDemandDetailSubmit(form) {
       form.querySelector('[name="lecomNumber"]')?.focus();
       return;
     }
-    const lecomConflict = findSicLecomConflict(lecomNumber, demand.id);
-    if (lecomConflict) {
-      showFormError(sicLecomConflictMessage(lecomNumber, lecomConflict), form);
-      form.querySelector('[name="lecomNumber"]')?.focus();
-      return;
+    const lecomChanged = normalizeSicLecom(lecomNumber) !== normalizeSicLecom(sicLecomFromDemand(demand));
+    if (lecomChanged) {
+      const lecomConflict = findSicLecomConflict(lecomNumber, demand.id);
+      if (lecomConflict) {
+        showFormError(sicLecomConflictMessage(lecomNumber, lecomConflict), form);
+        form.querySelector('[name="lecomNumber"]')?.focus();
+        return;
+      }
     }
   }
   const previousSprintIds = demandSprintIds(demand);

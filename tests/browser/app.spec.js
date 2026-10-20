@@ -21,7 +21,7 @@ const payload={state:{
   sicApprovalWeeks:[{id:'w-test',label:'Semana teste',start:'2099-09-01',end:'2099-09-07',status:'open'}],sicApprovalSnapshots:[],
 },datasets:{}};
 
-async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,historyRecords=null,omitHistoryIds=false,strictRevisions=false,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
+async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverlap=false,analystCanWrite=false,analystNames=[],archivedDemandIds=[],archivedDemandRecords=null,demandRecords=null,evRecords=null,workRecords=null,sprintRecords=null,historyRecords=null,omitHistoryIds=false,strictRevisions=false,fundRecords=null,failFinanceCommit=false,moduleLoadDelay=0,sicApprovalStore=null}={}){
  const input=structuredClone(payload);
  if(Array.isArray(workRecords))input.state.works=workRecords;
  if(Array.isArray(demandRecords))input.state.demands=demandRecords;
@@ -29,7 +29,9 @@ async function backend(page,role='Admin',malicious=false,{maintenanceSourceOverl
  if(Array.isArray(sprintRecords))input.state.sprints=sprintRecords;
  if(Array.isArray(historyRecords))input.state.history=historyRecords;
  if(Array.isArray(fundRecords))input.state.funds=fundRecords;
- input.state.deletedDemands=archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
+ input.state.deletedDemands=Array.isArray(archivedDemandRecords)
+  ? archivedDemandRecords
+  : archivedDemandIds.map(demandId=>({id:demandId,titulo:'Demanda arquivada'}));
  if(malicious)input.state.works[0].nome='<img src=x onerror="window.__xss=1">Obra de teste';
  if(maintenanceSourceOverlap){
   input.state.maintenanceDemands=[
@@ -1827,6 +1829,43 @@ test('SIC creation rejects an existing LECOM even when punctuation differs and t
  await expect(form.locator('#formError')).toContainText('DEM-LECOM-EXISTENTE');
  await expect(form.locator('#formError')).toContainText('Pausado');
  expect(b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands')).toHaveLength(0);
+ expect(b.errors).toEqual([]);
+});
+
+test('editing an existing SIC keeps its unchanged LECOM even when a legacy archived card has the same number',async({page})=>{
+ const active={
+  ...structuredClone(payload.state.demands[0]),
+  id:'DEM-060',
+  obraId:'test-work',
+  coluna:'fazer',
+  analistaResponsavel:'Técnico A',
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'1.372.217',tituloSic:'SIC ativa'},
+ };
+ const archived={
+  ...structuredClone(active),
+  id:'DEM-172',
+  titulo:'Registro antigo arquivado',
+  sicMetadata:{...structuredClone(active.sicMetadata),tituloSic:'Registro antigo arquivado'},
+  excluidoEm:'2026-10-01T12:00:00.000Z',
+ };
+ const b=await backend(page,'Admin',false,{
+  demandRecords:[active],
+  archivedDemandRecords:[archived],
+  analystNames:['Técnico A'],
+ });
+ await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="DEM-060"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('[name="lecomNumber"]')).toHaveValue('1.372.217');
+ await detail.locator('[name="tituloSic"]').fill('SIC ativa revisada');
+ await detail.getByRole('button',{name:'Salvar',exact:true}).click();
+
+ await expect(detail).toBeHidden();
+ await expect(page.locator('#toast')).toContainText('Demanda atualizada');
+ const saved=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='DEM-060');
+ expect(saved?.document?.sicMetadata?.lecomNumber).toBe('1.372.217');
+ expect(saved?.document?.sicMetadata?.tituloSic).toBe('SIC ativa revisada');
  expect(b.errors).toEqual([]);
 });
 
