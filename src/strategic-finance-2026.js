@@ -90,7 +90,7 @@ const shareRows = (entries,field,valueKey='current') => {
   }
   return [...groups.values()].sort((a,b)=>b.value-a.value);
 };
-const rank = (rows,total,n=7) => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
+const rank = (rows,total,n=7,filter='') => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
 export async function connectHapcapex(email,password,rerender) {
   hapSyncMessage='Conectando com segurança ao HAPCAPEX...';
   let error;
@@ -199,8 +199,8 @@ export function renderStrategicFinance(portfolio,toolbar) {
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">'+quality+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
        section('Execução do orçamento de 2026',financeBars)+
-       section('Concentração por pacote',financial.length?rank(byPackage,totals?.current):'<p>Importe o relatório financeiro.</p>')+
-       section('Investimentos por HEAD',financial.length?rank(byHead,totals?.current):'<p>Importe o relatório financeiro.</p>')+
+       section('Concentração por pacote',financial.length?rank(byPackage,totals?.current,7,'package'):'<p>Importe o relatório financeiro.</p>')+
+       section('Investimentos por HEAD',financial.length?rank(byHead,totals?.current,7,'head'):'<p>Importe o relatório financeiro.</p>')+
        section('Obras com maior realizado',financial.length?rank(topWorks,totals?.realized):'<p>Importe o relatório financeiro.</p>')+
     '</div>'+
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
@@ -217,6 +217,7 @@ export function bindCapex2026Import(rerender) {
   document.getElementById('hapOiSearch')?.addEventListener('change',event=>{oiQuery=event.target.value;rerender();});
   document.getElementById('hapOiPackage')?.addEventListener('change',event=>{oiGroup=event.target.value;rerender();});
   document.getElementById('hapOiHead')?.addEventListener('change',event=>{oiHead=event.target.value;rerender();});
+  document.querySelectorAll('[data-hap-rank]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.hapRank==='package')oiGroup=button.dataset.hapRankValue;if(button.dataset.hapRank==='head')oiHead=button.dataset.hapRankValue;rerender();document.getElementById('hapOiSearch')?.scrollIntoView({block:'center'});}));
   document.getElementById('hapClearFinancialFilters')?.addEventListener('click',()=>{oiGroup='';oiHead='';oiQuery='';rerender();});
   document.querySelectorAll('[data-hap-oi]').forEach(button=>button.addEventListener('click',()=>{selectedOI=button.dataset.hapOi;rerender();document.querySelector('[data-hap-oi-close]')?.scrollIntoView({block:'center'});}));
   document.querySelector('[data-hap-oi-close]')?.addEventListener('click',()=>{selectedOI='';rerender();});
