@@ -16,6 +16,7 @@ let financialStatus = 'all';
 let selectedFinanceWorkId = '';
 let oiQuery = '';
 let oiGroup = '';
+let oiHead = '';
 let selectedOI = '';
 const formatMoney = value => value === null || value === undefined ? '—' : new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(value);
 const clean = value => String(value ?? '').trim().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -168,13 +169,14 @@ export function renderStrategicFinance(portfolio,toolbar) {
   const financeBars='<div style="display:grid;gap:14px">'+items.map(([name,v])=>'<div><div style="display:flex;justify-content:space-between"><strong>'+name+'</strong><span>'+formatMoney(v)+'</span></div><div style="background:#e6edf5;border-radius:8px;height:17px;overflow:hidden"><div style="height:100%;width:'+((v||0)/max*100)+'%;background:#135b9b"></div></div></div>').join('')+'</div>';
   const byPackage=shareRows(financial,'pacote'),byHead=shareRows(financial,'head'),topWorks=[...financial].sort((a,b)=>b.realized-a.realized).map(e=>({name:e.nome,value:e.realized}));
   const financeGroups=[...new Set(financial.map(x=>x.pacote||'Não informado'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  const visibleOI=financial.filter(e=>(!oiGroup || (e.pacote||'Não informado')===oiGroup) && (!oiQuery || [e.nome,e.oiList.join(','),e.pacote,e.head].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(oiQuery.toLocaleLowerCase('pt-BR'))))).sort((a,b)=>(b.realized??0)-(a.realized??0));
+  const financeHeads=[...new Set(financial.map(x=>x.head||'Não informado'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const visibleOI=financial.filter(e=>(!oiGroup || (e.pacote||'Não informado')===oiGroup) && (!oiHead || (e.head||'Não informado')===oiHead) && (!oiQuery || [e.nome,e.oiList.join(','),e.pacote,e.head].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(oiQuery.toLocaleLowerCase('pt-BR'))))).sort((a,b)=>(b.realized??0)-(a.realized??0));
   const oiDetails=financial.find(x=>x.oiList.includes(selectedOI));
   const section=(title,body)=>'<section class="panel" style="padding:22px;min-width:0"><h3 style="color:#083e75;margin-top:0">'+title+'</h3>'+body+'</section>';
   const individualFinance=section('Investigar investimentos · todas as OIs do HAPCAPEX',
     '<p>Explore diretamente os '+financial.length+' registros financeiros, inclusive os '+unmatched.length+' sem vínculo cadastral com os EVs. Clique em uma OI para abrir sua ficha financeira.</p>'+
     '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end"><label style="display:grid;gap:5px">Pesquisar nome, OI, pacote ou HEAD<input id="hapOiSearch" value="'+clean(oiQuery)+'" placeholder="Ex.: 50157002 ou nome da obra" style="min-width:280px;padding:10px"></label>'+
-    '<label style="display:grid;gap:5px">Pacote<select id="hapOiPackage" style="min-width:220px;padding:10px"><option value="">Todos os pacotes</option>'+financeGroups.map(n=>'<option value="'+clean(n)+'"'+(oiGroup===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><strong>'+visibleOI.length+' OIs encontradas</strong></div>'+
+    '<label style="display:grid;gap:5px">Pacote<select id="hapOiPackage" style="min-width:220px;padding:10px"><option value="">Todos os pacotes</option>'+financeGroups.map(n=>'<option value="'+clean(n)+'"'+(oiGroup===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><label style="display:grid;gap:5px">HEAD<select id="hapOiHead" style="min-width:220px;padding:10px"><option value="">Todos os HEADs</option>'+financeHeads.map(n=>'<option value="'+clean(n)+'"'+(oiHead===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><button type="button" id="hapClearFinancialFilters" class="secondary-action">Limpar filtros</button><strong>'+visibleOI.length+' OIs encontradas</strong></div>'+
     '<div style="overflow:auto;max-height:580px;margin-top:16px"><table class="data-table"><thead><tr><th>OI · abrir ficha</th><th>Obra</th><th>Pacote</th><th>HEAD</th><th>CAPEX vigente</th><th>Compromissado</th><th>Realizado 2026</th><th>Saldo</th></tr></thead><tbody>'+
     visibleOI.slice(0,250).map(e=>'<tr><td><button type="button" class="secondary-action" data-hap-oi="'+clean(e.oiList[0])+'">'+clean(e.oiList.join(' / '))+'</button></td><td>'+clean(e.nome)+'</td><td>'+clean(e.pacote)+'</td><td>'+clean(e.head)+'</td><td>'+formatMoney(e.current)+'</td><td>'+formatMoney(e.committed)+'</td><td>'+formatMoney(e.realized)+'</td><td>'+formatMoney(e.balance)+'</td></tr>').join('')+'</tbody></table></div>'+
     (visibleOI.length>250?'<p>Exibindo as primeiras 250 OIs do filtro. Refine sua pesquisa para consultar as demais.</p>':'')
@@ -214,6 +216,8 @@ export function bindCapex2026Import(rerender) {
   document.getElementById('hapOiSearch')?.addEventListener('input',event=>{oiQuery=event.target.value;});
   document.getElementById('hapOiSearch')?.addEventListener('change',event=>{oiQuery=event.target.value;rerender();});
   document.getElementById('hapOiPackage')?.addEventListener('change',event=>{oiGroup=event.target.value;rerender();});
+  document.getElementById('hapOiHead')?.addEventListener('change',event=>{oiHead=event.target.value;rerender();});
+  document.getElementById('hapClearFinancialFilters')?.addEventListener('click',()=>{oiGroup='';oiHead='';oiQuery='';rerender();});
   document.querySelectorAll('[data-hap-oi]').forEach(button=>button.addEventListener('click',()=>{selectedOI=button.dataset.hapOi;rerender();document.querySelector('[data-hap-oi-close]')?.scrollIntoView({block:'center'});}));
   document.querySelector('[data-hap-oi-close]')?.addEventListener('click',()=>{selectedOI='';rerender();});
   document.getElementById('capexWorkSearch')?.addEventListener('change',event=>{financialSearch=event.target.value;rerender();});
