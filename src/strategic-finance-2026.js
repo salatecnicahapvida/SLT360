@@ -185,7 +185,7 @@ export async function refreshHapcapex(rerender) {
   const duplicates=new Set();
   for(const o of mapped){if(duplicates.has(o.oiList[0])){hapSyncMessage='O HAPCAPEX retornou OIs duplicadas. Sincronização interrompida para evitar dupla contagem.';rerender();return;}duplicates.add(o.oiList[0]);}
   financeEntries=mapped;
-  const initialPackages=Array.isArray(data?.capex_inicial_pacotes)?data.capex_inicial_pacotes.filter(item=>item && typeof item.capex_inicial==='number' && !/^(?:fora do escopo)$/i.test(String(item.pacote||''))):[];
+  const initialPackages=Array.isArray(data?.capex_inicial_pacotes)?data.capex_inicial_pacotes.filter(item=>item && typeof item.capex_inicial==='number' && String(item.pacote||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase()!=='COMPENSACAO DE ADIANTAMENTO'):[];
   const initialTotal=initialPackages.length?initialPackages.reduce((sum,item)=>sum+item.capex_inicial,0):null;
   const totals={initial:initialTotal,current:mapped.reduce((v,o)=>v+o.current,0),committed:mapped.reduce((v,o)=>v+o.committed,0),realized:mapped.reduce((v,o)=>v+o.realized,0),paid:null,balance:mapped.every(o=>o.balance!==null)?mapped.reduce((v,o)=>v+o.balance,0):null};
   metadata={totals,initialPackages,source:'HAPCAPEX online — função Gerencial',year:2026,validatedAt:new Date().toISOString()};
