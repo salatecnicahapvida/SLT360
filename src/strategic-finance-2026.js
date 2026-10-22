@@ -209,6 +209,26 @@ export function renderStrategicFinance(portfolio,toolbar) {
     '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>Classificação</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
     (suggestions.length>100?'<p>Exibindo as primeiras 100 sugestões para revisão.</p>':'')+
     '<p>Validar documentalmente OI/SAP, identidade do empreendimento e escopo antes de cadastrar o vínculo. Código e nome podem se repetir entre etapas ou exercícios.</p>');
+  const positiveCapex=financial.filter(e=>Number.isFinite(e.current)&&e.current>0);
+  const medians=positiveCapex.map(e=>e.current).sort((a,b)=>a-b);
+  const median=medians.length?(medians[Math.floor((medians.length-1)/2)]+medians[Math.floor(medians.length/2)])/2:null;
+  const topTen=positiveCapex.slice().sort((a,b)=>b.current-a.current).slice(0,10);
+  const topTenShare=totals?.current>0?percent(topTen.reduce((sum,e)=>sum+e.current,0),totals.current):'—';
+  const fullyCommitted=positiveCapex.filter(e=>Number.isFinite(e.committed)&&e.committed>=e.current-0.01);
+  const lowBalance=positiveCapex.filter(e=>Number.isFinite(e.balance)&&e.balance>=0&&e.balance/e.current<=0.05);
+  const financialInsights='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px">'+[
+    ['Mediana de CAPEX por OI',compact(median),'Somente OIs com CAPEX positivo'],
+    ['Concentração Top 10',topTenShare,'Parcela do CAPEX vigente'],
+    ['OIs com compromissado ≥ 100%',String(fullyCommitted.length),'Quantidade, sem inferir estouro'],
+    ['OIs com saldo até 5%',String(lowBalance.length),'Saldo não negativo / CAPEX positivo'],
+    ['Média de CAPEX por OI',compact(positiveCapex.length?positiveCapex.reduce((sum,e)=>sum+e.current,0)/positiveCapex.length:null),'Somente CAPEX positivo']
+  ].map(([name,value,detail])=>'<article style="background:#eff5fb;padding:15px;border-radius:10px"><small>'+clean(name)+'</small><strong style="display:block;color:#063c71;font-size:21px;margin:7px 0">'+clean(value)+'</strong><small>'+clean(detail)+'</small></article>').join('')+'</div>';
+  const distribution=(field,heading)=> {
+    const total=financial.reduce((sum,e)=>sum+(Number.isFinite(e.current)?e.current:0),0);
+    const groups=shareRows(financial,field);
+    return section(heading,'<div style="display:grid;gap:12px">'+groups.slice(0,12).map(item=>
+      '<button type="button" class="secondary-action" data-hap-rank="'+(field==='head'?'head':'package')+'" data-hap-rank-value="'+clean(item.name)+'" style="display:block;width:100%;text-align:left"><div style="display:flex;justify-content:space-between;gap:10px"><strong>'+clean(item.name)+'</strong><span>'+compact(item.value)+' · '+percent(item.value,total)+' · '+item.count+' OIs</span></div><div style="height:12px;background:#e1e9f2;border-radius:7px;margin-top:8px;overflow:hidden"><div style="height:100%;background:#1664a2;width:'+Math.max(0,Math.min(100,total?item.value/total*100:0))+'%"></div></div></button>').join('')+'</div><p style="font-size:12px;color:#526577">Clique na categoria para abrir as OIs correspondentes. Valores = CAPEX vigente por OI.</p>');
+  };
   const quality=[
     ['Registros financeiros',financial.length],
     ['Obras SLT no recorte',rows.length],
@@ -261,6 +281,9 @@ export function renderStrategicFinance(portfolio,toolbar) {
     '<section class="panel" style="padding:16px"><strong>Inteligência integrada · navegar pelas fontes</strong><p>HAPCAPEX: valores financeiros por OI e exercício. Visão Estratégica: EVs e disciplinas. Visão Gerencial: demandas, prazos e produtividade. A correspondência entre bases depende de identificadores verificados.</p><div style="display:flex;flex-wrap:wrap;gap:10px"><button type="button" class="secondary-action" data-view="worksStrategic">Analisar EVs e custo/m²</button><button type="button" class="secondary-action" data-view="worksManagement">Examinar gestão operacional</button><button type="button" class="secondary-action" data-view="portfolio">Consultar portfólio e SICs</button></div></section>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">'+cardSet+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">'+quality+'</div>'+
+    section('Inteligência gerencial do CAPEX · indicadores de carteira',financial.length?financialInsights:'<p>Conecte o HAPCAPEX para calcular os indicadores.</p>')+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(390px,1fr));gap:14px">'+(financial.length?distribution('pacote','Distribuição por pacote · análise interativa')+distribution('head','Distribuição por HEAD · análise interativa'):'')+'</div>'+
+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
        section('Execução do orçamento de 2026',financeBars)+
        section('Concentração por pacote',financial.length?rank(byPackage,totals?.current,7,'package'):'<p>Importe o relatório financeiro.</p>')+
