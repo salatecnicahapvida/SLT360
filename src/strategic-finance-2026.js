@@ -55,39 +55,73 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
   return {rows:result,unmatched:entries.filter(e=>!assigned.has(e)),totals:metadata?.totals||null};
 }
 
+
+const percent = (a,b) => b > 0 ? (a / b * 100).toFixed(1).replace('.',',') + '%' : '—';
+const compact = value => value == null ? '—' : new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:2,style:'currency',currency:'BRL'}).format(value);
+const financeCard = (label,value,detail='',tone='') => '<article class="panel" style="padding:19px;border-top:3px solid '+(tone||'#1769aa')+';min-width:180px;flex:1"><div style="color:#61758b;font-weight:700;font-size:12px;text-transform:uppercase">'+clean(label)+'</div><div style="font-size:clamp(20px,2vw,28px);font-weight:800;color:#093866;margin:8px 0">'+compact(value)+'</div><small>'+clean(detail)+'</small></article>';
+const shareRows = (entries,field,valueKey='current') => {
+  const groups=new Map();
+  for(const e of entries){
+    const name=String(e[field]||'Não informado').trim();
+    const row=groups.get(name)||{name,count:0,value:0};
+    row.count++;row.value+=e[valueKey]||0;groups.set(name,row);
+  }
+  return [...groups.values()].sort((a,b)=>b.value-a.value);
+};
+const rank = (rows,total,n=7) => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
 export function renderStrategicFinance(portfolio,toolbar) {
   const {rows,unmatched,totals}=financialReconciliation(portfolio);
   const linked=rows.filter(r=>r.entry);
-  const withEV=linked.filter(r=>r.work.evInitial !== null && r.work.evInitial !== undefined);
-  const sums=withEV.reduce((a,r)=>({ev:a.ev+r.work.evInitial,realized:a.realized+r.entry.realized,revised:a.revised+r.work.evUpdated}),{ev:0,realized:0,revised:0});
-  const filters=metadata?'<strong>Relatório de 2026 validado em memória (não publicado nem persistido).</strong>':'<strong>Sem base oficial importada: indicadores financeiros indisponíveis.</strong>';
-  const card=(name,value)=>'<div class="panel" style="padding:14px;min-width:150px;flex:1"><small>'+name+'</small><h3>'+formatMoney(value)+'</h3></div>';
-  const cards=[['CAPEX inicial',totals?.initial],['CAPEX atual',totals?.current],['Compromissado',totals?.committed],['Realizado',totals?.realized],['Desembolsado',totals?.paid],['Saldo livre',totals?.balance],['EV inicial vinculado',withEV.length?sums.ev:null],['Realizado vinculado ao EV',withEV.length?sums.realized:null],['Desvio definitivo (elegíveis)',null]].map(([n,v])=>card(n,v)).join('');
-  const completed = work => /conclu[ií]d|finalizad|entregue|encerrad/i.test(String(work.status || ''));
-  // Elegibilidade definitiva requer validação externa do custo final acumulado e da equivalência de escopo.
-  // O relatório anual de 2026, isoladamente, nunca demonstra essas condições.
-  const accuracy = [];
-  const accuracyM = null;
-  const byType = new Map();
-  for(const r of accuracy){
-    const typology=String(r.work.tipologia||'Não classificada');
-    const group=byType.get(typology)||{typology,count:0,ev:0,realized:0};
-    group.count++;group.ev+=r.work.evInitial;group.realized+=r.entry.realized;
-    byType.set(typology,group);
-  }
-  const typeRows=[...byType.values()].sort((a,b)=>b.count-a.count).map(g=>'<tr><td>'+clean(g.typology)+'</td><td>'+g.count+'</td><td>'+formatMoney(g.ev)+'</td><td>'+formatMoney(g.realized)+'</td><td>'+((g.realized/g.ev-1)*100).toFixed(1)+'%</td></tr>').join('');
-  const body=rows.map(({work,entry,status})=>{
-    const forecast=work.evInitial;
-    // Não comparar EV total plurianual ao realizado anual de 2026 sem confirmação de equivalência.
-    const comparable = work.scopePeriodValidated === true && work.finalCostValidated === true && completed(work);
-    const deviation=comparable && entry && forecast !== null && forecast !== undefined ? entry.realized-forecast : null;
-    const deviationPct=deviation!==null && forecast>0 ? (deviation/forecast*100).toFixed(1)+'%' : '—';
-    const phase=completed(work)?'Concluída':'Em execução / outra situação';
-    return '<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.sap)+'</td><td>'+clean(work.uf)+'</td><td>'+clean(work.tipologia)+'</td><td>'+clean(phase)+'</td><td>'+formatMoney(forecast)+'</td><td>'+formatMoney(work.evAdditives)+'</td><td>'+formatMoney(work.evUpdated)+'</td><td>'+formatMoney(entry?.realized)+'</td><td>'+formatMoney(deviation)+'</td><td>'+deviationPct+'</td><td>'+formatMoney(entry?.current)+'</td><td>'+formatMoney(entry?.committed)+'</td><td>'+formatMoney(entry?.paid)+'</td><td>'+formatMoney(entry?.balance)+'</td><td>'+clean(status)+'</td></tr>';
-  }).join('');
-  return toolbar+'<section class="panel" style="padding:20px"><h2>CAPEX 2026 · Visão Estratégico-Financeira</h2><p>Exercício fixo de 2026. O EV inicial representa a previsão de investimento. Compare-o ao realizado financeiro de 2026; desvios definitivos somente serão exibidos mediante validação do custo final acumulado e equivalência de escopo/período. O EV atualizado considera os aditivos e não substitui o CAPEX autorizado. Vínculo apenas por OI/SAP exata.</p><p>'+filters+'</p><label for="capex2026Input">Importar relatório oficial HAPCAPEX (.xlsx) para validação local</label><input id="capex2026Input" type="file" accept=".xlsx,.xls" aria-label="Importar relatório HAPCAPEX 2026"><p id="capex2026Message" role="status"></p><div style="display:flex;flex-wrap:wrap;gap:12px">'+cards+'</div><p>'+linked.length+' obras vinculadas · '+rows.length+' obras 2026 · '+unmatched.length+' registros financeiros sem vínculo; valores não conciliados não são distribuídos por obra.</p><h3>Acurácia definitiva — aguardando validação técnica</h3><p>'+accuracy.length+' obras concluídas com vínculo e EV inicial positivo · erro percentual absoluto médio: '+(accuracyM===null?'indisponível':accuracyM.toFixed(1)+'%')+'. A conclusão cadastral, isoladamente, não comprova custo final acumulado, escopo comparável ou encerramento financeiro. Não é calculada acurácia definitiva com o realizado anual de 2026.</p><div style="overflow:auto"><table class="data-table"><thead><tr><th>Tipologia</th><th>Obras</th><th>EV inicial</th><th>Realizado</th><th>Desvio ponderado</th></tr></thead><tbody>'+typeRows+'</tbody></table></div><h3>Conciliação por obra</h3><div style="overflow:auto"><table class="data-table"><thead><tr><th>Obra</th><th>OI/SAP</th><th>UF</th><th>Tipologia</th><th>Situação</th><th>EV inicial (previsão)</th><th>SICs/aditivos</th><th>EV atualizado</th><th>Realizado 2026</th><th>Desvio realizado − EV inicial</th><th>Desvio %</th><th>CAPEX atual</th><th>Compromissado</th><th>Desembolsado</th><th>Saldo livre</th><th>Conciliação</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
+  const financial=financeEntries;
+  const reconciledCurrent=linked.reduce((v,r)=>v+r.entry.current,0);
+  const reconciledRealized=linked.reduce((v,r)=>v+r.entry.realized,0);
+  const withEV=linked.filter(r=>r.work.evInitial != null);
+  const forecast=withEV.reduce((v,r)=>v+r.work.evInitial,0);
+  const linkedRealized=withEV.reduce((v,r)=>v+r.entry.realized,0);
+  const cardSet=[
+    ['CAPEX inicial',totals?.initial,'Base original de 2026','#1976b7'],
+    ['CAPEX atual',totals?.current,'Orçamento vigente','#0c5893'],
+    ['Compromissado',totals?.committed,percent(totals?.committed,totals?.current)+' do CAPEX atual','#9b6d19'],
+    ['Realizado',totals?.realized,percent(totals?.realized,totals?.current)+' do CAPEX atual','#17805f'],
+    ['Desembolsado',totals?.paid,percent(totals?.paid,totals?.realized)+' do realizado','#318a87'],
+    ['Saldo livre',totals?.balance,percent(totals?.balance,totals?.current)+' disponível','#364fac']
+  ].map(([label,value,detail,color])=>financeCard(label,value,detail,color)).join('');
+  const quality=[
+    ['Registros financeiros',financial.length],
+    ['Obras SLT no recorte',rows.length],
+    ['Vínculos exatos',linked.length],
+    ['Registros não vinculados',unmatched.length],
+    ['Cobertura CAPEX',percent(reconciledCurrent,totals?.current)],
+    ['Cobertura realizado',percent(reconciledRealized,totals?.realized)]
+  ].map(([label,value])=>'<div style="padding:12px;background:#f1f6fb;border-radius:10px"><strong style="font-size:21px;color:#073b6d">'+value+'</strong><div style="font-size:12px">'+label+'</div></div>').join('');
+  const items=[
+    ['CAPEX inicial',totals?.initial],
+    ['CAPEX atual',totals?.current],
+    ['Compromissado',totals?.committed],
+    ['Realizado',totals?.realized],
+    ['Desembolsado',totals?.paid]
+  ];
+  const max=Math.max(1,...items.map(x=>x[1]||0));
+  const financeBars='<div style="display:grid;gap:14px">'+items.map(([name,v])=>'<div><div style="display:flex;justify-content:space-between"><strong>'+name+'</strong><span>'+formatMoney(v)+'</span></div><div style="background:#e6edf5;border-radius:8px;height:17px;overflow:hidden"><div style="height:100%;width:'+((v||0)/max*100)+'%;background:#135b9b"></div></div></div>').join('')+'</div>';
+  const byPackage=shareRows(financial,'pacote'),byHead=shareRows(financial,'head'),topWorks=[...financial].sort((a,b)=>b.realized-a.realized).map(e=>({name:e.nome,value:e.realized}));
+  const section=(title,body)=>'<section class="panel" style="padding:22px;min-width:0"><h3 style="color:#083e75;margin-top:0">'+title+'</h3>'+body+'</section>';
+  const table=rows.map(({work,entry,status})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.sap)+'</td><td>'+clean(work.uf)+'</td><td>'+clean(work.tipologia)+'</td><td>'+formatMoney(work.evInitial)+'</td><td>'+formatMoney(entry?.current)+'</td><td>'+formatMoney(entry?.realized)+'</td><td>'+formatMoney(entry?.paid)+'</td><td>'+clean(status)+'</td></tr>').join('');
+  return toolbar+ '<div style="display:grid;gap:20px">'+
+    '<section class="panel" style="padding:24px;background:linear-gradient(115deg,#073b6b,#0c65a3);color:white;border-radius:14px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:18px"><div><div style="font-size:12px;letter-spacing:2px;font-weight:700">SLT 360° · INTELIGÊNCIA DE INVESTIMENTOS</div><h2 style="font-size:29px;margin:10px 0;color:white">Panorama Estratégico-Financeiro | CAPEX 2026</h2><p style="color:#e1f0ff;max-width:760px;margin:0">Da estimativa técnica à execução financeira. Dados oficiais de 2026; vínculos auditáveis com EVs e portfólio para fundamentar CAPEX futuros.</p></div><div style="align-self:center;padding:12px 20px;border:1px solid #82b8e0;border-radius:12px">EXERCÍCIO <strong>2026</strong></div></div></section>'+
+    '<section class="panel" style="padding:17px"><div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px"><label for="capex2026Input" style="font-weight:700">Atualizar relatório HAPCAPEX 2026</label><input id="capex2026Input" type="file" accept=".xlsx,.xls" aria-label="Importar relatório HAPCAPEX 2026"><span style="color:#546779">'+(metadata?'Relatório validado nesta sessão; dados não persistidos':'Aguardando importação de fonte financeira')+'</span></div><div id="capex2026Message" role="status"></div></section>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">'+cardSet+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">'+quality+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
+       section('Execução do orçamento de 2026',financeBars)+
+       section('Concentração por pacote',financial.length?rank(byPackage,totals?.current):'<p>Importe o relatório financeiro.</p>')+
+       section('Investimentos por HEAD',financial.length?rank(byHead,totals?.current):'<p>Importe o relatório financeiro.</p>')+
+       section('Obras com maior realizado',financial.length?rank(topWorks,totals?.realized):'<p>Importe o relatório financeiro.</p>')+
+    '</div>'+
+    section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
+    section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
+    '<details class="panel" style="padding:20px"><summary style="font-weight:800;color:#063c71;cursor:pointer">Auditoria técnica · '+rows.length+' obras do portfólio e '+unmatched.length+' lançamentos sem vínculo</summary><div style="overflow:auto;margin-top:16px"><table class="data-table"><thead><tr><th>Obra</th><th>OI/SAP</th><th>UF</th><th>Tipologia</th><th>EV inicial</th><th>CAPEX atual</th><th>Realizado 2026</th><th>Desembolsado</th><th>Vínculo</th></tr></thead><tbody>'+table+'</tbody></table></div></details>'+
+  '</div>';
 }
-
 export function bindCapex2026Import(rerender) {
   const input=document.getElementById('capex2026Input');
   if(!input)return;
