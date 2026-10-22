@@ -1,3 +1,4 @@
+import { renderStrategicFinance, bindCapex2026Import } from './strategic-finance-2026.js';
 import { csvCell } from './csv.js';
 import { evAdditiveSummary } from './ev-additives.js';
 import { businessDate } from './dates.js';
@@ -111,6 +112,7 @@ const worksViewIds = [
   "worksOperational",
   "worksManagement",
   "worksStrategic",
+  "worksStrategicFinance",
   "portfolio",
   "sics",
   "sicApprovals",
@@ -120,6 +122,7 @@ const worksNavItems = [
   { view: "worksOperational", label: "Visão Operacional" },
   { view: "worksManagement", label: "Visão Gerencial" },
   { view: "worksStrategic", label: "Visão Estratégica" },
+  { view: "worksStrategicFinance", label: "Visão Estratégico-Financeira" },
   { view: "portfolio", label: "Portfólio de Obras" },
   { view: "sics", label: "Estudo de SIC's" },
   { view: "sicApprovals", label: "Aprovação de SIC's" },
@@ -2694,6 +2697,7 @@ function render() {
     worksOperational: renderWorksOperational,
     worksManagement: renderWorksManagement,
     worksStrategic: renderWorksStrategic,
+    worksStrategicFinance: () => renderStrategicFinance(portfolioRows(false,false), renderWorksToolbar("worksStrategicFinance","Visão Estratégico-Financeira","Integração CAPEX 2026")),
     worksSettings: renderWorksSettings,
     kanban: renderWorksOperational,
     portfolio: renderPortfolio,
@@ -2721,6 +2725,7 @@ function render() {
   };
   unmountSicApprovals();
   app.innerHTML = globalThis.SLT_CLOUD.cleanHTML((views[currentView] || renderDashboard)());
+  if (currentView === 'worksStrategicFinance') bindCapex2026Import(render);
   if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD, state.works);
   refreshHaptecAssistant();
   applyRolePermissions();
