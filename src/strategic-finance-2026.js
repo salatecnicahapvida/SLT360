@@ -78,9 +78,9 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
 }
 
 
-const identityName = value => String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\\s*(?:\\d+[. -]+)+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+const identityName = value => String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\s*(?:\d+[. -]+)+/,'').replace(/[^a-z0-9]+/g,' ').trim();
 const identityCode = value => {
-  const found=String(value??'').match(/^\\s*(\\d{3,6})[. -]/);
+  const found=String(value??'').match(/^\s*(\d{3,6})[. -]/);
   return found && !/^0+$/.test(found[1])?String(Number(found[1])):'';
 };
 export function financialLinkCandidates(rows,entries) {
