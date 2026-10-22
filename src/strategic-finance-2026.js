@@ -187,7 +187,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
   ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
   const suggestions=financialLinkCandidates(rows,unmatched);
   const candidateRows=suggestions.slice(0,100).map(({work,entry,reason})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
-  const candidateAudit=section('Correspondências candidatas · revisão cadastral',
+  const candidateAudit=()=>section('Correspondências candidatas · revisão cadastral',
     '<p>'+suggestions.length+' correspondências potenciais encontradas entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
     '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
     (suggestions.length>100?'<p>Exibindo as primeiras 100 sugestões para revisão.</p>':'')+
@@ -251,7 +251,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
        section('Obras com maior realizado',financial.length?rank(topWorks,totals?.realized):'<p>Importe o relatório financeiro.</p>')+
     '</div>'+
     section('Diagnóstico dos vínculos EV × OI',diagnostic+'<p style="margin-top:10px">O vínculo automático exige OI/SAP válida em ambos os cadastros. Registros sem OI/SAP não podem ser conciliados com segurança apenas pelo nome; é necessária validação cadastral.</p>')+
-    candidateAudit+
+    candidateAudit()+
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
     section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
     individualFinance+oiFicha+exploration+workPanel+
