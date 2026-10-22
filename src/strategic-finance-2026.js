@@ -173,6 +173,9 @@ export function renderStrategicFinance(portfolio,toolbar) {
   const visibleOI=financial.filter(e=>(!oiGroup || (e.pacote||'Não informado')===oiGroup) && (!oiHead || (e.head||'Não informado')===oiHead) && (!oiQuery || [e.nome,e.oiList.join(','),e.pacote,e.head].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(oiQuery.toLocaleLowerCase('pt-BR'))))).sort((a,b)=>(b.realized??0)-(a.realized??0));
   const oiDetails=financial.find(x=>x.oiList.includes(selectedOI));
   const section=(title,body)=>'<section class="panel" style="padding:22px;min-width:0"><h3 style="color:#083e75;margin-top:0">'+title+'</h3>'+body+'</section>';
+  const recorteTotal=field=>visibleOI.every(e=>e[field]!=null)?visibleOI.reduce((v,e)=>v+e[field],0):null;
+  const recorteKpis='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0">'+
+    [['OIs no recorte',String(visibleOI.length)],['CAPEX atual filtrado',formatMoney(recorteTotal('current'))],['Compromissado filtrado',formatMoney(recorteTotal('committed'))],['Realizado 2026 filtrado',formatMoney(recorteTotal('realized'))],['Saldo filtrado',formatMoney(recorteTotal('balance'))]].map(([k,v])=>'<div style="padding:12px;background:#edf4fb;border-radius:9px"><small>'+clean(k)+'</small><strong style="display:block;margin-top:7px">'+clean(v)+'</strong></div>').join('')+'</div>';
   const individualFinance=section('Investigar investimentos · todas as OIs do HAPCAPEX',
     '<p>Explore diretamente os '+financial.length+' registros financeiros, inclusive os '+unmatched.length+' sem vínculo cadastral com os EVs. Clique em uma OI para abrir sua ficha financeira.</p>'+
     '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end"><label style="display:grid;gap:5px">Pesquisar nome, OI, pacote ou HEAD<input id="hapOiSearch" value="'+clean(oiQuery)+'" placeholder="Ex.: 50157002 ou nome da obra" style="min-width:280px;padding:10px"></label>'+
