@@ -1,4 +1,11 @@
 import * as XLSX from 'xlsx';
+import { createClient } from '@supabase/supabase-js';
+
+// Public configuration copied from the HAPCAPEX public client, never a secret/service-role key.
+const hapClient=createClient('https://kuvwfyuhrnfsubkapeek.supabase.co','sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+let hapAuthenticated=false;
+let hapSyncMessage='';
+
 
 const EXERCISE = 2026;
 let financeEntries = [];
@@ -72,6 +79,30 @@ const shareRows = (entries,field,valueKey='current') => {
   return [...groups.values()].sort((a,b)=>b.value-a.value);
 };
 const rank = (rows,total,n=7) => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
+export async function connectHapcapex(email,password,rerender) {
+  const {error}=await hapClient.auth.signInWithPassword({email,password});
+  if(error){hapSyncMessage='Autenticação negada pelo HAPCAPEX: '+error.message;rerender();return;}
+  hapAuthenticated=true;
+  hapSyncMessage='Autenticado. Consultando dados financeiros autorizados...';
+  await refreshHapcapex(rerender);
+}
+export async function refreshHapcapex(rerender) {
+  if(!hapAuthenticated){hapSyncMessage='Conecte-se ao HAPCAPEX antes da atualização.';rerender();return;}
+  const {data,error}=await hapClient.rpc('obter_gerencial_controle_v4082',{p_exercicio:2026});
+  if(error){hapSyncMessage='Consulta financeira não autorizada ou indisponível: '+error.message;rerender();return;}
+  // A resposta gerencial é agregada e tem esquema próprio. Não inventar equivalência com linhas de relatório.
+  const rows=Array.isArray(data?.itens)?data.itens:Array.isArray(data?.obras)?data.obras:Array.isArray(data?.ois)?data.ois:null;
+  if(!rows){hapSyncMessage='HAPCAPEX autenticado, porém o retorno gerencial não possui linhas de OI no formato esperado. É necessário mapear a função de origem antes de habilitar os KPIs. Nenhum dado foi substituído.';rerender();return;}
+  const mapped=rows.map(o=>({oiList:[key(o.ordem_interna??o.oi??o.sap)].filter(Boolean),nome:safeText(o.nome_obra??o.obra??o.nome),pacote:safeText(o.pacote),head:safeText(o.head),initial:number(o.capex_inicial),current:number(o.capex_atual),committed:number(o.compromissado),realized:number(o.realizado),paid:number(o.desembolsado),balance:number(o.saldo_livre)})).filter(o=>o.oiList.length);
+  if(!mapped.length){hapSyncMessage='Dados recebidos, mas nenhuma OI válida foi identificada; valores existentes preservados.';rerender();return;}
+  // A fonte em tempo real deve ser completa para permitir cartões globais sem distorção.
+  financeEntries=mapped;
+  const totals=['initial','current','committed','realized','paid','balance'].reduce((a,k)=>(a[k]=mapped.reduce((v,o)=>v+o[k],0),a),{});
+  metadata={totals,source:'HAPCAPEX online',year:2026,validatedAt:new Date().toISOString()};
+  hapSyncMessage=mapped.length+' registros de OI sincronizados com HAPCAPEX. Confira a cobertura de conciliação.';
+  rerender();
+}
+
 export function renderStrategicFinance(portfolio,toolbar) {
   const {rows,unmatched,totals}=financialReconciliation(portfolio);
   const linked=rows.filter(r=>r.entry);
@@ -118,7 +149,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
   const exploration=section('Explorar carteira · obra a obra','<div style="display:flex;flex-wrap:wrap;align-items:end;gap:12px"><label style="display:grid;gap:4px">Localizar obra, código, OI, UF ou tipologia<input id="capexWorkSearch" value="'+clean(financialSearch)+'" placeholder="Pesquisar empreendimento..." style="min-width:270px;padding:9px"></label><label style="display:grid;gap:4px">Situação da conciliação<select id="capexWorkStatus" style="padding:9px"><option value="all"'+(financialStatus==='all'?' selected':'')+'>Todas</option><option value="linked"'+(financialStatus==='linked'?' selected':'')+'>Conciliadas</option><option value="pending"'+(financialStatus==='pending'?' selected':'')+'>Pendentes / conflito</option></select></label><span>'+visible.length+' obras no filtro</span></div><p>Selecione uma obra na tabela para consultar seu EV, dados cadastrais e financeiro conciliado.</p>');
   return toolbar+ '<div style="display:grid;gap:20px">'+
     '<section class="panel" style="padding:24px;background:linear-gradient(115deg,#073b6b,#0c65a3);color:white;border-radius:14px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:18px"><div><div style="font-size:12px;letter-spacing:2px;font-weight:700">SLT 360° · INTELIGÊNCIA DE INVESTIMENTOS</div><h2 style="font-size:29px;margin:10px 0;color:white">Panorama Estratégico-Financeiro | CAPEX 2026</h2><p style="color:#e1f0ff;max-width:760px;margin:0">Da estimativa técnica à execução financeira. Dados oficiais de 2026; vínculos auditáveis com EVs e portfólio para fundamentar CAPEX futuros.</p></div><div style="align-self:center;padding:12px 20px;border:1px solid #82b8e0;border-radius:12px">EXERCÍCIO <strong>2026</strong></div></div></section>'+
-    '<section class="panel" style="padding:17px"><div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px"><label for="capex2026Input" style="font-weight:700">Atualizar relatório HAPCAPEX 2026</label><input id="capex2026Input" type="file" accept=".xlsx,.xls" aria-label="Importar relatório HAPCAPEX 2026"><span style="color:#546779">'+(metadata?'Relatório validado nesta sessão; dados não persistidos':'Aguardando importação de fonte financeira')+'</span></div><div id="capex2026Message" role="status"></div></section>'+
+    '<section class="panel" style="padding:17px"><h3>Conexão direta com HAPCAPEX</h3><p>Autenticação no projeto oficial. Senha mantida somente durante a operação de login, sem armazenamento local pelo SLT 360°.</p><form id="hapcapexConnect" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end"><label>E-mail<input required type="email" name="email" autocomplete="username"></label><label>Senha<input required type="password" name="password" autocomplete="current-password"></label><button type="submit">Conectar ao HAPCAPEX</button><button type="button" id="hapcapexRefresh" '+(!hapAuthenticated?'disabled':'')+'>Sincronizar</button></form><p role="status">'+clean(hapSyncMessage)+'</p><hr><div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px"><label for="capex2026Input" style="font-weight:700">Atualizar relatório HAPCAPEX 2026</label><input id="capex2026Input" type="file" accept=".xlsx,.xls" aria-label="Importar relatório HAPCAPEX 2026"><span style="color:#546779">'+(metadata?'Relatório validado nesta sessão; dados não persistidos':'Aguardando importação de fonte financeira')+'</span></div><div id="capex2026Message" role="status"></div></section>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">'+cardSet+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">'+quality+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">'+
@@ -134,6 +165,8 @@ export function renderStrategicFinance(portfolio,toolbar) {
   '</div>';
 }
 export function bindCapex2026Import(rerender) {
+  document.getElementById('hapcapexConnect')?.addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const email=form.elements.namedItem('email').value;const password=form.elements.namedItem('password').value;form.elements.namedItem('password').value='';await connectHapcapex(email,password,rerender);});
+  document.getElementById('hapcapexRefresh')?.addEventListener('click',()=>void refreshHapcapex(rerender));
   const input=document.getElementById('capex2026Input');
   document.getElementById('capexWorkSearch')?.addEventListener('change',event=>{financialSearch=event.target.value;rerender();});
   document.getElementById('capexWorkStatus')?.addEventListener('change',event=>{financialStatus=event.target.value;rerender();});
