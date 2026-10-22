@@ -150,6 +150,17 @@ export function renderStrategicFinance(portfolio,toolbar) {
     ['Desembolsado',totals?.paid,totals?.paid == null ? 'Não fornecido na consulta gerencial' : percent(totals.paid,totals?.realized)+' do realizado','#318a87'],
     ['Saldo livre',totals?.balance,percent(totals?.balance,totals?.current)+' disponível','#364fac']
   ].map(([label,value,detail,color])=>financeCard(label,value,detail,color)).join('');
+  const withSap=rows.filter(r=>String(r.work.sap??'').replace(/[^0-9]/g,'').length>0);
+  const noSap=rows.length-withSap.length;
+  const conflicts=rows.filter(r=>r.status==='Conflito de vínculo').length;
+  const noMatches=rows.filter(r=>r.status==='Sem conciliação').length;
+  const diagnostic='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">'+[
+    ['Obras com OI/SAP preenchida',withSap.length],
+    ['Obras sem OI/SAP válida',noSap],
+    ['Obras com vínculo exato',linked.length],
+    ['Obras com conflito',conflicts],
+    ['Obras sem correspondência',noMatches]
+  ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
   const quality=[
     ['Registros financeiros',financial.length],
     ['Obras SLT no recorte',rows.length],
@@ -180,6 +191,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
     '<p>Explore diretamente os '+financial.length+' registros financeiros, inclusive os '+unmatched.length+' sem vínculo cadastral com os EVs. Clique em uma OI para abrir sua ficha financeira.</p>'+
     '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end"><label style="display:grid;gap:5px">Pesquisar nome, OI, pacote ou HEAD<input id="hapOiSearch" value="'+clean(oiQuery)+'" placeholder="Ex.: 50157002 ou nome da obra" style="min-width:280px;padding:10px"></label>'+
     '<label style="display:grid;gap:5px">Pacote<select id="hapOiPackage" style="min-width:220px;padding:10px"><option value="">Todos os pacotes</option>'+financeGroups.map(n=>'<option value="'+clean(n)+'"'+(oiGroup===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><label style="display:grid;gap:5px">HEAD<select id="hapOiHead" style="min-width:220px;padding:10px"><option value="">Todos os HEADs</option>'+financeHeads.map(n=>'<option value="'+clean(n)+'"'+(oiHead===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><button type="button" id="hapClearFinancialFilters" class="secondary-action">Limpar filtros</button><strong>'+visibleOI.length+' OIs encontradas</strong></div>'+
+    recorteKpis+'<p style="color:#526577;font-size:12px;margin:6px 0">Somatórios de todas as '+visibleOI.length+' OIs selecionadas, incluindo registros fora das primeiras 250 linhas exibidas. Fonte: HAPCAPEX 2026.</p>'+
     '<div style="overflow:auto;max-height:580px;margin-top:16px"><table class="data-table"><thead><tr><th>OI · abrir ficha</th><th>Obra</th><th>Pacote</th><th>HEAD</th><th>CAPEX vigente</th><th>Compromissado</th><th>Realizado 2026</th><th>Saldo</th></tr></thead><tbody>'+
     visibleOI.slice(0,250).map(e=>'<tr><td><button type="button" class="secondary-action" data-hap-oi="'+clean(e.oiList[0])+'">'+clean(e.oiList.join(' / '))+'</button></td><td>'+clean(e.nome)+'</td><td>'+clean(e.pacote)+'</td><td>'+clean(e.head)+'</td><td>'+formatMoney(e.current)+'</td><td>'+formatMoney(e.committed)+'</td><td>'+formatMoney(e.realized)+'</td><td>'+formatMoney(e.balance)+'</td></tr>').join('')+'</tbody></table></div>'+
     (visibleOI.length>250?'<p>Exibindo as primeiras 250 OIs do filtro. Refine sua pesquisa para consultar as demais.</p>':'')
@@ -207,6 +219,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
        section('Investimentos por HEAD',financial.length?rank(byHead,totals?.current,7,'head'):'<p>Importe o relatório financeiro.</p>')+
        section('Obras com maior realizado',financial.length?rank(topWorks,totals?.realized):'<p>Importe o relatório financeiro.</p>')+
     '</div>'+
+    section('Diagnóstico dos vínculos EV × OI',diagnostic+'<p style="margin-top:10px">O vínculo automático exige OI/SAP válida em ambos os cadastros. Registros sem OI/SAP não podem ser conciliados com segurança apenas pelo nome; é necessária validação cadastral.</p>')+
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
     section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
     individualFinance+oiFicha+exploration+workPanel+
