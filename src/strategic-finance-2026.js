@@ -203,8 +203,9 @@ export function renderStrategicFinance(portfolio,toolbar) {
   ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
   const suggestions=financialLinkCandidates(rows,unmatched);
   const candidateRows=suggestions.slice(0,100).map(({work,entry,reason,level})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
+  const candidateCounts=Object.fromEntries(['Alta confiança','Nome único','Revisão necessária'].map(level=>[level,suggestions.filter(x=>x.level===level).length]));
   const candidateAudit=()=>section('Correspondências candidatas · revisão cadastral',
-    '<p>'+suggestions.length+' correspondências potenciais encontradas entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
+    '<p>'+suggestions.length+' correspondências potenciais encontradas: '+candidateCounts['Alta confiança']+' de alta confiança, '+candidateCounts['Nome único']+' com nome único e '+candidateCounts['Revisão necessária']+' exigindo revisão. Entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
     '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>Classificação</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
     (suggestions.length>100?'<p>Exibindo as primeiras 100 sugestões para revisão.</p>':'')+
     '<p>Validar documentalmente OI/SAP, identidade do empreendimento e escopo antes de cadastrar o vínculo. Código e nome podem se repetir entre etapas ou exercícios.</p>');
