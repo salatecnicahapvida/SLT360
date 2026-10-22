@@ -114,6 +114,27 @@ export function financialLinkCandidates(rows,entries) {
       proposals.push({work:row.work,entry,reason,level});
     }
   }
+  // Partial name comparison is investigative only, never a verified financial link.
+  const stopWords=new Set(['obra','obras','reforma','adequacao','unidade','clinica','hospital','novo','nova','etapa','fase','projeto','ampliacao','da','de','do','das','dos','em','para','pa','hs']);
+  const tokens=name=>[...new Set(name.split(' ').filter(t=>t.length>=4&&!stopWords.has(t)))];
+  const existing=new Set(proposals.map(p=>String(p.work.id)+'|'+p.entry.oiList.join(',')));
+  for(const row of rows){
+    if(confirmed.has(String(row.work.id)))continue;
+    const left=tokens(identityName(row.work.nome));
+    if(left.length<2)continue;
+    for(const entry of entries){
+      const pair=String(row.work.id)+'|'+entry.oiList.join(',');
+      if(existing.has(pair))continue;
+      const right=tokens(identityName(entry.nome));
+      if(right.length<2)continue;
+      const shared=left.filter(t=>right.includes(t)).length;
+      const overlap=shared/Math.min(left.length,right.length);
+      if(shared>=2 && overlap>=0.7){
+        proposals.push({work:row.work,entry,reason:'Palavras significativas coincidentes ('+Math.round(overlap*100)+'%)',level:'Revisão necessária'});
+        existing.add(pair);
+      }
+    }
+  }
   const order={'Alta confiança':0,'Nome único':1,'Revisão necessária':2};
   return proposals.sort((a,b)=>order[a.level]-order[b.level]||a.work.nome.localeCompare(b.work.nome,'pt-BR'));
 }
@@ -164,9 +185,11 @@ export async function refreshHapcapex(rerender) {
   const duplicates=new Set();
   for(const o of mapped){if(duplicates.has(o.oiList[0])){hapSyncMessage='O HAPCAPEX retornou OIs duplicadas. Sincronização interrompida para evitar dupla contagem.';rerender();return;}duplicates.add(o.oiList[0]);}
   financeEntries=mapped;
-  const totals={initial:null,current:mapped.reduce((v,o)=>v+o.current,0),committed:mapped.reduce((v,o)=>v+o.committed,0),realized:mapped.reduce((v,o)=>v+o.realized,0),paid:null,balance:mapped.every(o=>o.balance!==null)?mapped.reduce((v,o)=>v+o.balance,0):null};
-  metadata={totals,source:'HAPCAPEX online — função Gerencial',year:2026,validatedAt:new Date().toISOString()};
-  hapSyncMessage=mapped.length+' OIs sincronizadas. CAPEX inicial e desembolsado não são fornecidos por esta função e permanecem indisponíveis; confira a cobertura.';
+  const initialPackages=Array.isArray(data?.capex_inicial_pacotes)?data.capex_inicial_pacotes.filter(item=>item && typeof item.capex_inicial==='number' && !/^(?:fora do escopo)$/i.test(String(item.pacote||''))):[];
+  const initialTotal=initialPackages.length?initialPackages.reduce((sum,item)=>sum+item.capex_inicial,0):null;
+  const totals={initial:initialTotal,current:mapped.reduce((v,o)=>v+o.current,0),committed:mapped.reduce((v,o)=>v+o.committed,0),realized:mapped.reduce((v,o)=>v+o.realized,0),paid:null,balance:mapped.every(o=>o.balance!==null)?mapped.reduce((v,o)=>v+o.balance,0):null};
+  metadata={totals,initialPackages,source:'HAPCAPEX online — função Gerencial',year:2026,validatedAt:new Date().toISOString()};
+  hapSyncMessage=mapped.length+' OIs sincronizadas. CAPEX inicial é disponibilizado por pacote, não por OI; desembolsado por OI permanece indisponível.';
   rerender();
 }
 
