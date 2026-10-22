@@ -14,6 +14,9 @@ let metadata = null;
 let financialSearch = '';
 let financialStatus = 'all';
 let selectedFinanceWorkId = '';
+let oiQuery = '';
+let oiGroup = '';
+let selectedOI = '';
 const formatMoney = value => value === null || value === undefined ? '—' : new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(value);
 const clean = value => String(value ?? '').trim().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const key = value => String(value ?? '').trim().replace(/\D/g,'');
@@ -136,7 +139,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
     ['CAPEX atual',totals?.current,'Orçamento vigente','#0c5893'],
     ['Compromissado',totals?.committed,percent(totals?.committed,totals?.current)+' do CAPEX atual','#9b6d19'],
     ['Realizado',totals?.realized,percent(totals?.realized,totals?.current)+' do CAPEX atual','#17805f'],
-    ['Desembolsado',totals?.paid,percent(totals?.paid,totals?.realized)+' do realizado','#318a87'],
+    ['Desembolsado',totals?.paid,totals?.paid == null ? 'Não fornecido na consulta gerencial' : percent(totals.paid,totals?.realized)+' do realizado','#318a87'],
     ['Saldo livre',totals?.balance,percent(totals?.balance,totals?.current)+' disponível','#364fac']
   ].map(([label,value,detail,color])=>financeCard(label,value,detail,color)).join('');
   const quality=[
@@ -157,7 +160,24 @@ export function renderStrategicFinance(portfolio,toolbar) {
   const max=Math.max(1,...items.map(x=>x[1]||0));
   const financeBars='<div style="display:grid;gap:14px">'+items.map(([name,v])=>'<div><div style="display:flex;justify-content:space-between"><strong>'+name+'</strong><span>'+formatMoney(v)+'</span></div><div style="background:#e6edf5;border-radius:8px;height:17px;overflow:hidden"><div style="height:100%;width:'+((v||0)/max*100)+'%;background:#135b9b"></div></div></div>').join('')+'</div>';
   const byPackage=shareRows(financial,'pacote'),byHead=shareRows(financial,'head'),topWorks=[...financial].sort((a,b)=>b.realized-a.realized).map(e=>({name:e.nome,value:e.realized}));
+  const financeGroups=[...new Set(financial.map(x=>x.pacote||'Não informado'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const visibleOI=financial.filter(e=>(!oiGroup || (e.pacote||'Não informado')===oiGroup) && (!oiQuery || [e.nome,e.oiList.join(','),e.pacote,e.head].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(oiQuery.toLocaleLowerCase('pt-BR'))))).sort((a,b)=>(b.realized??0)-(a.realized??0));
+  const oiDetails=financial.find(x=>x.oiList.includes(selectedOI));
   const section=(title,body)=>'<section class="panel" style="padding:22px;min-width:0"><h3 style="color:#083e75;margin-top:0">'+title+'</h3>'+body+'</section>';
+  const individualFinance=section('Investigar investimentos · todas as OIs do HAPCAPEX',
+    '<p>Explore diretamente os '+financial.length+' registros financeiros, inclusive os '+unmatched.length+' sem vínculo cadastral com os EVs. Clique em uma OI para abrir sua ficha financeira.</p>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end"><label style="display:grid;gap:5px">Pesquisar nome, OI, pacote ou HEAD<input id="hapOiSearch" value="'+clean(oiQuery)+'" placeholder="Ex.: 50157002 ou nome da obra" style="min-width:280px;padding:10px"></label>'+
+    '<label style="display:grid;gap:5px">Pacote<select id="hapOiPackage" style="min-width:220px;padding:10px"><option value="">Todos os pacotes</option>'+financeGroups.map(n=>'<option value="'+clean(n)+'"'+(oiGroup===n?' selected':'')+'>'+clean(n)+'</option>').join('')+'</select></label><strong>'+visibleOI.length+' OIs encontradas</strong></div>'+
+    '<div style="overflow:auto;max-height:580px;margin-top:16px"><table class="data-table"><thead><tr><th>OI · abrir ficha</th><th>Obra</th><th>Pacote</th><th>HEAD</th><th>CAPEX vigente</th><th>Compromissado</th><th>Realizado 2026</th><th>Saldo</th></tr></thead><tbody>'+
+    visibleOI.slice(0,250).map(e=>'<tr><td><button type="button" class="secondary-action" data-hap-oi="'+clean(e.oiList[0])+'">'+clean(e.oiList.join(' / '))+'</button></td><td>'+clean(e.nome)+'</td><td>'+clean(e.pacote)+'</td><td>'+clean(e.head)+'</td><td>'+formatMoney(e.current)+'</td><td>'+formatMoney(e.committed)+'</td><td>'+formatMoney(e.realized)+'</td><td>'+formatMoney(e.balance)+'</td></tr>').join('')+'</tbody></table></div>'+
+    (visibleOI.length>250?'<p>Exibindo as primeiras 250 OIs do filtro. Refine sua pesquisa para consultar as demais.</p>':'')
+  );
+  const oiFicha=oiDetails?section('Ficha financeira HAPCAPEX · OI '+clean(selectedOI),
+    '<h4>'+clean(oiDetails.nome)+'</h4><p>Fonte: HAPCAPEX online, exercício 2026. A ficha financeira não presume vínculo com EV/SIC sem OI/SAP validada.</p>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">'+[
+      ['OI',oiDetails.oiList.join(' / ')],['Pacote',oiDetails.pacote],['HEAD',oiDetails.head],['CAPEX vigente',formatMoney(oiDetails.current)],['Compromissado',formatMoney(oiDetails.committed)],['Realizado 2026',formatMoney(oiDetails.realized)],['Saldo livre',formatMoney(oiDetails.balance)],['Comprometimento',percent(oiDetails.committed,oiDetails.current)],['Execução 2026',percent(oiDetails.realized,oiDetails.current)]
+    ].map(([k,v])=>'<div style="background:#edf4fa;border-radius:9px;padding:15px"><small>'+clean(k)+'</small><div style="font-weight:800;margin-top:6px">'+clean(v)+'</div></div>').join('')+'</div>'+
+    '<p style="margin-top:15px">Os valores de realizado representam o exercício financeiro, não necessariamente o custo final da obra. CAPEX inicial e desembolsos não estão disponíveis nesta consulta.</p><button type="button" class="secondary-action" data-hap-oi-close>Fechar ficha</button>'):'';
   const table=visible.map(({work,entry,status})=>'<tr><td><button type="button" class="secondary-action" data-capex-work="'+clean(work.id)+'" style="text-align:left;font-weight:700">'+clean(work.nome)+'</button></td><td>'+clean(work.sap)+'</td><td>'+clean(work.uf)+'</td><td>'+clean(work.tipologia)+'</td><td>'+formatMoney(work.evInitial)+'</td><td>'+formatMoney(entry?.current)+'</td><td>'+formatMoney(entry?.realized)+'</td><td>'+formatMoney(entry?.paid)+'</td><td>'+clean(status)+'</td></tr>').join('');
   const workPanel=selected ? section('Ficha integrada do empreendimento · '+clean(selected.work.nome),'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">'+
     [['Código',selected.work.codigo],['OI/SAP',selected.work.sap],['Região',selected.work.regional],['UF',selected.work.uf],['Tipologia',selected.work.tipologia],['Situação',selected.work.status],['EV inicial',formatMoney(selected.work.evInitial)],['SICs / aditivos',formatMoney(selected.work.evAdditives)],['EV atualizado',formatMoney(selected.work.evUpdated)],['CAPEX atual 2026',formatMoney(selected.entry?.current)],['Compromissado 2026',formatMoney(selected.entry?.committed)],['Realizado 2026',formatMoney(selected.entry?.realized)],['Desembolsado 2026',formatMoney(selected.entry?.paid)],['Saldo livre 2026',formatMoney(selected.entry?.balance)],['Conciliação',selected.status]].map(([name,value])=>'<div style="padding:12px;background:#f2f6fb;border-radius:9px"><small>'+clean(name)+'</small><p style="font-weight:700;margin:4px 0">'+clean(value??'Não informado')+'</p></div>').join('')+
@@ -176,7 +196,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
     '</div>'+
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
     section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
-    exploration+workPanel+
+    individualFinance+oiFicha+exploration+workPanel+
     '<details open class="panel" style="padding:20px"><summary style="font-weight:800;color:#063c71;cursor:pointer">Obras e conciliação · '+visible.length+' obras do portfólio e '+unmatched.length+' lançamentos sem vínculo</summary><div style="overflow:auto;margin-top:16px"><table class="data-table"><thead><tr><th>Obra</th><th>OI/SAP</th><th>UF</th><th>Tipologia</th><th>EV inicial</th><th>CAPEX atual</th><th>Realizado 2026</th><th>Desembolsado</th><th>Vínculo</th></tr></thead><tbody>'+table+'</tbody></table></div></details>'+
   '</div>';
 }
@@ -184,6 +204,11 @@ export function bindCapex2026Import(rerender) {
   document.getElementById('hapcapexConnect')?.addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const email=form.elements.namedItem('email').value;const password=form.elements.namedItem('password').value;form.elements.namedItem('password').value='';await connectHapcapex(email,password,rerender);});
   document.getElementById('hapcapexRefresh')?.addEventListener('click',()=>void refreshHapcapex(rerender));
   const input=document.getElementById('capex2026Input');
+  document.getElementById('hapOiSearch')?.addEventListener('input',event=>{oiQuery=event.target.value;});
+  document.getElementById('hapOiSearch')?.addEventListener('change',event=>{oiQuery=event.target.value;rerender();});
+  document.getElementById('hapOiPackage')?.addEventListener('change',event=>{oiGroup=event.target.value;rerender();});
+  document.querySelectorAll('[data-hap-oi]').forEach(button=>button.addEventListener('click',()=>{selectedOI=button.dataset.hapOi;rerender();document.querySelector('[data-hap-oi-close]')?.scrollIntoView({block:'center'});}));
+  document.querySelector('[data-hap-oi-close]')?.addEventListener('click',()=>{selectedOI='';rerender();});
   document.getElementById('capexWorkSearch')?.addEventListener('change',event=>{financialSearch=event.target.value;rerender();});
   document.getElementById('capexWorkStatus')?.addEventListener('change',event=>{financialStatus=event.target.value;rerender();});
   document.querySelectorAll('[data-capex-work]').forEach(button=>button.addEventListener('click',()=>{selectedFinanceWorkId=button.dataset.capexWork;rerender();document.querySelector('[data-capex-close]')?.scrollIntoView({block:'center'});}));
