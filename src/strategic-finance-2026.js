@@ -57,12 +57,17 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
   const byOI=new Map();
   for(const e of entries) for(const oi of e.oiList){if(!byOI.has(oi))byOI.set(oi,[]);byOI.get(oi).push(e);}
   const assigned=new Set();
+  const oiOwners=new Map();
+  for(const work of portfolio) for(const oi of String(work.sap??'').split(/[,;\\/\\s]+/).map(key).filter(Boolean)){
+    if(!oiOwners.has(oi))oiOwners.set(oi,new Set());
+    oiOwners.get(oi).add(String(work.id));
+  }
   // Inclui obras iniciadas em anos anteriores que possuem movimento no exercício 2026.
   // Ano de cadastro do empreendimento não é o exercício do registro financeiro.
   for(const work of portfolio.filter(w=>String(w.year)===String(EXERCISE) || String(w.sap??'').split(/[,;\/\s]+/).map(key).some(oi=>byOI.has(oi)))){
     const oiList=[...new Set(String(work.sap??'').split(/[,;\/\s]+/).map(key).filter(Boolean))];
     const hits=[...new Set(oiList.flatMap(oi=>byOI.get(oi)||[]))];
-    const ambiguous=hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1)) || hits.some(e=>assigned.has(e));
+    const ambiguous=hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1 || (oiOwners.get(oi)?.size||0)>1)) || hits.some(e=>assigned.has(e));
     if(!ambiguous) hits.forEach(e=>assigned.add(e));
     const add=field=>hits.every(e=>e[field]!=null)?hits.reduce((v,e)=>v+e[field],0):null;
     const grouped=hits.length?{current:add('current'),committed:add('committed'),realized:add('realized'),balance:add('balance'),initial:add('initial'),paid:add('paid')}:null;
