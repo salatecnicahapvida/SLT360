@@ -32,6 +32,7 @@ for (const name of ['styles.css','cloud.css']) {
 }
 await fs.writeFile(path.join(dest,'index.html'),html);
 await fs.writeFile(path.join(dest,'.nojekyll'),'');
+await fs.writeFile(path.join(dest,'release.json'),JSON.stringify({commit:process.env.GITHUB_SHA||'local',builtAt:new Date().toISOString(),module:'strategic-finance-2026'},null,2));
 const forbidden = /sb_secret_[A-Za-z0-9_-]{15,}|SEED_OBRAS|controle-evs:obras|sic-approval-dashboard\.html|admin360|gestao360|analista360/;
 for (const name of await fs.readdir(dest)) if (/\.(js|html|json)$/.test(name) && forbidden.test(await fs.readFile(path.join(dest,name),'utf8'))) throw new Error(`Conteúdo legado ou privado no pacote: ${name}`);
 await fs.mkdir(path.join(root,'outputs'),{recursive:true});
