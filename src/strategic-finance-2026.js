@@ -45,7 +45,7 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
   const assigned=new Set();
   // Inclui obras iniciadas em anos anteriores que possuem movimento no exercício 2026.
   // Ano de cadastro do empreendimento não é o exercício do registro financeiro.
-  for(const work of portfolio.filter(w=>String(w.year)===String(EXERCISE) || String(w.sap??'').split(/[,;\/\\s]+/).map(key).some(oi=>byOI.has(oi)))){
+  for(const work of portfolio.filter(w=>String(w.year)===String(EXERCISE) || String(w.sap??'').split(/[,;\/\s]+/).map(key).some(oi=>byOI.has(oi)))){
     const oiList=[...new Set(String(work.sap??'').split(/[,;\/\s]+/).map(key).filter(Boolean))];
     const hits=[...new Set(oiList.flatMap(oi=>byOI.get(oi)||[]))];
     const ambiguous=hits.length>1 || hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1)) || hits.some(e=>assigned.has(e));
