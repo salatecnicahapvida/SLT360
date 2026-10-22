@@ -459,8 +459,8 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await expect(page.locator('[data-operational-date-filter="dateFrom"]')).toHaveValue('');
  await expect(page.locator('[data-operational-date-filter="dateTo"]')).toHaveValue('');
  const worksTabs=page.locator('nav[aria-label="Navegação interna de Obras"] .module-tab');
- await expect(worksTabs).toHaveCount(6);
- await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Portfólio de Obras',"Estudo de SIC's","Aprovação de SIC's"]);
+ await expect(worksTabs).toHaveCount(7);
+ await expect(worksTabs).toHaveText(['Visão Operacional','Visão Gerencial','Visão Estratégica','Visão Estratégico-Financeira','Portfólio de Obras',"Estudo de SIC's","Aprovação de SIC's"]);
  await expect(page.locator('[data-view="ev"]:visible')).toHaveCount(0);
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
  await expect(page.getByText('Retroanálise de custos por disciplina',{exact:true})).toHaveCount(0);
@@ -468,7 +468,7 @@ test('all active views load, SIC is native, no automatic writes on startup',asyn
  await page.locator('[data-view="portfolio"]').filter({visible:true}).first().click();
  await page.locator('[data-module="works"]').click();
  await expect(page.getByRole('heading',{name:'Visão Operacional',exact:true})).toBeVisible();
- for(const view of ['worksOperational','worksManagement','worksStrategic','portfolio','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
+ for(const view of ['worksOperational','worksManagement','worksStrategic','worksStrategicFinance','portfolio','maintenance','maintenanceOperational','maintenanceReports','clinical','budget','sics','settings']){
   await page.locator(`[data-view="${view}"]`).filter({visible:true}).first().click();
   await expect(page.locator('#app')).not.toBeEmpty();
   if(view==='portfolio'||view==='sics')await expect(page.getByRole('button',{name:'Nova SIC',exact:true})).toHaveCount(0);
