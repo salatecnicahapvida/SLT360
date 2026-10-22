@@ -85,23 +85,39 @@ const identityCode = value => {
 };
 export function financialLinkCandidates(rows,entries) {
   const confirmed=new Set(rows.filter(r=>r.entry).map(r=>String(r.work.id)));
-  const suggestions=[];
+  const proposals=[];
+  const names=new Map();
   for(const row of rows) {
+    if(confirmed.has(String(row.work.id)))continue;
+    const n=identityName(row.work.nome);
+    if(n){if(!names.has(n))names.set(n,[]);names.get(n).push(row.work);}
+  }
+  const financialNames=new Map();
+  for(const entry of entries){
+    const n=identityName(entry.nome);
+    if(n){if(!financialNames.has(n))financialNames.set(n,[]);financialNames.get(n).push(entry);}
+  }
+  for(const row of rows){
     if(confirmed.has(String(row.work.id)))continue;
     const name=identityName(row.work.nome);
     const code=identityCode(row.work.codigo)||identityCode(row.work.nome);
     if(!name && !code)continue;
-    const hits=entries.flatMap(entry=>{
-      const entryName=identityName(entry.nome);
-      const entryCode=identityCode(entry.nome);
-      const sameCode=Boolean(code && entryCode && code===entryCode);
-      const sameName=Boolean(name && entryName && name===entryName);
-      return sameCode||sameName?[{work:row.work,entry,reason:sameCode&&sameName?'Código e nome normalizado':sameCode?'Código de empreendimento':'Nome normalizado'}]:[];
-    });
-    if(hits.length) suggestions.push(...hits);
+    for(const entry of entries){
+      const other=identityName(entry.nome);
+      const otherCode=identityCode(entry.nome);
+      const matchName=Boolean(name && other && name===other);
+      const matchCode=Boolean(code && otherCode && code===otherCode);
+      if(!matchName && !matchCode)continue;
+      const uniqueName=matchName && names.get(name)?.length===1 && financialNames.get(name)?.length===1;
+      const level=matchName && matchCode && uniqueName?'Alta confiança':matchName && uniqueName?'Nome único':'Revisão necessária';
+      const reason=matchName && matchCode?'Código e nome normalizado':matchName?'Nome normalizado':'Código do empreendimento';
+      proposals.push({work:row.work,entry,reason,level});
+    }
   }
-  return suggestions;
+  const order={'Alta confiança':0,'Nome único':1,'Revisão necessária':2};
+  return proposals.sort((a,b)=>order[a.level]-order[b.level]||a.work.nome.localeCompare(b.work.nome,'pt-BR'));
 }
+
 const percent = (a,b) => b > 0 ? (a / b * 100).toFixed(1).replace('.',',') + '%' : '—';
 const compact = value => value == null ? '—' : new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:2,style:'currency',currency:'BRL'}).format(value);
 const financeCard = (label,value,detail='',tone='') => '<article class="panel" style="padding:19px;border-top:3px solid '+(tone||'#1769aa')+';min-width:180px;flex:1"><div style="color:#61758b;font-weight:700;font-size:12px;text-transform:uppercase">'+clean(label)+'</div><div style="font-size:clamp(20px,2vw,28px);font-weight:800;color:#093866;margin:8px 0">'+compact(value)+'</div><small>'+clean(detail)+'</small></article>';
@@ -186,10 +202,10 @@ export function renderStrategicFinance(portfolio,toolbar) {
     ['Obras sem correspondência',noMatches]
   ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
   const suggestions=financialLinkCandidates(rows,unmatched);
-  const candidateRows=suggestions.slice(0,100).map(({work,entry,reason})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
+  const candidateRows=suggestions.slice(0,100).map(({work,entry,reason,level})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
   const candidateAudit=()=>section('Correspondências candidatas · revisão cadastral',
     '<p>'+suggestions.length+' correspondências potenciais encontradas entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
-    '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
+    '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>Classificação</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
     (suggestions.length>100?'<p>Exibindo as primeiras 100 sugestões para revisão.</p>':'')+
     '<p>Validar documentalmente OI/SAP, identidade do empreendimento e escopo antes de cadastrar o vínculo. Código e nome podem se repetir entre etapas ou exercícios.</p>');
   const quality=[
