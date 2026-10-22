@@ -62,3 +62,20 @@ jobs:
       - name: Publicar GitHub Pages
         uses: actions/deploy-pages@v4
         id: deployment
+
+      - name: Conferir versão publicada
+        env:
+          DEPLOY_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          echo "Deploy solicitado para: $DEPLOY_URL"
+          for attempt in 1 2 3 4 5 6; do
+            data=$(curl --fail --silent --show-error --max-time 15 "${DEPLOY_URL%/}/release.json" || true)
+            if printf '%s' "$data" | grep -Fq "$GITHUB_SHA"; then
+              echo "Versão $GITHUB_SHA confirmada no site público."
+              exit 0
+            fi
+            echo "Aguardando propagação da versão, tentativa $attempt."
+            sleep 10
+          done
+          echo "::error::O endereço público não está servindo a versão publicada ($GITHUB_SHA)."
+          exit 1
