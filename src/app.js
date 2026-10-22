@@ -6928,6 +6928,8 @@ function renderManagementDeadlines(summary) {
 }
 
 function renderWorksManagement() {
+  // Acesso contextual à mesma base financeira, sem incorporar OIs às contagens de demandas.
+
   const demands = managementFilteredDemands();
   const summary = managementDemandSummary(demands);
   const production = managementProduction(demands);
@@ -6954,6 +6956,7 @@ function renderWorksManagement() {
       <button class="secondary-action" type="button" data-view="worksOperational">Operacional</button>
       <button class="primary-action" type="button" data-action="open-demand">Nova demanda</button>
     `)}
+    <section class="panel" style="padding:16px;margin-bottom:14px"><strong>Inteligência integrada</strong><p>Demandas e produtividade são calculadas na base operacional. Para analisar investimento e execução financeira por OI, abra a fonte integrada HAPCAPEX; para custos previstos por disciplina, consulte a Visão Estratégica.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="secondary-action" data-view="worksStrategicFinance">Explorar CAPEX e OIs</button><button type="button" class="secondary-action" data-view="worksStrategic">Investigar EVs e custos/m²</button><button type="button" class="secondary-action" data-view="portfolio">Portfólio de obras</button></div></section>
     ${renderOperationalFilters()}
     ${renderOperationalFilterBanner()}
     ${renderManagementStatusTabs()}
@@ -7233,6 +7236,7 @@ function renderWorksStrategic() {
       <button class="primary-action" type="button" data-view="budget">Controle de Verbas</button>
     `)}
 
+    <section class="panel" style="padding:16px;margin-bottom:14px"><strong>Investimento e engenharia integrados</strong><p>Os indicadores desta aba são estimativas dos EVs. Consulte o realizado financeiro na Visão Estratégico-Financeira, com pesquisa por OI, HEAD e pacote. Valores entre bases não são equivalentes sem vínculo auditável.</p><div style="display:flex;flex-wrap:wrap;gap:10px"><button type="button" class="secondary-action" data-view="worksStrategicFinance">Consultar HAPCAPEX / OIs</button><button type="button" class="secondary-action" data-view="worksManagement">Analisar demandas</button><button type="button" class="secondary-action" data-view="portfolio">Abrir EVs e obras</button></div></section>
     <section class="panel strategic-analysis-intro">
       <div><span class="eyebrow">Inteligência de custos dos EVs</span><h2>Investimento orçado, composição e referências históricas</h2><p class="panel-subtitle">Os valores representam os custos previstos nos Estudos de Viabilidade. Eles não correspondem a pagamentos realizados. Use os filtros para recalcular todos os indicadores e detalhar qualquer disciplina da base.</p></div>
       <div class="strategic-analysis-filters">
