@@ -78,6 +78,30 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
 }
 
 
+const identityName = value => String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\\s*(?:\\d+[. -]+)+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+const identityCode = value => {
+  const found=String(value??'').match(/^\\s*(\\d{3,6})[. -]/);
+  return found && !/^0+$/.test(found[1])?String(Number(found[1])):'';
+};
+export function financialLinkCandidates(rows,entries) {
+  const confirmed=new Set(rows.filter(r=>r.entry).map(r=>String(r.work.id)));
+  const suggestions=[];
+  for(const row of rows) {
+    if(confirmed.has(String(row.work.id)))continue;
+    const name=identityName(row.work.nome);
+    const code=identityCode(row.work.codigo)||identityCode(row.work.nome);
+    if(!name && !code)continue;
+    const hits=entries.flatMap(entry=>{
+      const entryName=identityName(entry.nome);
+      const entryCode=identityCode(entry.nome);
+      const sameCode=Boolean(code && entryCode && code===entryCode);
+      const sameName=Boolean(name && entryName && name===entryName);
+      return sameCode||sameName?[{work:row.work,entry,reason:sameCode&&sameName?'Código e nome normalizado':sameCode?'Código de empreendimento':'Nome normalizado'}]:[];
+    });
+    if(hits.length) suggestions.push(...hits);
+  }
+  return suggestions;
+}
 const percent = (a,b) => b > 0 ? (a / b * 100).toFixed(1).replace('.',',') + '%' : '—';
 const compact = value => value == null ? '—' : new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:2,style:'currency',currency:'BRL'}).format(value);
 const financeCard = (label,value,detail='',tone='') => '<article class="panel" style="padding:19px;border-top:3px solid '+(tone||'#1769aa')+';min-width:180px;flex:1"><div style="color:#61758b;font-weight:700;font-size:12px;text-transform:uppercase">'+clean(label)+'</div><div style="font-size:clamp(20px,2vw,28px);font-weight:800;color:#093866;margin:8px 0">'+compact(value)+'</div><small>'+clean(detail)+'</small></article>';
@@ -161,6 +185,13 @@ export function renderStrategicFinance(portfolio,toolbar) {
     ['Obras com conflito',conflicts],
     ['Obras sem correspondência',noMatches]
   ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
+  const suggestions=financialLinkCandidates(rows,unmatched);
+  const candidateRows=suggestions.slice(0,100).map(({work,entry,reason})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
+  const candidateAudit=section('Correspondências candidatas · revisão cadastral',
+    '<p>'+suggestions.length+' correspondências potenciais encontradas entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
+    '<div style="overflow:auto;max-height:450px"><table class="data-table"><thead><tr><th>Obra SLT</th><th>Código SLT</th><th>OI HAPCAPEX</th><th>Obra financeira</th><th>Critério de sugestão</th><th>CAPEX da OI</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'+
+    (suggestions.length>100?'<p>Exibindo as primeiras 100 sugestões para revisão.</p>':'')+
+    '<p>Validar documentalmente OI/SAP, identidade do empreendimento e escopo antes de cadastrar o vínculo. Código e nome podem se repetir entre etapas ou exercícios.</p>');
   const quality=[
     ['Registros financeiros',financial.length],
     ['Obras SLT no recorte',rows.length],
@@ -220,6 +251,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
        section('Obras com maior realizado',financial.length?rank(topWorks,totals?.realized):'<p>Importe o relatório financeiro.</p>')+
     '</div>'+
     section('Diagnóstico dos vínculos EV × OI',diagnostic+'<p style="margin-top:10px">O vínculo automático exige OI/SAP válida em ambos os cadastros. Registros sem OI/SAP não podem ser conciliados com segurança apenas pelo nome; é necessária validação cadastral.</p>')+
+    candidateAudit+
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
     section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
     individualFinance+oiFicha+exploration+workPanel+
