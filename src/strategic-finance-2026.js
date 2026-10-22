@@ -93,13 +93,17 @@ export async function refreshHapcapex(rerender) {
   // A resposta gerencial é agregada e tem esquema próprio. Não inventar equivalência com linhas de relatório.
   const rows=Array.isArray(data?.itens)?data.itens:Array.isArray(data?.obras)?data.obras:Array.isArray(data?.ois)?data.ois:null;
   if(!rows){hapSyncMessage='HAPCAPEX autenticado, porém o retorno gerencial não possui linhas de OI no formato esperado. É necessário mapear a função de origem antes de habilitar os KPIs. Nenhum dado foi substituído.';rerender();return;}
-  const mapped=rows.map(o=>({oiList:[key(o.ordem_interna??o.oi??o.sap)].filter(Boolean),nome:safeText(o.nome_obra??o.obra??o.nome),pacote:safeText(o.pacote),head:safeText(o.head),initial:number(o.capex_inicial),current:number(o.capex_atual),committed:number(o.compromissado),realized:number(o.realizado),paid:number(o.desembolsado),balance:number(o.saldo_livre)})).filter(o=>o.oiList.length);
-  if(!mapped.length){hapSyncMessage='Dados recebidos, mas nenhuma OI válida foi identificada; valores existentes preservados.';rerender();return;}
-  // A fonte em tempo real deve ser completa para permitir cartões globais sem distorção.
+  const mapped=rows.map(o=>{
+    const monthly=o.realizado_mensal && typeof o.realizado_mensal==='object' ? Object.entries(o.realizado_mensal).filter(([month])=>month.startsWith('2026-')).reduce((total,[,amount])=>total+number(amount),0) : null;
+    return {oiList:[key(o.oi)].filter(Boolean),nome:safeText(o.nome),pacote:safeText(o.pacote),head:safeText(o.head),initial:null,current:typeof o.atribuido==='number'?o.atribuido:null,committed:typeof o.compromissado==='number'?o.compromissado:null,realized:monthly,paid:null,balance:typeof o.saldo==='number'?o.saldo:null};
+  }).filter(o=>o.oiList.length && o.current!==null && o.committed!==null && o.realized!==null);
+  if(!mapped.length){hapSyncMessage='HAPCAPEX autenticado, porém a estrutura financeira retornada não corresponde ao esperado. Nenhum dado anterior foi substituído.';rerender();return;}
+  const duplicates=new Set();
+  for(const o of mapped){if(duplicates.has(o.oiList[0])){hapSyncMessage='O HAPCAPEX retornou OIs duplicadas. Sincronização interrompida para evitar dupla contagem.';rerender();return;}duplicates.add(o.oiList[0]);}
   financeEntries=mapped;
-  const totals=['initial','current','committed','realized','paid','balance'].reduce((a,k)=>(a[k]=mapped.reduce((v,o)=>v+o[k],0),a),{});
-  metadata={totals,source:'HAPCAPEX online',year:2026,validatedAt:new Date().toISOString()};
-  hapSyncMessage=mapped.length+' registros de OI sincronizados com HAPCAPEX. Confira a cobertura de conciliação.';
+  const totals={initial:null,current:mapped.reduce((v,o)=>v+o.current,0),committed:mapped.reduce((v,o)=>v+o.committed,0),realized:mapped.reduce((v,o)=>v+o.realized,0),paid:null,balance:mapped.every(o=>o.balance!==null)?mapped.reduce((v,o)=>v+o.balance,0):null};
+  metadata={totals,source:'HAPCAPEX online — função Gerencial',year:2026,validatedAt:new Date().toISOString()};
+  hapSyncMessage=mapped.length+' OIs sincronizadas. CAPEX inicial e desembolsado não são fornecidos por esta função e permanecem indisponíveis; confira a cobertura.';
   rerender();
 }
 
