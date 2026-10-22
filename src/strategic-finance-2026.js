@@ -2,7 +2,8 @@ import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
 
 // Public configuration copied from the HAPCAPEX public client, never a secret/service-role key.
-const hapClient=createClient('https://kuvwfyuhrnfsubkapeek.supabase.co','sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+const HAP_URL='https://kuvwfyuhrnfsubkapeek.supabase.co';
+const hapClient=createClient(HAP_URL,'sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',{auth:{storageKey:'slt360-hapcapex-isolated-auth',persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 let hapAuthenticated=false;
 let hapSyncMessage='';
 
@@ -81,9 +82,12 @@ const shareRows = (entries,field,valueKey='current') => {
 const rank = (rows,total,n=7) => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
 export async function connectHapcapex(email,password,rerender) {
   hapSyncMessage='Conectando com segurança ao HAPCAPEX...';
-  const {error}=await hapClient.auth.signInWithPassword({email,password});
+  let error;
+  try { ({error}=await hapClient.auth.signInWithPassword({email,password})); }
+  catch (cause) { error=cause; }
   if(error){
     const network=/failed to fetch|network|fetch failed|load failed/i.test(String(error.message||''));
+    console.warn('[HAPCAPEX] Falha de conexão/autenticação (sem dados de credenciais):', {name:error.name,code:error.code,status:error.status,message:error.message});
     hapSyncMessage=network
       ? 'Falha de comunicação com o Supabase do HAPCAPEX — NÃO é confirmação de senha incorreta. Confira se o HAPCAPEX abre nesta mesma rede e se seu navegador permite a conexão; desative temporariamente bloqueadores/VPN corporativa apenas se autorizado pela TI. Se persistir, solicite à TI a verificação da conexão HTTPS/CORS com kuvwfyuhrnfsubkapeek.supabase.co.'
       : 'HAPCAPEX não autorizou o login: '+error.message;
