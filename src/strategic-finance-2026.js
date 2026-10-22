@@ -63,8 +63,10 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
     const oiList=[...new Set(String(work.sap??'').split(/[,;\/\s]+/).map(key).filter(Boolean))];
     const hits=[...new Set(oiList.flatMap(oi=>byOI.get(oi)||[]))];
     const ambiguous=hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1)) || hits.some(e=>assigned.has(e));
-    if(!ambiguous && hits.length===1)assigned.add(hits[0]);
-    result.push({work,entry:!ambiguous&&hits.length===1?hits[0]:null,status:ambiguous?'Conflito de vínculo':hits.length===0?'Sem conciliação':'Conciliado'});
+    if(!ambiguous) hits.forEach(e=>assigned.add(e));
+    const add=field=>hits.every(e=>e[field]!=null)?hits.reduce((v,e)=>v+e[field],0):null;
+    const grouped=hits.length?{current:add('current'),committed:add('committed'),realized:add('realized'),balance:add('balance'),initial:add('initial'),paid:add('paid')}:null;
+    result.push({work,entry:!ambiguous?grouped:null,status:ambiguous?'Conflito de vínculo':hits.length===0?'Sem conciliação':'Conciliado'});
   }
   return {rows:result,unmatched:entries.filter(e=>!assigned.has(e)),totals:metadata?.totals||null};
 }
