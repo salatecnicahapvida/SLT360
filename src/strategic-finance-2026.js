@@ -78,9 +78,9 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
 }
 
 
-const identityName = value => String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\\s*(?:\\d+[. -]+)+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+const identityName = value => String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\s*(?:\d+[. -]+)+/,'').replace(/[^a-z0-9]+/g,' ').trim();
 const identityCode = value => {
-  const found=String(value??'').match(/^\\s*(\\d{3,6})[. -]/);
+  const found=String(value??'').match(/^\s*(\d{3,6})[. -]/);
   return found && !/^0+$/.test(found[1])?String(Number(found[1])):'';
 };
 export function financialLinkCandidates(rows,entries) {
@@ -202,7 +202,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
     ['Obras sem correspondência',noMatches]
   ].map(([label,value])=>'<div style="background:#edf4fb;padding:13px;border-radius:9px"><strong style="font-size:21px">'+value+'</strong><div>'+clean(label)+'</div></div>').join('')+'</div>';
   const suggestions=financialLinkCandidates(rows,unmatched);
-  const candidateRows=suggestions.slice(0,100).map(({work,entry,reason,level})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
+  const candidateRows=suggestions.slice(0,100).map(({work,entry,reason,level})=>'<tr><td>'+clean(work.nome)+'</td><td>'+clean(work.codigo||'—')+'</td><td>'+clean(entry.oiList.join(', '))+'</td><td>'+clean(entry.nome)+'</td><td>'+clean(reason)+'</td><td>'+clean(level)+'</td><td>'+formatMoney(entry.current)+'</td></tr>').join('');
   const candidateCounts=Object.fromEntries(['Alta confiança','Nome único','Revisão necessária'].map(level=>[level,suggestions.filter(x=>x.level===level).length]));
   const candidateAudit=()=>section('Correspondências candidatas · revisão cadastral',
     '<p>'+suggestions.length+' correspondências potenciais encontradas: '+candidateCounts['Alta confiança']+' de alta confiança, '+candidateCounts['Nome único']+' com nome único e '+candidateCounts['Revisão necessária']+' exigindo revisão. Entre obras não conciliadas e OIs pendentes. São <strong>sugestões para validação</strong>, não vínculos financeiros; nenhuma soma de CAPEX ou cobertura é alterada.</p>'+
@@ -270,7 +270,21 @@ export function renderStrategicFinance(portfolio,toolbar) {
       ['OI',oiDetails.oiList.join(' / ')],['Pacote',oiDetails.pacote],['HEAD',oiDetails.head],['CAPEX vigente',formatMoney(oiDetails.current)],['Compromissado',formatMoney(oiDetails.committed)],['Realizado 2026',formatMoney(oiDetails.realized)],['Saldo livre',formatMoney(oiDetails.balance)],['Comprometimento',percent(oiDetails.committed,oiDetails.current)],['Execução 2026',percent(oiDetails.realized,oiDetails.current)]
     ].map(([k,v])=>'<div style="background:#edf4fa;border-radius:9px;padding:15px"><small>'+clean(k)+'</small><div style="font-weight:800;margin-top:6px">'+clean(v)+'</div></div>').join('')+'</div>'+
     '<p style="margin-top:15px">Os valores de realizado representam o exercício financeiro, não necessariamente o custo final da obra. CAPEX inicial e desembolsos não estão disponíveis nesta consulta.</p><button type="button" class="secondary-action" data-hap-oi-close>Fechar ficha</button>'):'';
-  const table=visible.map(({work,entry,status})=>'<tr><td><button type="button" class="secondary-action" data-capex-work="'+clean(work.id)+'" style="text-align:left;font-weight:700">'+clean(work.nome)+'</button></td><td>'+clean(work.sap)+'</td><td>'+clean(work.uf)+'</td><td>'+clean(work.tipologia)+'</td><td>'+formatMoney(work.evInitial)+'</td><td>'+formatMoney(entry?.current)+'</td><td>'+formatMoney(entry?.realized)+'</td><td>'+formatMoney(entry?.paid)+'</td><td>'+clean(status)+'</td></tr>').join('');
+  const candidateIndex=new Map();
+  for(const item of suggestions){
+    const id=String(item.work.id);
+    if(!candidateIndex.has(id))candidateIndex.set(id,[]);
+    candidateIndex.get(id).push(item);
+  }
+  const table=visible.map(({work,entry,status})=>{
+    const candidates=candidateIndex.get(String(work.id))||[];
+    const candidateLabel=candidates.length===0?'Sem candidato':
+      candidates.length===1?candidates[0].level:'Múltiplas possibilidades';
+    const actions=candidates.slice(0,4).map(item=>'<button type="button" class="secondary-action" data-hap-oi="'+clean(item.entry.oiList[0])+'" title="'+clean(item.entry.nome)+'">'+clean(item.entry.oiList.join(', '))+'</button>').join(' ');
+    return '<tr><td><button type="button" class="secondary-action" data-capex-work="'+clean(work.id)+'" style="text-align:left;font-weight:700">'+clean(work.nome)+'</button></td><td>'+clean(work.sap)+'</td><td>'+clean(work.uf)+'</td><td>'+clean(work.tipologia)+'</td><td>'+formatMoney(work.evInitial)+'</td><td>'+formatMoney(entry?.current)+'</td><td>'+formatMoney(entry?.realized)+'</td><td>'+formatMoney(entry?.paid)+'</td><td>'+clean(status)+'</td><td>'+(
+      status==='Conciliado'?'Vínculo OI/SAP validado por identificador':clean(candidateLabel)+(candidates.length?' · '+candidates.length+' OI(s) candidata(s)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+actions+'</div>':'')
+    )+'</td></tr>';
+  }).join('');
   const workPanel=selected ? section('Ficha integrada do empreendimento · '+clean(selected.work.nome),'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">'+
     [['Código',selected.work.codigo],['OI/SAP',selected.work.sap],['Região',selected.work.regional],['UF',selected.work.uf],['Tipologia',selected.work.tipologia],['Situação',selected.work.status],['EV inicial',formatMoney(selected.work.evInitial)],['SICs / aditivos',formatMoney(selected.work.evAdditives)],['EV atualizado',formatMoney(selected.work.evUpdated)],['CAPEX atual 2026',formatMoney(selected.entry?.current)],['Compromissado 2026',formatMoney(selected.entry?.committed)],['Realizado 2026',formatMoney(selected.entry?.realized)],['Desembolsado 2026',formatMoney(selected.entry?.paid)],['Saldo livre 2026',formatMoney(selected.entry?.balance)],['Conciliação',selected.status]].map(([name,value])=>'<div style="padding:12px;background:#f2f6fb;border-radius:9px"><small>'+clean(name)+'</small><p style="font-weight:700;margin:4px 0">'+clean(value??'Não informado')+'</p></div>').join('')+
     '</div><p style="margin-top:15px">Os valores financeiros pertencem ao exercício 2026. Ausência de vínculo exato não é interpretada como valor zero. EV total e realizado anual não são automaticamente comparáveis.</p><button class="secondary-action" type="button" data-capex-close>Fechar ficha</button>') : '';
@@ -295,7 +309,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
     section('Rastreabilidade e qualidade da integração','<p>O HAPCAPEX permanece como fonte oficial financeira. Os totais acima incluem todos os seus registros, mesmo os ainda não vinculados ao Portfólio. Conciliações pendentes não são atribuídas artificialmente a obras.</p><p><strong>CAPEX conciliado:</strong> '+formatMoney(reconciledCurrent)+' · <strong>Realizado conciliado:</strong> '+formatMoney(reconciledRealized)+' · <strong>Registros financeiros pendentes:</strong> '+unmatched.length+'</p>')+
     section('Inteligência para CAPEX futuros — EV × execução','<p><strong>EV inicial das obras conciliadas:</strong> '+formatMoney(withEV.length?forecast:null)+' · <strong>Realizado 2026 dessas obras:</strong> '+formatMoney(withEV.length?linkedRealized:null)+'</p><p>Esses valores são referências de acompanhamento, não um indicador definitivo de acurácia. Para comparar EV total e custo final, exigem-se conclusão financeira, escopo equivalente e custo acumulado validado.</p>')+
     individualFinance+oiFicha+exploration+workPanel+
-    '<details open class="panel" style="padding:20px"><summary style="font-weight:800;color:#063c71;cursor:pointer">Obras e conciliação · '+visible.length+' obras do portfólio e '+unmatched.length+' lançamentos sem vínculo</summary><div style="overflow:auto;margin-top:16px"><table class="data-table"><thead><tr><th>Obra</th><th>OI/SAP</th><th>UF</th><th>Tipologia</th><th>EV inicial</th><th>CAPEX atual</th><th>Realizado 2026</th><th>Desembolsado</th><th>Vínculo</th></tr></thead><tbody>'+table+'</tbody></table></div></details>'+
+    '<details open class="panel" style="padding:20px"><summary style="font-weight:800;color:#063c71;cursor:pointer">Obras e conciliação · '+visible.length+' obras do portfólio e '+unmatched.length+' lançamentos sem vínculo</summary><div style="overflow:auto;margin-top:16px"><table class="data-table"><thead><tr><th>Obra</th><th>OI/SAP</th><th>UF</th><th>Tipologia</th><th>EV inicial</th><th>CAPEX atual</th><th>Realizado 2026</th><th>Desembolsado</th><th>Vínculo</th><th>Investigação por nome/código</th></tr></thead><tbody>'+table+'</tbody></table></div></details>'+
   '</div>';
 }
 export function bindCapex2026Import(rerender) {
