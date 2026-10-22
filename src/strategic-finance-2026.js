@@ -62,7 +62,7 @@ export function financialReconciliation(portfolio, entries=financeEntries) {
   for(const work of portfolio.filter(w=>String(w.year)===String(EXERCISE) || String(w.sap??'').split(/[,;\/\s]+/).map(key).some(oi=>byOI.has(oi)))){
     const oiList=[...new Set(String(work.sap??'').split(/[,;\/\s]+/).map(key).filter(Boolean))];
     const hits=[...new Set(oiList.flatMap(oi=>byOI.get(oi)||[]))];
-    const ambiguous=hits.length>1 || hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1)) || hits.some(e=>assigned.has(e));
+    const ambiguous=hits.some(e=>e.oiList.some(oi=>(byOI.get(oi)||[]).length>1)) || hits.some(e=>assigned.has(e));
     if(!ambiguous && hits.length===1)assigned.add(hits[0]);
     result.push({work,entry:!ambiguous&&hits.length===1?hits[0]:null,status:ambiguous?'Conflito de vínculo':hits.length===0?'Sem conciliação':'Conciliado'});
   }
