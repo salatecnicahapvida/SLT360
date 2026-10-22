@@ -80,8 +80,16 @@ const shareRows = (entries,field,valueKey='current') => {
 };
 const rank = (rows,total,n=7) => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
 export async function connectHapcapex(email,password,rerender) {
+  hapSyncMessage='Conectando com segurança ao HAPCAPEX...';
   const {error}=await hapClient.auth.signInWithPassword({email,password});
-  if(error){hapSyncMessage='Autenticação negada pelo HAPCAPEX: '+error.message;rerender();return;}
+  if(error){
+    const network=/failed to fetch|network|fetch failed|load failed/i.test(String(error.message||''));
+    hapSyncMessage=network
+      ? 'Falha de comunicação com o Supabase do HAPCAPEX — NÃO é confirmação de senha incorreta. Confira se o HAPCAPEX abre nesta mesma rede e se seu navegador permite a conexão; desative temporariamente bloqueadores/VPN corporativa apenas se autorizado pela TI. Se persistir, solicite à TI a verificação da conexão HTTPS/CORS com kuvwfyuhrnfsubkapeek.supabase.co.'
+      : 'HAPCAPEX não autorizou o login: '+error.message;
+    hapAuthenticated=false;
+    rerender();return;
+  }
   hapAuthenticated=true;
   hapSyncMessage='Autenticado. Consultando dados financeiros autorizados...';
   await refreshHapcapex(rerender);
