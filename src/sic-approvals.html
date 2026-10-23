@@ -329,6 +329,8 @@
   .sic-value-wrap { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
   .sic-edit-btn { border:1px solid var(--cinza-borda); background:#fff; color:var(--azul-medio); border-radius:7px; padding:4px 8px; font-size:10.5px; font-weight:700; cursor:pointer; }
   .sic-edit-btn:hover { border-color:var(--azul-claro); background:var(--azul-suave); }
+  .sic-postpone-btn { border:1px solid #a9c8ee; background:#f3f8ff; color:var(--azul-medio); border-radius:7px; padding:4px 8px; font-size:10.5px; font-weight:800; cursor:pointer; }
+  .sic-postpone-btn:hover { border-color:var(--azul-claro); background:var(--azul-suave); }
   .sic-delete-btn { border:1px solid #efc0bb; background:#fff7f6; color:var(--vermelho); border-radius:7px; padding:4px 8px; font-size:10.5px; font-weight:800; cursor:pointer; }
   .sic-delete-btn:hover { border-color:var(--vermelho); background:#fde8e5; }
   .sic-value-edit-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
@@ -1365,7 +1367,7 @@ function renderObraTable(){
           <div class="obra-card-title">${esc(o.descricao)}</div>
           <div class="obra-card-actions">
             <div>${situacaoBadge(o, sics)}</div>
-            ${state.selectedWeekId!=='all' ? `<button class="card-postpone-btn" type="button" data-card-postpone="${esc(o.id)}" title="Adiar este card para a próxima semana" aria-label="Adiar ${esc(o.descricao)} para a próxima semana">⏭ Adiar</button>` : ''}
+            ${state.selectedWeekId!=='all' ? `<button class="card-postpone-btn" type="button" data-card-postpone="${esc(o.id)}" title="Adiar o card inteiro e todas as suas SICs pendentes" aria-label="Adiar o card inteiro de ${esc(o.descricao)} para a próxima semana">⏭ Adiar</button>` : ''}
             ${state.selectedWeekId!=='all' ? `<button class="card-delete-btn" type="button" data-card-delete="${esc(o.id)}" title="Excluir card desta semana" aria-label="Excluir ${esc(o.descricao)} desta semana">🗑</button>` : ''}
           </div>
         </div>
@@ -1542,6 +1544,100 @@ async function postponeCardToNextWeek(obraId){
   }
   render(); renderNotificationCenter();
   showToast(`Card adiado para ${target.label}.`, 'ok');
+}
+
+async function postponeSingleSicToNextWeek(obraId,sicId){
+  if(state.selectedWeekId==='all'){
+    showToast('Selecione uma semana específica para adiar somente uma SIC/Revisão.','err');
+    return;
+  }
+  const obra=state.obras.find(o=>o.id===obraId);
+  const source=state.weeks.find(w=>w.id===state.selectedWeekId);
+  const sic=(obra?.sics||[]).find(s=>s.id===sicId);
+  if(!obra||!source||!sic) return;
+  if(String(sic.weekId)!==String(source.id)){
+    showToast('Esta SIC/Revisão não pertence mais à semana selecionada. Atualize a página e tente novamente.','err');
+    return;
+  }
+  if(sic.status!=='pendente'){
+    showToast('Somente uma SIC/Revisão pendente pode ser adiada. Desfaça a decisão antes de movê-la.','err');
+    return;
+  }
+
+  const {week:target,created}=ensureNextWeekForPostpone(source);
+  const identity=normalizedLecomKey(sic.lecom)||sic.fingerprint||sicFingerprint(sic);
+  const duplicate=(obra.sics||[]).some(other=>other.id!==sic.id && String(other.weekId)===String(target.id) && (normalizedLecomKey(other.lecom)||other.fingerprint||sicFingerprint(other))===identity);
+  if(duplicate){
+    if(created) state.weeks=state.weeks.filter(w=>w.id!==target.id);
+    showToast('Esta SIC/Revisão já existe na próxima semana. Revise o card antes de adiar.','err');
+    return;
+  }
+
+  const label=sic.lecom||'sem LECOM';
+  const amount=round2(Number(sic.valor)||0);
+  const siblings=(obra.sics||[]).filter(other=>other.id!==sic.id && String(other.weekId)===String(source.id));
+  const confirmation=`Adiar somente a SIC/Revisão ${label} de ${source.label} para ${target.label}?\n\n${sic.descricao||obra.descricao}\n${fmtBRL(amount)}\n\n${siblings.length ? `As outras ${siblings.length} SIC(s)/Revisão(ões) deste card permanecerão em ${source.label}.` : `Esta é a única SIC/Revisão do card em ${source.label}.`}`;
+  if(!window.confirm(confirmation)){
+    if(created) state.weeks=state.weeks.filter(w=>w.id!==target.id);
+    return;
+  }
+
+  const before=JSON.stringify({
+    sics:obra.sics,
+    historyEvents:obra.historyEvents,
+    snapshots:state.snapshots,
+    weeks:state.weeks,
+    lastWeekId:obra.lastWeekId,
+    excludedWeekIds:obra.excludedWeekIds
+  });
+  const sourceSnap=snapshotForObraWeek(obra,source.id);
+  const existingTargetSnap=snapshotForObraWeek(obra,target.id);
+  const now=new Date().toISOString();
+  sic.weekId=target.id;
+  sic.statusUpdatedAt=now;
+  obra.excludedWeekIds=(obra.excludedWeekIds||[]).filter(id=>String(id)!==String(target.id));
+  const remainingWeeks=(obra.sics||[])
+    .map(item=>state.weeks.find(w=>String(w.id)===String(item.weekId)))
+    .filter(Boolean)
+    .sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
+  if(remainingWeeks.length) obra.lastWeekId=remainingWeeks[0].id;
+  if(!existingTargetSnap){
+    const baseEv=cloneData(sourceSnap?.ev||obra.ev);
+    const baseSap=cloneData(sourceSnap?.sap!==undefined?sourceSnap.sap:obra.sap);
+    state.snapshots.push({weekId:target.id,obraId:obra.id,ev:baseEv,sap:baseSap,alerts:[],capturedAt:now,updatedAt:now});
+  }
+  addHistoryEvent(
+    obra,
+    'sic_postponed',
+    `SIC/Revisão ${label} adiada de ${source.label} para ${target.label}: ${fmtBRL(amount)}.${siblings.length ? ` As outras ${siblings.length} SIC(s)/Revisão(ões) permaneceram em ${source.label}.` : ''}`,
+    {weekId:target.id,weekLabel:target.label,sourceWeekId:source.id,sourceWeekLabel:source.label,targetWeekId:target.id,sicId:sic.id,movedSicIds:[sic.id],amount,lecom:sic.lecom||''}
+  );
+
+  const ok=await persistAll(state.obras,state.weeks,state.snapshots);
+  if(!ok){
+    const saved=JSON.parse(before);
+    obra.sics=saved.sics;
+    obra.historyEvents=saved.historyEvents;
+    obra.lastWeekId=saved.lastWeekId;
+    obra.excludedWeekIds=saved.excludedWeekIds;
+    state.snapshots=saved.snapshots;
+    state.weeks=saved.weeks;
+    if(created) state.weeks=state.weeks.filter(w=>String(w.id)!==String(target.id));
+    showToast('Não foi possível adiar a SIC/Revisão. Tente novamente.','err');
+    return;
+  }
+
+  state.sicEditId=null;
+  render();
+  renderNotificationCenter();
+  const stillVisible=sicsForObraInSelectedWeek(obra).length>0;
+  if(stillVisible){
+    document.getElementById('panel-body').innerHTML=renderPanelBody(obra);
+    attachPanelEvents(obra);
+  }else{
+    closePanel();
+  }
+  showToast(`SIC/Revisão ${label} adiada para ${target.label}.`, 'ok');
 }
 
 async function excludeCardFromSelectedWeek(obraId){
@@ -2075,6 +2171,7 @@ function renderSicItem(o, s){
       <div class="sic-value-wrap">
         <span class="sic-valor">${fmtBRL(s.valor)}</span>
         <button class="sic-edit-btn" data-sicvalueedit data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}">✎ Editar valor</button>
+        ${state.selectedWeekId!=='all' && s.status==='pendente' ? `<button class="sic-postpone-btn" data-sicpostpone data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}" title="Adiar somente esta SIC/Revisão para a próxima semana">⏭ Adiar esta SIC</button>` : ''}
         <button class="sic-delete-btn" data-sicdelete data-obraid="${esc(o.id)}" data-sicid="${esc(s.id)}">🗑 Excluir SIC</button>
       </div>`;
   return `
@@ -2222,6 +2319,11 @@ function attachPanelEvents(o){
   document.querySelectorAll('[data-sicdelete]').forEach(btn=>{
     btn.addEventListener('click',async()=>{
       await deleteSicFromWeek(btn.dataset.obraid,btn.dataset.sicid);
+    });
+  });
+  document.querySelectorAll('[data-sicpostpone]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await postponeSingleSicToNextWeek(btn.dataset.obraid,btn.dataset.sicid);
     });
   });
   document.querySelectorAll('[data-sicvalueedit]').forEach(btn=>{
@@ -3328,6 +3430,7 @@ function movementNotificationTitle(evt){
     card_excluded:'Card excluído da apresentação',
     card_restored:'Card restaurado na apresentação',
     card_postponed:'Card adiado para a próxima semana',
+    sic_postponed:'SIC/Revisão adiada para a próxima semana',
     sic_queued:'SIC incluída para aprovação da Diretoria'
   };
   return labels[evt?.type]||'Movimentação da obra';
