@@ -3,8 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 // Public configuration copied from the HAPCAPEX public client, never a secret/service-role key.
 const HAP_URL='https://kuvwfyuhrnfsubkapeek.supabase.co';
-const hapClient=createClient(HAP_URL,'sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',{auth:{storageKey:'slt360-hapcapex-isolated-auth',persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+const hapClient=createClient(HAP_URL,'sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',{auth:{storageKey:'slt360-hapcapex-isolated-auth',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
 let hapAuthenticated=false;
+let hapConnectionBusy=false;
 let hapSyncMessage='';
 
 
@@ -153,10 +154,13 @@ const shareRows = (entries,field,valueKey='current') => {
 };
 const rank = (rows,total,n=7,filter='') => '<div style="display:grid;gap:11px">'+rows.slice(0,n).map((r,i)=>'<div><div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600">'+(i+1)+'. '+clean(r.name)+'</span><strong>'+compact(r.value)+'</strong></div><div style="background:#e7eef6;height:9px;border-radius:8px;overflow:hidden;margin-top:5px"><div style="height:100%;background:#0f67aa;width:'+Math.min(100,Math.max(0,total?r.value/total*100:0))+'%"></div></div></div>').join('')+'</div>';
 export async function connectHapcapex(email,password,rerender) {
+  if(hapConnectionBusy)return;
+  hapConnectionBusy=true;
   hapSyncMessage='Conectando com segurança ao HAPCAPEX...';
   let error;
   try { ({error}=await hapClient.auth.signInWithPassword({email:String(email||'').trim().toLowerCase(),password})); }
   catch (cause) { error=cause; }
+  hapConnectionBusy=false;
   if(error){
     const network=/failed to fetch|network|fetch failed|load failed/i.test(String(error.message||''));
     console.warn('[HAPCAPEX] Falha de conexão/autenticação (sem dados de credenciais):', {name:error.name,code:error.code,status:error.status,message:error.message});
@@ -338,6 +342,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
   '</div>';
 }
 export function bindCapex2026Import(rerender) {
+  // Session stays isolated from the SLT authentication client and can refresh safely.
   document.getElementById('hapcapexConnect')?.addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const email=form.elements.namedItem('email').value.trim().toLowerCase();const password=form.elements.namedItem('password').value;form.elements.namedItem('password').value='';await connectHapcapex(email,password,rerender);});
   document.getElementById('hapcapexRefresh')?.addEventListener('click',()=>void refreshHapcapex(rerender));
   const input=document.getElementById('capex2026Input');
