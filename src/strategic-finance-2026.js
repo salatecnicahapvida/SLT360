@@ -155,14 +155,16 @@ const rank = (rows,total,n=7,filter='') => '<div style="display:grid;gap:11px">'
 export async function connectHapcapex(email,password,rerender) {
   hapSyncMessage='Conectando com segurança ao HAPCAPEX...';
   let error;
-  try { ({error}=await hapClient.auth.signInWithPassword({email,password})); }
+  try { ({error}=await hapClient.auth.signInWithPassword({email:String(email||'').trim().toLowerCase(),password})); }
   catch (cause) { error=cause; }
   if(error){
     const network=/failed to fetch|network|fetch failed|load failed/i.test(String(error.message||''));
     console.warn('[HAPCAPEX] Falha de conexão/autenticação (sem dados de credenciais):', {name:error.name,code:error.code,status:error.status,message:error.message});
     hapSyncMessage=network
       ? 'Falha de comunicação com o Supabase do HAPCAPEX — NÃO é confirmação de senha incorreta. Confira se o HAPCAPEX abre nesta mesma rede e se seu navegador permite a conexão; desative temporariamente bloqueadores/VPN corporativa apenas se autorizado pela TI. Se persistir, solicite à TI a verificação da conexão HTTPS/CORS com kuvwfyuhrnfsubkapeek.supabase.co.'
-      : 'HAPCAPEX não autorizou o login: '+error.message;
+      : error.code==='invalid_credentials' || /invalid login credentials/i.test(String(error.message||''))
+        ? 'O HAPCAPEX rejeitou este novo login (credenciais inválidas). Confirme o acesso abrindo o HAPCAPEX original em janela anônima e fazendo login com o mesmo e-mail e senha. Uma sessão antiga já aberta não valida a senha atual; se necessário, use a recuperação oficial de acesso. Não envie a senha ao suporte.'
+        : 'HAPCAPEX não autorizou o login: '+error.message;
     hapAuthenticated=false;
     rerender();return;
   }
@@ -336,7 +338,7 @@ export function renderStrategicFinance(portfolio,toolbar) {
   '</div>';
 }
 export function bindCapex2026Import(rerender) {
-  document.getElementById('hapcapexConnect')?.addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const email=form.elements.namedItem('email').value;const password=form.elements.namedItem('password').value;form.elements.namedItem('password').value='';await connectHapcapex(email,password,rerender);});
+  document.getElementById('hapcapexConnect')?.addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const email=form.elements.namedItem('email').value.trim().toLowerCase();const password=form.elements.namedItem('password').value;form.elements.namedItem('password').value='';await connectHapcapex(email,password,rerender);});
   document.getElementById('hapcapexRefresh')?.addEventListener('click',()=>void refreshHapcapex(rerender));
   const input=document.getElementById('capex2026Input');
   document.getElementById('hapOiSearch')?.addEventListener('input',event=>{oiQuery=event.target.value;});
