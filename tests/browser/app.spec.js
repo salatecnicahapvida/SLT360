@@ -2923,7 +2923,7 @@ test('posting an approved SIC does not create a new EV revision',async({page})=>
  expect(b.errors).toEqual([]);
 });
 
-test('Analista can validate Obras but cannot send a SIC to Diretoria',async({page})=>{
+test('Analista can validate a negative SIC in Obras but cannot send it to Diretoria',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-validation-analyst',
@@ -2945,9 +2945,14 @@ test('Analista can validate Obras but cannot send a SIC to Diretoria',async({pag
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const validationValue=page.locator('#sicWorksValidationForm');
  await expect(validationValue).toBeVisible();
- await validationValue.locator('[name="sicWorksAmount"]').fill('37,50');
+ await expect(validationValue).toContainText('redução de escopo');
+ await validationValue.locator('[name="sicWorksAmount"]').fill('-37,50');
  await validationValue.getByRole('button',{name:'Confirmar validação'}).click();
- await expect(page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]')).toBeVisible();
+ const validatedCard=page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]');
+ await expect(validatedCard).toBeVisible();
+ await expect(validatedCard.locator('.demand-card-value')).toContainText(/-R\$\s*37,50/);
+ const validatedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-analyst'&&change.document?.coluna==='validadoObras');
+ expect(validatedChange.document).toMatchObject({valorGerado:-37.5,sicWorksValidation:{amount:-37.5}});
 
  await page.locator('article[data-id="sic-validation-analyst"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -2959,7 +2964,7 @@ test('Analista can validate Obras but cannot send a SIC to Diretoria',async({pag
  expect(b.errors).toEqual([]);
 });
 
-test('Gestor chooses the week and queues only the new validated SIC for Diretoria',async({page})=>{
+test('Gestor chooses the week and queues a negative validated SIC for Diretoria',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-validation-manager',
@@ -2994,17 +2999,17 @@ test('Gestor chooses the week and queues only the new validated SIC for Diretori
  await queue.locator('[data-sic-card-search]').fill('obra sic');
  await expect(queue.locator('[data-sic-card-results] [data-card-id="approval-test"]')).toBeVisible();
  await queue.locator('[data-sic-card-results] [data-card-id="approval-test"]').click();
- await queue.locator('[name="approvalSicValue"]').fill('12,34');
+ await queue.locator('[name="approvalSicValue"]').fill('-12,34');
  await queue.locator('[name="approvalAssigned"]').fill('120,00');
  await queue.locator('[name="approvalCommitted"]').fill('80,00');
  await queue.getByRole('button',{name:'Confirmar e mover'}).click();
  await expect(page.locator('.kanban-column[data-column="aprovacaoDiretoria"] article[data-id="sic-validation-manager"]')).toBeVisible();
  const demandChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-manager');
- expect(demandChange.document.sicDirectorApproval).toMatchObject({version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:12.34,priorInvoices:0,assignedAmount:120,committedAmount:80});
+ expect(demandChange.document.sicDirectorApproval).toMatchObject({version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:-12.34,priorInvoices:0,assignedAmount:120,committedAmount:80});
  expect(b.errors).toEqual([]);
 });
 
-test('Analista can move SIC from director approval to director approved',async({page})=>{
+test('Analista can preserve or revise a negative SIC during director approval',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-director-analyst',
@@ -3012,9 +3017,9 @@ test('Analista can move SIC from director approval to director approved',async({
   tipo:'SIC',
   coluna:'aprovacaoDiretoria',
   analistaResponsavel:'Ana',
-  valorGerado:25,
-  sicWorksValidation:{version:1,amount:25,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
-  sicDirectorApproval:{version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:25},
+  valorGerado:-25,
+  sicWorksValidation:{version:1,amount:-25,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
+  sicDirectorApproval:{version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:-25},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),tituloSic:'SIC aprovação de diretoria'},
  };
  const b=await backend(page,'Analista',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
@@ -3025,14 +3030,14 @@ test('Analista can move SIC from director approval to director approved',async({
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const decision=page.locator('#sicDirectorDecisionForm');
- await expect(decision).toContainText('R$ 25,00');
+ await expect(decision).toContainText(/-R\$\s*25,00/);
  await decision.locator('[name="directorValueDecision"][value="revise"]').check();
- await decision.locator('[name="sicDirectorAmount"]').fill('22,50');
+ await decision.locator('[name="sicDirectorAmount"]').fill('-22,50');
  await decision.getByRole('button',{name:'Confirmar e aprovar'}).click();
  await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-director-analyst"]')).toBeVisible();
- await expect(page.locator('article[data-id="sic-director-analyst"] .demand-card-value')).toContainText('R$ 22,50');
+ await expect(page.locator('article[data-id="sic-director-analyst"] .demand-card-value')).toContainText(/-R\$\s*22,50/);
  const approvedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-director-analyst'&&change.document?.coluna==='aprovadoDiretoria');
- expect(approvedChange.document).toMatchObject({valorGerado:22.5,sicDirectorDecision:{presentedAmount:25,finalAmount:22.5,revised:true}});
+ expect(approvedChange.document).toMatchObject({valorGerado:-22.5,sicDirectorDecision:{presentedAmount:-25,finalAmount:-22.5,revised:true}});
  expect(b.errors).toEqual([]);
 });
 
@@ -3146,18 +3151,21 @@ test('any user confirms whether Diretoria is required before moving a validated 
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toContainText('Diretoria não necessária');
  await completion.locator('[name="dataEntregaReal"]').fill('2026-09-28');
- await completion.locator('[name="valorGerado"]').fill('27,50');
+ await expect(completion).toContainText('Valores negativos são permitidos');
+ await completion.locator('[name="valorGerado"]').fill('-27,50');
  await completion.getByRole('button',{name:'Concluir demanda'}).click();
 
- await expect(page.locator('.kanban-column[data-column="concluido"] article[data-id="sic-direct-completion"]')).toBeVisible();
+ const completedCard=page.locator('.kanban-column[data-column="concluido"] article[data-id="sic-direct-completion"]');
+ await expect(completedCard).toBeVisible();
+ await expect(completedCard.locator('.demand-card-value')).toContainText(/-R\$\s*27,50/);
  const completed=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-direct-completion'&&change.document?.coluna==='concluido');
  expect(completed.document).toMatchObject({
-  valorGerado:27.5,
+  valorGerado:-27.5,
   sicDirectorWaiver:{
    version:2,
    required:false,
    sourcePhase:'validadoObras',
-   confirmedAmount:27.5,
+   confirmedAmount:-27.5,
    waivedBy:'Usuário teste',
    waivedById:id,
   },
@@ -3395,7 +3403,7 @@ test('SIC completion returns to obligations after EV save before final data',asy
  const completion=page.locator('#demandCompletionForm');
  await expect(completion).toBeVisible();
  await expect(completion.locator('[name="dataEntregaReal"]')).toBeVisible();
- await expect(completion.locator('[name="valorGerado"]')).toHaveValue('40,00');
+ await expect(completion.locator('[name="valorGerado"]')).toHaveValue('-40,00');
  await expect(completion).toContainText('Preenchido automaticamente com o impacto financeiro da revisão salva no EV');
  expect(b.errors).toEqual([]);
 });

@@ -2465,7 +2465,7 @@ function exportWorksOperationalReport() {
       isDemandLate(demand) ? "Atrasado" : "Em dia",
       sicInfo.lecomNumber || "",
       sicInfo.tituloSic || "",
-      demandHasRecordedValue(demand) ? money(demandProducedValue(demand)) : "",
+      demandHasRecordedValue(demand) ? money(demandRecordedValue(demand)) : "",
       demand.observacao || "",
     ];
   });
@@ -5977,7 +5977,7 @@ function renderOperationalListRow(demand) {
   const workLabel = work ? workDisplayLabel(work) : "Obra não localizada";
   const isSic = demandTypeKey(demand.tipo) === "SIC";
   const approval = isSic ? sicApprovalReading(demand) : null;
-  const value = demandProducedValue(demand);
+  const value = demandRecordedValue(demand);
   return `
     <tr data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <td><strong>${demand.id}</strong></td>
@@ -6023,7 +6023,7 @@ function renderDemandCard(demand) {
   const sicTitle = String(sicInfo?.tituloSic || "").trim();
   const lecomNumber = sicInfo?.lecomNumber || "";
   const approval = isSic ? sicApprovalReading(demand) : null;
-  const value = demandProducedValue(demand);
+  const value = demandRecordedValue(demand);
   const timingAlert = isPullPlanning || demand.coluna === "pausado"
     ? ""
     : '<div class="demand-card-alert" data-tone="' + escapeAttribute(timing.tone) + '"><i></i><strong>' + escapeAttribute(timing.label) + '</strong></div>';
@@ -7368,8 +7368,12 @@ function demandHasRecordedValue(demand) {
   return demand?.valorGerado !== undefined && demand?.valorGerado !== null && String(demand.valorGerado).trim() !== "";
 }
 
+function demandRecordedValue(demand) {
+  return demandHasRecordedValue(demand) ? Number(demand.valorGerado) || 0 : 0;
+}
+
 function demandProducedValue(demand) {
-  return demandHasRecordedValue(demand) ? Math.abs(Number(demand.valorGerado) || 0) : 0;
+  return Math.abs(demandRecordedValue(demand));
 }
 
 function productionByAnalyst(demands = completedDemands()) {
@@ -16481,7 +16485,7 @@ function sicDirectorWaiverData(demand) {
   if (Number(waiver.version) === 2) {
     const confirmedAmount = Number(waiver.confirmedAmount);
     if (waiver.required !== false || waiver.sourcePhase !== "validadoObras") return null;
-    if (!Number.isFinite(confirmedAmount) || confirmedAmount < 0) return null;
+    if (!Number.isFinite(confirmedAmount)) return null;
     if (!demandHasRecordedValue(demand) || Math.abs(Number(demand.valorGerado) - confirmedAmount) >= 0.01) return null;
   }
   if (!String(waiver.waivedAt || "").trim() || !String(waiver.waivedBy || "").trim() || !String(waiver.waivedById || "").trim()) return null;
@@ -19311,25 +19315,29 @@ function demandHasEVUpdateForCompletion(demand) {
 function demandCompletionEVSuggestedValue(demand) {
   const version = demandCompletionEVRevision(demand);
   if (!version) return null;
-  const recordedImpact = Number(version.impactoDemanda);
-  if (Number.isFinite(recordedImpact)) return Math.abs(recordedImpact);
   const total = Number(version.valorTotal);
   const previous = Number(version.valorAnterior);
-  if (Number.isFinite(total) && Number.isFinite(previous)) return Math.abs(total - previous);
+  if (Number.isFinite(total) && Number.isFinite(previous)) return total - previous;
   const diffs = arrayOrFallback(version.diffPorDisciplina);
-  if (!diffs.length) return null;
-  const delta = diffs.reduce(
-    (sum, item) => sum + (Number(item.valorDepois || 0) - Number(item.valorAntes || 0)),
-    0
-  );
-  return Math.abs(delta);
+  if (diffs.length) {
+    return diffs.reduce(
+      (sum, item) => sum + (Number(item.valorDepois || 0) - Number(item.valorAntes || 0)),
+      0
+    );
+  }
+  const recordedImpact = Number(version.impactoDemanda);
+  return Number.isFinite(recordedImpact) ? recordedImpact : null;
 }
 
 function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterEV = false, editValue = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
-  const suggestedValue = evNoChange ? null : demandCompletionEVSuggestedValue(demand);
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
+  const signedSuggestedValue = evNoChange ? null : demandCompletionEVSuggestedValue(demand);
+  const suggestedValue = (signedSuggestedValue === null || isSicDemand)
+    ? signedSuggestedValue
+    : Math.abs(signedSuggestedValue);
   const autoFilledFromEV = !demandHasRecordedValue(demand) && suggestedValue !== null;
   const value = demandHasRecordedValue(demand)
     ? currencyInputValue(demand.valorGerado)
@@ -19337,7 +19345,6 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
       ? currencyInputValue(suggestedValue)
       : "";
   const deliveryDate = dateOnly(demand.dataEntregaReal) || "";
-  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   const isDirectSicCompletion = pendingDirectSicCompletion?.demandId === demand.id && demand.coluna === "validadoObras";
   if (pendingDemandCompletion?.demandId === demand.id) pendingDemandCompletion = null;
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
@@ -19380,7 +19387,7 @@ function openDemandCompletionAmountModal(id, { evNoChange = false, resumedAfterE
                 <small>${autoFilledFromEV
                   ? "Preenchido automaticamente com o impacto financeiro da revisão salva no EV. Você pode ajustar antes de concluir."
                   : isSicDemand
-                    ? "Informe o valor da SIC. Use 0,00 quando não houver impacto financeiro."
+                    ? "Informe o valor da SIC. Valores negativos são permitidos para reduções de escopo; use 0,00 quando não houver impacto financeiro."
                     : "Informe 0,00 quando a demanda não tiver gerado impacto financeiro."}</small>
               </label>
             </div>
@@ -19494,6 +19501,7 @@ async function handleDemandCompletionSubmit(form) {
   const demandIndex = state.demands.findIndex((item) => item.id === form.dataset.id);
   const demand = state.demands[demandIndex];
   if (!demand) return;
+  const isSicDemand = demandTypeKey(demand.tipo) === "SIC";
   const formData = new FormData(form);
   const editValue = form.dataset.editValue === "true";
   const directSicCompletion = Boolean(
@@ -19518,7 +19526,7 @@ async function handleDemandCompletionSubmit(form) {
     return;
   }
   const valorGerado = parseCurrency(rawValue);
-  if (valorGerado < 0) {
+  if (!isSicDemand && valorGerado < 0) {
     showFormError("O valor gerado deve ser zero ou positivo.", form);
     return;
   }
@@ -19593,13 +19601,13 @@ async function handleDemandCompletionSubmit(form) {
 
 function sicWorksValidatedAmount(demand) {
   const recorded = Number(demand?.sicWorksValidation?.amount);
-  if (Number.isFinite(recorded)) return Math.abs(recorded);
-  return demandHasRecordedValue(demand) ? demandProducedValue(demand) : null;
+  if (Number.isFinite(recorded)) return recorded;
+  return demandHasRecordedValue(demand) ? demandRecordedValue(demand) : null;
 }
 
 function sicDirectorReferenceAmount(demand) {
   const queued = Number(demand?.sicDirectorApproval?.sicValue);
-  if (Number.isFinite(queued)) return Math.abs(queued);
+  if (Number.isFinite(queued)) return queued;
   return sicWorksValidatedAmount(demand);
 }
 
@@ -19628,7 +19636,7 @@ function openSicWorksValidationModal(id) {
           <label class="field sic-primary-value-field">
             <span>Valor validado por Obras (R$) *</span>
             <input name="sicWorksAmount" inputmode="decimal" required autocomplete="off" value="${currentAmount === null ? "" : escapeAttribute(currencyInputValue(currentAmount))}" placeholder="0,00" autofocus>
-            <small>Use 0,00 somente quando a SIC não tiver impacto financeiro.</small>
+            <small>Use um valor negativo quando a SIC representar redução de escopo e 0,00 somente quando não houver impacto financeiro.</small>
           </label>
           <div class="info-box">
             <strong>Rastreabilidade</strong>
@@ -19653,10 +19661,6 @@ async function handleSicWorksValidationSubmit(form) {
     return;
   }
   const amount = parseCurrency(rawValue);
-  if (amount < 0) {
-    showFormError("O valor da SIC deve ser zero ou positivo.", form);
-    return;
-  }
   const updated = await updateDemandColumn(demand.id, "validadoObras", {
     worksValidationData: {
       version: 1,
@@ -19708,7 +19712,7 @@ function openSicDirectorDecisionModal(id) {
           <label class="field sic-revised-value-field" hidden>
             <span>Valor revisado aprovado (R$) *</span>
             <input name="sicDirectorAmount" inputmode="decimal" autocomplete="off" placeholder="0,00">
-            <small>Este valor substituirá o valor apresentado e ficará registrado no histórico.</small>
+            <small>Este valor substituirá o valor apresentado e ficará registrado no histórico. Reduções de escopo podem ser informadas com sinal negativo.</small>
           </label>
         </div>
         <footer class="modal-actions">
@@ -19739,8 +19743,8 @@ async function handleSicDirectorDecisionSubmit(form) {
     }
     finalAmount = parseCurrency(rawValue);
   }
-  if (finalAmount === null || !Number.isFinite(finalAmount) || finalAmount < 0) {
-    showFormError("Informe um valor aprovado válido, igual ou maior que zero.", form);
+  if (finalAmount === null || !Number.isFinite(finalAmount)) {
+    showFormError("Informe um valor aprovado válido.", form);
     return;
   }
   const updated = await updateDemandColumn(demand.id, "aprovadoDiretoria", {
@@ -20219,7 +20223,7 @@ async function openSicDirectorQueueModal(id) {
             <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}<option value="__new__" ${weeks.length ? "" : "selected"}>+ Criar nova semana de apresentação</option></select><small>O calendário encerra semanas passadas e ativa automaticamente as provisórias quando a data inicial chega.</small></label>
             <div data-sic-week-creator></div>
             ${cardSelector}
-            <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
+            <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez; reduções de escopo podem ter sinal negativo." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
             <div data-sic-director-dynamic></div>
           </div>
           <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Confirmar e mover</button></footer>

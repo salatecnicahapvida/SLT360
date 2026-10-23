@@ -150,7 +150,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
       required: false,
       reason: 'Aprovação da Diretoria não necessária',
       sourcePhase: 'validadoObras',
-      confirmedAmount: 27.5,
+      confirmedAmount: -27.5,
       waivedAt: '2026-09-28T12:00:00.000Z',
       waivedBy: 'Analista teste',
       waivedById: analyst,
@@ -160,13 +160,13 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
         ...payload.state.demands[6],
         coluna: 'concluido',
         dataEntregaReal: '2026-09-28',
-        valorGerado: 27.5,
+        valorGerado: -27.5,
         sicDirectorWaiver: directCompletion,
       }),
     ]);
     assert.deepEqual(
       (await db.query("select phase, generated_amount, ev_no_change, extra->'sicDirectorWaiver' as waiver from slt_budget_demands where record_key='sic-direct'")).rows[0],
-      { phase: 'concluido', generated_amount: '27.5', ev_no_change: null, waiver: directCompletion },
+      { phase: 'concluido', generated_amount: '-27.5', ev_no_change: null, waiver: directCompletion },
     );
 
     await as('authenticated', manager);
@@ -182,9 +182,12 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     ]);
 
     await commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[3], coluna: 'aprovadoDiretoria', valorGerado: 0, sicDirectorDecision: { version: 1, finalAmount: 0 } }),
+      change('budget_demands', 'sic-approval', { ...payload.state.demands[3], coluna: 'aprovadoDiretoria', valorGerado: -18.75, sicDirectorDecision: { version: 1, finalAmount: -18.75 } }),
     ]);
-    assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-approval'")).rows[0].phase, 'aprovadoDiretoria');
+    assert.deepEqual(
+      (await db.query("select phase, generated_amount from slt_budget_demands where record_key='sic-approval'")).rows[0],
+      { phase: 'aprovadoDiretoria', generated_amount: '-18.75' },
+    );
 
     await commit([
       change('budget_demands', 'sic-waiver', { ...payload.state.demands[4], sicDirectorWaiver: directorWaiver }),
@@ -194,7 +197,7 @@ test('analista altera demandas existentes, mas não cria, exclui, arquiva ou res
     // demanda, desde que cumpra as obrigatoriedades de conclusão.
     await as('authenticated', analyst);
     await commit([
-      change('budget_demands', 'sic-approval', { ...payload.state.demands[3], coluna: 'concluido', dataEntregaReal: '2026-09-22', valorGerado: 0, sicDirectorDecision: { version: 1, finalAmount: 0 } }, 2),
+      change('budget_demands', 'sic-approval', { ...payload.state.demands[3], coluna: 'concluido', dataEntregaReal: '2026-09-22', valorGerado: -18.75, sicDirectorDecision: { version: 1, finalAmount: -18.75 } }, 2),
     ]);
     assert.equal((await db.query("select phase from slt_budget_demands where record_key='sic-approval'")).rows[0].phase, 'concluido');
 
