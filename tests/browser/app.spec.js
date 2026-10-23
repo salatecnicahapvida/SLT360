@@ -238,6 +238,46 @@ test('removing a SIC approval card only removes it from the weekly agenda',async
  expect(b.errors).toEqual([]);
 });
 
+test('postpones only one pending SIC while keeping the other SICs in the original week',async({page})=>{
+ const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ const obra=shared.payload.obras[0];
+ obra.sics[0].status='aprovado';
+ obra.sics.push({id:'sic-to-postpone',lecom:'TEST-2',descricao:'SIC que seguirá para a próxima reunião',valor:35,weekId:'w-test',status:'pendente'});
+ shared.payload.weeks.push({id:'w-next',label:'Semana seguinte',start:'2099-09-08',end:'2099-09-12',status:'open'});
+ const b=await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const frame=page.frameLocator('iframe.sic-approvals-frame');
+ await frame.locator('#weekSelect').selectOption('w-test');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('2');
+ await expect(frame.locator('[data-card-postpone="approval-test"]')).toHaveAttribute('title','Adiar o card inteiro e todas as suas SICs pendentes');
+ await frame.locator('.obra-card[data-obra="approval-test"]').click();
+
+ const postponeButton=frame.locator('[data-sicpostpone][data-sicid="sic-to-postpone"]');
+ await expect(postponeButton).toBeVisible();
+ await expect(frame.locator('[data-sicpostpone][data-sicid="sic-test"]')).toHaveCount(0);
+ let confirmation='';
+ page.once('dialog',dialog=>{confirmation=dialog.message();dialog.accept();});
+ await postponeButton.click();
+ await expect(frame.locator('#toast')).toContainText('TEST-2 adiada para Semana seguinte');
+ expect(confirmation).toContain('Adiar somente a SIC/Revisão TEST-2');
+ expect(confirmation).toContain('As outras 1 SIC(s)/Revisão(ões) deste card permanecerão em Semana teste');
+
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
+ await expect(frame.locator('.obra-card[data-obra="approval-test"]')).toContainText('R$ 20,00');
+ expect(shared.payload.obras[0].sics.find(s=>s.id==='sic-test').weekId).toBe('w-test');
+ expect(shared.payload.obras[0].sics.find(s=>s.id==='sic-to-postpone').weekId).toBe('w-next');
+ expect(shared.payload.obras[0].historyEvents.at(-1)).toMatchObject({type:'sic_postponed',sicId:'sic-to-postpone',sourceWeekId:'w-test',targetWeekId:'w-next',amount:35});
+
+ await frame.locator('#weekSelect').selectOption('w-next');
+ await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
+ await expect(frame.locator('.obra-card[data-obra="approval-test"]')).toContainText('R$ 35,00');
+ await frame.locator('.obra-card[data-obra="approval-test"]').click();
+ await expect(frame.locator('[data-sicpostpone][data-sicid="sic-to-postpone"]')).toBeVisible();
+ await expect(frame.locator('.sic-lecom')).toHaveText('TEST-2');
+ expect(b.errors).toEqual([]);
+});
+
 test('Aprovação de SICs shares Supabase state across signed-in users and rejects stale edits',async({browser,page})=>{
  const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  await backend(page,'Admin',false,{sicApprovalStore:shared});await login(page);
