@@ -269,6 +269,7 @@ test('postpones only one pending SIC while keeping the other SICs in the origina
  expect(shared.payload.obras[0].sics.find(s=>s.id==='sic-to-postpone').weekId).toBe('w-next');
  expect(shared.payload.obras[0].historyEvents.at(-1)).toMatchObject({type:'sic_postponed',sicId:'sic-to-postpone',sourceWeekId:'w-test',targetWeekId:'w-next',amount:35});
 
+ await frame.getByRole('button',{name:'Voltar'}).click();
  await frame.locator('#weekSelect').selectOption('w-next');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
  await expect(frame.locator('.obra-card[data-obra="approval-test"]')).toContainText('R$ 35,00');
