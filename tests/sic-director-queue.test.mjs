@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   decoratePayloadWithPortfolioAlerts,
+  findQueuedApprovalSic,
   matchApprovalCard,
   nextApprovalWeekDraft,
   portfolioApprovedAdditives,
@@ -36,6 +37,19 @@ test('prioriza vínculo explícito e não associa código 0000 de forma insegura
   const other0000 = { id: 'card-other', descricao: '0000. Outra obra' };
   assert.equal(matchApprovalCard([other0000, linked], work).card, linked);
   assert.equal(matchApprovalCard([other0000], work).card, null);
+});
+
+test('identifica a SIC já enfileirada pela demanda para preservar o mesmo card', () => {
+  const payload = {
+    obras: [
+      { id: 'outro-card', sics: [{ id: 'sic-outra', demandId: 'DEM-002' }] },
+      { id: 'card-existente', sics: [{ id: 'sic-existente', demandId: 'DEM-001', valor: 125 }] },
+    ],
+  };
+  const found = findQueuedApprovalSic(payload, { id: 'DEM-001' });
+  assert.equal(found.card.id, 'card-existente');
+  assert.equal(found.sic.id, 'sic-existente');
+  assert.equal(findQueuedApprovalSic(payload, { id: 'DEM-999' }), null);
 });
 
 test('oferece somente semanas abertas ou provisórias, sem selecionar histórico fechado', () => {

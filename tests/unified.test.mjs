@@ -90,9 +90,42 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(queued.obras[0].sics[0].demandId,'d');
   assert.equal(queued.snapshots[0].sap.saldoAtual,50);
 
+  // Ao retornar para Validação de Obras, a mesma SIC deve ser reutilizada no
+  // reenvio. O valor acompanha o Kanban sem apagar o quadro-resumo existente.
+  queued.obras[0].sics[0].quadroResumo=[{id:'qr-1',disciplina:'Climatização',valor:12.34,observacoes:'Memória preservada'}];
+  queued.obras[0].sics[0].quadroResumoAtivo=true;
+  await db.query(`update slt_budget_sic_approval_initial_state
+    set payload=$1, revision=revision+1 where id=1`,[JSON.stringify(queued)]);
+  await db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'");
+  await db.query(`update slt_budget_demands
+    set phase='aprovacaoDiretoria',
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:18.75,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
+    })]);
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].sics.length,1,'o reenvio não cria uma segunda SIC');
+  assert.equal(queued.obras[0].sics[0].valor,18.75,'o valor revisado no Kanban substitui o valor pendente');
+  assert.deepEqual(queued.obras[0].sics[0].quadroResumo,[{id:'qr-1',disciplina:'Climatização',valor:12.34,observacoes:'Memória preservada'}]);
+  assert.equal(queued.obras[0].historyEvents.at(-1).type,'sic_requeued');
+  assert.equal(queued.obras[0].historyEvents.at(-1).previousAmount,12.34);
+  assert.equal((await db.query("select extra#>>'{sicDirectorApproval,approvalCardId}' card_id from slt_budget_demands where record_key='d'")).rows[0].card_id,'approval-w');
+
+  // Reenviar novamente sem mudança de valor também é idempotente.
+  await db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'");
+  await db.query(`update slt_budget_demands
+    set phase='aprovacaoDiretoria',
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:18.75,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
+    })]);
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].sics.length,1);
+  assert.match(queued.obras[0].historyEvents.at(-1).text,/valor conferido e mantido/i);
+
   // Excluir o card da pauta não apaga a demanda operacional. Ao devolvê-la a
-  // Validado Obras e enviá-la novamente, a pendência oculta deve ser substituída
-  // por uma única entrada ativa, sem falso positivo de duplicidade.
+  // Validado Obras e enviá-la novamente, a mesma pendência e seu quadro devem
+  // reaparecer sem falso positivo de duplicidade.
   queued.obras[0].excludedWeekIds=['week-6'];
   await db.query(`update slt_budget_sic_approval_initial_state
     set payload=$1, revision=revision+1 where id=1`,[JSON.stringify(queued)]);
@@ -105,8 +138,10 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
     })]);
   queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
   assert.deepEqual(queued.obras[0].excludedWeekIds,[],'a semana recriada volta a ficar visível');
-  assert.equal(queued.obras[0].sics.length,1,'a pendência excluída é substituída, não duplicada');
+  assert.equal(queued.obras[0].sics.length,1,'a pendência excluída é reutilizada, não duplicada');
   assert.equal(queued.obras[0].sics[0].demandId,'d');
+  assert.equal(queued.obras[0].sics[0].valor,12.34);
+  assert.equal(queued.obras[0].sics[0].quadroResumo[0].id,'qr-1');
   await db.query("update slt_budget_demands set notes='sem nova transição' where record_key='d'");
   queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
   assert.equal(queued.obras[0].sics.length,1,'não retroalimenta nem duplica demanda já na etapa');
