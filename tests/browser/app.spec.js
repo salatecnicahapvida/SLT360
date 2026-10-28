@@ -3050,6 +3050,53 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  expect(b.errors).toEqual([]);
 });
 
+test('Gestor reuses an existing pending SIC, preserves its summary and resends the revised Obras value',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-requeue-manager',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validadoObras',
+  valorGerado:35,
+  sicWorksValidation:{version:1,amount:35,validatedAt:'2026-10-28T12:00:00Z',validatedBy:'Gestor'},
+  sicDirectorApproval:{version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:20,priorInvoices:0,assignedAmount:120,committedAmount:80},
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'TEST',tituloSic:'SIC reenviada'},
+ };
+ const shared={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ shared.payload.obras[0].sics[0]={
+  ...shared.payload.obras[0].sics[0],
+  demandId:demand.id,
+  valor:20,
+  quadroResumoAtivo:true,
+  quadroResumo:[{id:'qr-preserved',disciplina:'Climatização',valor:20,observacoes:'Não apagar'}],
+ };
+ shared.payload.snapshots.push({weekId:'w-test',obraId:'approval-test',ev:structuredClone(shared.payload.obras[0].ev),sap:{faturasAnosAnteriores:0,atribuidoAtual:120,comprometidoAtual:80,saldoAtual:40},alerts:[]});
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true,sicApprovalStore:shared});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-requeue-manager"]').click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await status.selectOption('aprovacaoDiretoria');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+
+ const queue=page.locator('#sicDirectorQueueForm');
+ await expect(queue).toBeVisible();
+ await expect(queue).toContainText('SIC e card existentes identificados automaticamente');
+ await expect(queue).toContainText('O mesmo registro será reutilizado; o quadro-resumo e o histórico serão preservados.');
+ await expect(queue).toContainText('O valor existente na aprovação é R$ 20,00 e será sincronizado para R$ 35,00');
+ await expect(queue.locator('[name="approvalWeekId"]')).toHaveValue('w-test');
+ await expect(queue.locator('[name="approvalCardId"]')).toHaveValue('approval-test');
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveValue('35,00');
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveAttribute('readonly','');
+ await expect(queue.locator('[name="approvalAssigned"]')).toHaveCount(0);
+ await queue.getByRole('button',{name:'Atualizar e mover'}).click();
+
+ await expect(page.locator('.kanban-column[data-column="aprovacaoDiretoria"] article[data-id="sic-requeue-manager"]')).toBeVisible();
+ const demandChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-requeue-manager'&&change.document?.coluna==='aprovacaoDiretoria');
+ expect(demandChange.document.sicDirectorApproval).toMatchObject({weekId:'w-test',approvalCardId:'approval-test',sicValue:35});
+ expect(shared.payload.obras[0].sics[0].quadroResumo[0].id).toBe('qr-preserved');
+ expect(b.errors).toEqual([]);
+});
+
 test('Analista can preserve or revise a negative SIC during director approval',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),

@@ -109,6 +109,18 @@ export function matchApprovalCard(cards, work) {
   return { card: null, reason: 'not-found', ambiguous: false };
 }
 
+export function findQueuedApprovalSic(payload, demand) {
+  const demandId = String(demand?.id || '').trim();
+  if (!demandId) return null;
+  for (const card of payload?.obras || []) {
+    const sic = (card?.sics || []).find(item =>
+      String(item?.demandId || '').trim() === demandId
+    );
+    if (sic) return { card, sic };
+  }
+  return null;
+}
+
 export function approvalWeekStatus(week, today = localISODate()) {
   const explicit = String(week?.status || '').toLowerCase();
   let status = ['open', 'provisional', 'closed'].includes(explicit)

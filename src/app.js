@@ -8,6 +8,7 @@ import { mountSicApprovals } from './sic-approvals.js';
 import {
   approvalSnapshotFor,
   approvalWeekStatus,
+  findQueuedApprovalSic,
   matchApprovalCard,
   nextApprovalWeekDraft,
   portfolioApprovedAdditives,
@@ -20197,20 +20198,36 @@ async function openSicDirectorQueueModal(id) {
     const row = await synchronizeApprovalCalendar(await globalThis.SLT_CLOUD.sicApprovalSnapshot());
     const payload = row?.payload;
     const weeks = selectableApprovalWeeks(payload?.weeks, todayISO());
+    const existingQueue = findQueuedApprovalSic(payload, demand);
     const match = matchApprovalCard(payload?.obras, work);
     const eligibleCards = (payload.obras || [])
       .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
       .sort((a, b) => String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR"));
-    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision, eligibleCards };
+    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision, eligibleCards, existingQueue };
     const info = demandSicInfo(demand) || {};
     const validatedAmount = sicWorksValidatedAmount(demand);
-    const linkedCard = match.card;
+    const linkedCard = existingQueue?.card || match.card;
+    const existingWeekId = String(existingQueue?.sic?.weekId || '');
+    const selectedWeekId = weeks.some((week) => String(week.id) === existingWeekId) ? existingWeekId : '';
+    const existingAmount = existingQueue ? Number(existingQueue.sic?.valor) : null;
+    const valuesMatch = Number.isFinite(existingAmount)
+      && validatedAmount !== null
+      && Math.abs(existingAmount - validatedAmount) < 0.005;
+    const existingAmountLabel = Number.isFinite(existingAmount) ? money(existingAmount) : 'não informado';
+    const validatedAmountLabel = validatedAmount === null ? 'o valor informado no formulário' : money(validatedAmount);
     const cardOptions = eligibleCards
       .map((card) => `<option value="${escapeAttribute(card.id)}">${escapeAttribute(card.descricao || card.id)}</option>`)
       .join("");
     const cardSelector = linkedCard
-      ? `<input type="hidden" name="approvalCardId" value="${escapeAttribute(linkedCard.id)}"><div class="info-box"><strong>Card identificado automaticamente</strong><span>${escapeAttribute(linkedCard.descricao)}</span></div>`
+      ? `<input type="hidden" name="approvalCardId" value="${escapeAttribute(linkedCard.id)}"><div class="info-box"><strong>${existingQueue ? 'SIC e card existentes identificados automaticamente' : 'Card identificado automaticamente'}</strong><span>${escapeAttribute(linkedCard.descricao)}</span>${existingQueue ? `<small>O mesmo registro será reutilizado; o quadro-resumo e o histórico serão preservados.</small>` : ''}</div>`
       : `<div class="field sic-card-search-field"><span>Card da obra *</span><div class="sic-card-combobox" data-sic-card-combobox><input type="search" data-sic-card-search role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sicApprovalCardSearchResults" autocomplete="off" placeholder="Digite o nome da obra, número, código ou OI"><select name="approvalCardId" hidden><option value="">Nenhum card selecionado</option><option value="__new__">Criar novo card para esta obra</option>${cardOptions}</select><div class="sic-card-search-results" id="sicApprovalCardSearchResults" data-sic-card-results role="listbox" hidden></div></div><small data-sic-card-search-help>${match.ambiguous ? "Há mais de um card compatível. Pesquise e confirme o vínculo correto." : "Pesquise para confirmar um card existente ou criar um novo."}</small></div>`;
+    const requeueNotice = existingQueue ? `
+      <div class="${valuesMatch ? 'info-box' : 'warning-banner'}" role="status">
+        <strong>${valuesMatch ? 'Valor conferido' : 'Valor revisado em Obras'}</strong>
+        <span>${valuesMatch
+          ? `O valor da aprovação já está igual ao Kanban: ${money(validatedAmount)}.`
+          : `O valor existente na aprovação é ${existingAmountLabel} e será sincronizado para ${validatedAmountLabel} ao confirmar.`}</span>
+      </div>` : '';
     modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
       <div class="modal-backdrop">
         <form class="modal-card sic-director-queue-modal" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
@@ -20220,13 +20237,14 @@ async function openSicDirectorQueueModal(id) {
           </header>
           <div class="modal-body">
             <div class="error-box" id="formError"></div>
-            <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="">Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}">${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}<option value="__new__" ${weeks.length ? "" : "selected"}>+ Criar nova semana de apresentação</option></select><small>O calendário encerra semanas passadas e ativa automaticamente as provisórias quando a data inicial chega.</small></label>
+            <label class="field"><span>Semana de apresentação *</span><select name="approvalWeekId" required><option value="" ${selectedWeekId ? '' : 'selected'}>Selecione a semana</option>${weeks.map((week) => `<option value="${escapeAttribute(week.id)}" ${String(week.id) === selectedWeekId ? 'selected' : ''}>${escapeAttribute(approvalWeekOptionLabel(week))}</option>`).join("")}<option value="__new__" ${weeks.length ? "" : "selected"}>+ Criar nova semana de apresentação</option></select><small>${existingQueue && !selectedWeekId ? 'A semana anterior está encerrada; escolha a nova semana sem perder o quadro-resumo.' : 'O calendário encerra semanas passadas e ativa automaticamente as provisórias quando a data inicial chega.'}</small></label>
             <div data-sic-week-creator></div>
             ${cardSelector}
+            ${requeueNotice}
             <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez; reduções de escopo podem ter sinal negativo." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
             <div data-sic-director-dynamic></div>
           </div>
-          <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Confirmar e mover</button></footer>
+          <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">${existingQueue ? 'Atualizar e mover' : 'Confirmar e mover'}</button></footer>
         </form>
       </div>
     `);
