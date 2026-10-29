@@ -16479,7 +16479,9 @@ function canAdvanceSicToDirectorApproval() {
 }
 
 function canDirectlyApproveSicFromValidated() {
-  return activeRole() === "Admin" && globalThis.SLT_CLOUD.canWrite("works");
+  const hasWorksWritePermission = globalThis.SLT_CLOUD.canWritePermission?.("works")
+    ?? globalThis.SLT_CLOUD.canWrite("works");
+  return activeRole() === "Admin" && hasWorksWritePermission;
 }
 
 function sicDirectorWaiverData(demand) {
