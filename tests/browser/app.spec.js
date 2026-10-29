@@ -2862,8 +2862,8 @@ test('engineering meeting flag persists, prioritizes the SIC and responds to KPI
  const prioritized=column.locator('article[data-id="sic-meeting-candidate"]');
  await expect(column.locator('article').first()).toHaveAttribute('data-id','sic-meeting-candidate');
  await expect(prioritized).toHaveClass(/is-engineering-meeting/);
- await expect(prioritized.locator('.sic-engineering-meeting-flag')).toHaveText('Cobrar na reunião de Engenharia');
- const meetingKpi=page.locator('.kpi-card').filter({has:page.getByText('Reunião Engenharia',{exact:true})});
+ await expect(prioritized.locator('.sic-engineering-meeting-flag')).toHaveText('Cobrado em reunião');
+ const meetingKpi=page.locator('.kpi-card').filter({has:page.getByText('Cobrado em reunião',{exact:true})});
  await expect(meetingKpi.locator('strong')).toHaveText('1');
 
  const meetingFilter=page.locator('[data-operational-filter-group="engineeringMeeting"]');
@@ -2871,7 +2871,7 @@ test('engineering meeting flag persists, prioritizes the SIC and responds to KPI
  await meetingFilter.locator('[data-operational-filter="engineeringMeeting"][value="flagged"]').check();
  await expect(page.locator('.operational-board-panel article[data-id="sic-meeting-candidate"]')).toBeVisible();
  await expect(page.locator('.operational-board-panel article[data-id="sic-meeting-normal"]')).toHaveCount(0);
- await expect(page.locator('.active-filter-banner')).toContainText('SICs para cobrar na reunião de Engenharia');
+ await expect(page.locator('.active-filter-banner')).toContainText('SICs cobradas em reunião');
 
  await expect.poll(()=>b.requests.flatMap(request=>request.changes)
   .find(change=>change.entity==='budget_demands'&&change.key==='sic-meeting-candidate')?.document?.sicEngineeringMeeting).toBe(true);

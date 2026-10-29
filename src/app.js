@@ -2473,7 +2473,7 @@ function exportWorksOperationalReport() {
   });
   downloadCsv(
     `SLT360-relatorio-operacional-${todayISO()}.csv`,
-    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analistas", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Cobrar na reunião de Engenharia", "Valor da demanda", "Observação"],
+    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analistas", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Cobrado em reunião", "Valor da demanda", "Observação"],
     rows
   );
   showToast(`Relatório de Obras exportado com ${rows.length} card(s).`);
@@ -5723,7 +5723,7 @@ function renderWorksOperational() {
       ${kpi("Concluído", String(concluded), "Entregas registradas", "green", "", "opConcluido")}
       ${kpi("Cancelado", String(canceled), "Itens encerrados sem entrega", "red", "", "opCancelado")}
       ${kpi("Atrasadas", String(late), "Prazo previsto vencido", late ? "red" : "green", "", "opAtrasadas")}
-      ${kpi("Reunião Engenharia", String(engineeringMeeting), "SICs sinalizadas para cobrança", engineeringMeeting ? "orange" : "green", "", "opEngineeringMeeting")}
+      ${kpi("Cobrado em reunião", String(engineeringMeeting), "SICs cobradas em reunião", engineeringMeeting ? "orange" : "green", "", "opEngineeringMeeting")}
     </section>
 
     <section class="panel operational-board-panel">
@@ -5893,8 +5893,8 @@ function renderOperationalFilters() {
         ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
         ${renderOperationalMultiFilter("status", "Status", columns.map((column) => ({ value: column.id, label: column.label })), "Todos")}
-        ${renderOperationalMultiFilter("engineeringMeeting", "Reunião Engenharia", [
-          { value: "flagged", label: "Cobrar na reunião" },
+        ${renderOperationalMultiFilter("engineeringMeeting", "Cobrado em reunião", [
+          { value: "flagged", label: "Somente cobradas" },
         ], "Todas as SICs")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [
           { value: "late", label: "Atrasadas" },
@@ -6060,7 +6060,7 @@ function renderDemandCard(demand) {
       ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
       ${isSic && sicTitle && sicTitle !== "—" ? `<p class="sic-card-title" title="${escapeAttribute(sicTitle)}">${escapeAttribute(sicTitle)}</p>` : ""}
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
-      ${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrar na reunião de Engenharia</span>' : ""}
+      ${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrado em reunião</span>' : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         !isPullPlanning && approval && approval.status !== "Pendente"
@@ -6570,7 +6570,7 @@ function operationalActiveFilterText() {
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
   if (operationalFilters.validationGroup) active.push("validação Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
-  if (engineeringMeeting.length) active.push("SICs para cobrar na reunião de Engenharia");
+  if (engineeringMeeting.length) active.push("SICs cobradas em reunião");
   if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : value === "noDeadline" ? "sem prazo" : "no prazo").join(", "));
   if (operationalFilters.dateFrom || operationalFilters.dateTo) {
     const from = operationalFilters.dateFrom ? dateText(operationalFilters.dateFrom) : "início";
@@ -15994,7 +15994,7 @@ function renderDemandSicMetadata(demand) {
       </label>
       <label class="sic-engineering-meeting-toggle">
         <input name="sicEngineeringMeeting" type="checkbox" ${demand.sicEngineeringMeeting === true ? "checked" : ""} />
-        <span><strong>Cobrar na reunião de Engenharia</strong><small>Destaque e priorize esta SIC no Kanban até a marcação ser retirada.</small></span>
+        <span><strong>Cobrado em reunião</strong><small>Marque quando a Sala Técnica estiver sendo cobrada por esta SIC em reunião.</small></span>
       </label>
     </section>
   `;
@@ -17512,7 +17512,7 @@ function openSicDemandModal(workId = "") {
             </div>
             <label class="sic-engineering-meeting-toggle">
               <input name="sicEngineeringMeeting" type="checkbox" />
-              <span><strong>Cobrar na reunião de Engenharia</strong><small>Destaque e priorize esta SIC no Kanban até a marcação ser retirada.</small></span>
+              <span><strong>Cobrado em reunião</strong><small>Marque quando a Sala Técnica estiver sendo cobrada por esta SIC em reunião.</small></span>
             </label>
           </section>
 
@@ -18731,7 +18731,7 @@ async function handleDemandSubmit(form) {
       entidadeId: demandId,
       campo: "reuniaoEngenharia",
       valorAnterior: "Não sinalizada",
-      valorNovo: "Cobrar na reunião de Engenharia",
+      valorNovo: "Cobrado em reunião",
     });
   }
 
@@ -19126,8 +19126,8 @@ async function handleDemandDetailSubmit(form) {
       entidade: "demanda",
       entidadeId: demand.id,
       campo: "reuniaoEngenharia",
-      valorAnterior: previousEngineeringMeeting ? "Cobrar na reunião de Engenharia" : "Não sinalizada",
-      valorNovo: demand.sicEngineeringMeeting ? "Cobrar na reunião de Engenharia" : "Não sinalizada",
+      valorAnterior: previousEngineeringMeeting ? "Cobrado em reunião" : "Não sinalizada",
+      valorNovo: demand.sicEngineeringMeeting ? "Cobrado em reunião" : "Não sinalizada",
     });
   }
   if (previousWorkId !== demand.obraId) {
