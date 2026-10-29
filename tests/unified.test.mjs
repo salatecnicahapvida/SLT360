@@ -90,6 +90,45 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(queued.obras[0].sics[0].demandId,'d');
   assert.equal(queued.snapshots[0].sap.saldoAtual,50);
 
+  // Corrigir o valor no Kanban deve sincronizar a SIC já existente sem perder
+  // o quadro-resumo montado na apresentação da Diretoria.
+  const originalSicId=queued.obras[0].sics[0].id;
+  queued.obras[0].sics[0].quadroResumo=[{id:'q-1',descricao:'Item do quadro-resumo',valor:12.34}];
+  queued.obras[0].sics[0].quadroResumoAtivo=true;
+  queued.obras[0].sics[0].quadroResumoAberto=true;
+  await db.query(`update slt_budget_sic_approval_initial_state
+    set payload=$1, revision=revision+1 where id=1`,[JSON.stringify(queued)]);
+  await db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'");
+  await db.query(`update slt_budget_demands
+    set phase='aprovacaoDiretoria',
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:19.99,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
+    })]);
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].sics.length,1,'o reenvio atualiza a SIC existente sem duplicar');
+  assert.equal(queued.obras[0].sics[0].id,originalSicId,'preserva a identidade da SIC no quadro');
+  assert.equal(queued.obras[0].sics[0].valor,19.99,'sincroniza o valor revisado do Kanban');
+  assert.deepEqual(queued.obras[0].sics[0].quadroResumo,[{id:'q-1',descricao:'Item do quadro-resumo',valor:12.34}],'preserva o quadro-resumo existente');
+  assert.equal(queued.obras[0].sics[0].quadroResumoAtivo,true);
+  assert.equal(queued.obras[0].sics[0].quadroResumoAberto,true);
+  assert.equal(queued.obras[0].historyEvents.filter(event=>event.type==='sic_value_synced').length,1,'registra a sincronização do valor no histórico');
+
+  // Se o valor já estiver igual ao Kanban, a movimentação também é aceita sem
+  // criar uma segunda SIC nem gerar eventos de alteração desnecessários.
+  await db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'");
+  await db.query(`update slt_budget_demands
+    set phase='aprovacaoDiretoria',
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicDirectorApproval:{version:1,weekId:'week-6',approvalCardId:'approval-w',sicValue:19.99,priorInvoices:5,assignedAmount:80,committedAmount:30,oiList:[],classification:'Teste'},
+    })]);
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal(queued.obras[0].sics.length,1,'o valor idêntico não cria duplicidade');
+  assert.equal(queued.obras[0].sics[0].valor,19.99);
+  assert.equal(queued.obras[0].historyEvents.filter(event=>event.type==='sic_value_synced').length,1,'valor idêntico não gera sincronização repetida');
+  assert.deepEqual(queued.obras[0].sics[0].quadroResumo,[{id:'q-1',descricao:'Item do quadro-resumo',valor:12.34}]);
+
   // Excluir o card da pauta não apaga a demanda operacional. Ao devolvê-la a
   // Validado Obras e enviá-la novamente, a pendência oculta deve ser substituída
   // por uma única entrada ativa, sem falso positivo de duplicidade.
