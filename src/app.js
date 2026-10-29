@@ -16478,6 +16478,10 @@ function canAdvanceSicToDirectorApproval() {
   return ["Admin", "Gestor"].includes(activeRole()) && globalThis.SLT_CLOUD.canWrite("works");
 }
 
+function canDirectlyApproveSicFromValidated() {
+  return activeRole() === "Admin" && globalThis.SLT_CLOUD.canWrite("works");
+}
+
 function sicDirectorWaiverData(demand) {
   const waiver = demand?.sicDirectorWaiver;
   if (!waiver || ![1, 2].includes(Number(waiver.version))) return null;
@@ -16507,7 +16511,8 @@ function columnsForDemand(demand) {
     let disabled = ["aprovacaoDiretoria", "aprovadoDiretoria"].includes(column.id) && !isSicDemand;
 
     if (isSicDemand && column.id === "aprovadoDiretoria" && demand?.coluna !== "aprovadoDiretoria") {
-      disabled = demand?.coluna !== "aprovacaoDiretoria";
+      disabled = demand?.coluna !== "aprovacaoDiretoria"
+        && !(demand?.coluna === "validadoObras" && canDirectlyApproveSicFromValidated());
     }
 
     return { ...column, disabled };
@@ -19675,7 +19680,7 @@ async function handleSicWorksValidationSubmit(form) {
   showToast(`SIC validada por Obras com valor de ${money(amount)}.`);
 }
 
-function openSicDirectorDecisionModal(id) {
+function openSicDirectorDecisionModal(id, { directFlow = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) return;
@@ -19687,8 +19692,8 @@ function openSicDirectorDecisionModal(id) {
         <header>
           <div>
             <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
-            <h2 id="sicDirectorDecisionTitle">Confirmar valor aprovado pela Diretoria</h2>
-            <p class="muted">${escapeAttribute(work.nome)} · confirme se a Diretoria manteve o valor apresentado ou aprovou uma revisão.</p>
+            <h2 id="sicDirectorDecisionTitle">${directFlow ? "Concluir aprovação direta pela Diretoria" : "Confirmar valor aprovado pela Diretoria"}</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · ${directFlow ? "etapa 2 de 2: " : ""}confirme se a Diretoria manteve o valor apresentado ou aprovou uma revisão.</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
@@ -19717,7 +19722,7 @@ function openSicDirectorDecisionModal(id) {
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
-          <button class="primary-action" type="submit">Confirmar e aprovar</button>
+          <button class="primary-action" type="submit">${directFlow ? "Concluir aprovação direta" : "Confirmar e aprovar"}</button>
         </footer>
       </form>
     </div>
@@ -20183,7 +20188,7 @@ function refreshSicDirectorQueueForm(form) {
   `);
 }
 
-async function openSicDirectorQueueModal(id) {
+async function openSicDirectorQueueModal(id, { approveAfterQueue = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = workById(demand?.obraId);
   if (!demand || !work) {
@@ -20201,7 +20206,7 @@ async function openSicDirectorQueueModal(id) {
     const eligibleCards = (payload.obras || [])
       .filter((card) => !card.portfolioWorkId || String(card.portfolioWorkId) === String(work.id))
       .sort((a, b) => String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR"));
-    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision, eligibleCards };
+    sicDirectorQueueContext = { demandId: id, work, payload, revision: row.revision, eligibleCards, approveAfterQueue };
     const info = demandSicInfo(demand) || {};
     const validatedAmount = sicWorksValidatedAmount(demand);
     const linkedCard = match.card;
@@ -20215,7 +20220,7 @@ async function openSicDirectorQueueModal(id) {
       <div class="modal-backdrop">
         <form class="modal-card sic-director-queue-modal" id="sicDirectorQueueForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicDirectorQueueTitle">
           <header>
-            <div><span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span><h2 id="sicDirectorQueueTitle">Enviar para Aprovação da Diretoria</h2><p class="muted">${escapeAttribute(work.nome)}. A semana deve ser escolhida manualmente.</p></div>
+            <div><span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span><h2 id="sicDirectorQueueTitle">${approveAfterQueue ? "Aprovar diretamente pela Diretoria" : "Enviar para Aprovação da Diretoria"}</h2><p class="muted">${escapeAttribute(work.nome)}. ${approveAfterQueue ? "Etapa 1 de 2: registre a pauta antes de confirmar o valor aprovado." : "A semana deve ser escolhida manualmente."}</p></div>
             <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
           </header>
           <div class="modal-body">
@@ -20226,7 +20231,7 @@ async function openSicDirectorQueueModal(id) {
             <label class="field sic-queue-value-field"><span>Valor validado por Obras *</span><input name="approvalSicValue" inputmode="decimal" required autocomplete="off" value="${validatedAmount === null ? "" : escapeAttribute(currencyInputValue(validatedAmount))}" placeholder="R$ 0,00" ${validatedAmount === null ? "" : "readonly"}><small>${validatedAmount === null ? "Esta SIC já estava em Validado Obras antes da automação. Informe o valor uma única vez; reduções de escopo podem ter sinal negativo." : `Preenchido automaticamente na validação de Obras da SIC ${escapeAttribute(info.lecomNumber || demand.id)}.`}</small></label>
             <div data-sic-director-dynamic></div>
           </div>
-          <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">Confirmar e mover</button></footer>
+          <footer class="modal-actions"><button class="ghost-button" type="button" data-action="close-modal">Cancelar</button><button class="primary-action" type="submit">${approveAfterQueue ? "Registrar pauta e continuar" : "Confirmar e mover"}</button></footer>
         </form>
       </div>
     `);
@@ -20303,9 +20308,14 @@ async function handleSicDirectorQueueSubmit(form) {
     },
   });
   if (!updated) return;
+  const approveAfterQueue = context.approveAfterQueue === true;
   sicDirectorQueueContext = null;
-  closeModal();
   render();
+  if (approveAfterQueue) {
+    openSicDirectorDecisionModal(demand.id, { directFlow: true });
+    return;
+  }
+  closeModal();
   showToast(`SIC incluída em ${week.label} e movida para Aguardando Aprovação Diretoria.`);
 }
 
@@ -20396,6 +20406,14 @@ async function updateDemandColumn(id, nextColumnId, {
     }
   }
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
+    if (demand.coluna === "validadoObras") {
+      if (!canDirectlyApproveSicFromValidated()) {
+        showToast("Somente administradores podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
+        return false;
+      }
+      await openSicDirectorQueueModal(demand.id, { approveAfterQueue: true });
+      return false;
+    }
     if (demand.coluna !== "aprovacaoDiretoria") {
       showToast("A etapa Aprovado Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
       return false;

@@ -3020,6 +3020,7 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-validation-manager"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
  await status.selectOption('aprovacaoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const queue=page.locator('#sicDirectorQueueForm');
@@ -3047,6 +3048,54 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  await expect(page.locator('.kanban-column[data-column="aprovacaoDiretoria"] article[data-id="sic-validation-manager"]')).toBeVisible();
  const demandChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-manager');
  expect(demandChange.document.sicDirectorApproval).toMatchObject({version:1,weekId:'w-test',approvalCardId:'approval-test',sicValue:-12.34,priorInvoices:0,assignedAmount:120,committedAmount:80});
+ expect(b.errors).toEqual([]);
+});
+
+test('Admin can approve a SIC directly from Validado Obras with the audited two-step flow',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-direct-admin',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validadoObras',
+  analistaResponsavel:'Ana',
+  dataValidacaoObras:'2026-09-23',
+  valorGerado:20,
+  sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-ADMIN',tituloSic:'SIC aprovação direta'},
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ await page.locator('article[data-id="sic-direct-admin"]').click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await status.selectOption('aprovadoDiretoria');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+
+ const queue=page.locator('#sicDirectorQueueForm');
+ await expect(queue.getByRole('heading',{name:'Aprovar diretamente pela Diretoria'})).toBeVisible();
+ await expect(queue).toContainText('Etapa 1 de 2');
+ await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
+ await queue.locator('[data-sic-card-search]').fill('obra sic');
+ await queue.locator('[data-sic-card-results] [data-card-id="approval-test"]').click();
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveValue('20,00');
+ await expect(queue.locator('[name="approvalSicValue"]')).toHaveAttribute('readonly','');
+ await queue.locator('[name="approvalAssigned"]').fill('120,00');
+ await queue.locator('[name="approvalCommitted"]').fill('80,00');
+ await queue.getByRole('button',{name:'Registrar pauta e continuar'}).click();
+
+ const decision=page.locator('#sicDirectorDecisionForm');
+ await expect(decision.getByRole('heading',{name:'Concluir aprovação direta pela Diretoria'})).toBeVisible();
+ await expect(decision).toContainText(/etapa 2 de 2/i);
+ await decision.locator('[name="directorValueDecision"][value="keep"]').check();
+ await decision.getByRole('button',{name:'Concluir aprovação direta'}).click();
+
+ const approvedCard=page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-direct-admin"]');
+ await expect(approvedCard).toBeVisible();
+ await expect(approvedCard.locator('.demand-card-value')).toContainText('R$ 20,00');
+ const demandChanges=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='sic-direct-admin');
+ expect(demandChanges.some(change=>change.document?.coluna==='aprovacaoDiretoria'&&change.document?.sicDirectorApproval?.sicValue===20)).toBe(true);
+ expect(demandChanges.some(change=>change.document?.coluna==='aprovadoDiretoria'&&change.document?.sicDirectorDecision?.finalAmount===20)).toBe(true);
  expect(b.errors).toEqual([]);
 });
 
