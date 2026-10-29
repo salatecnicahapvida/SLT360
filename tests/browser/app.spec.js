@@ -1178,7 +1178,7 @@ test('management view recalculates every indicator and analyst chart from the fi
  await page.locator('[data-view="worksManagement"]').filter({visible:true}).first().click();
 
  await expect(page.locator('[data-operational-search]')).toBeVisible();
- await expect(page.locator('[data-operational-filter-group]')).toHaveCount(5);
+ await expect(page.locator('[data-operational-filter-group]')).toHaveCount(6);
  await expect(page.locator('[data-operational-date-filter]')).toHaveCount(2);
 
  const kpiValue=label=>page.locator('.kpi-card').filter({has:page.getByText(label,{exact:true})}).locator('strong');
@@ -2822,6 +2822,59 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  await expect(directorApprovedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await expect(directorApprovedColumn.locator('article[data-id="test-demand"] .demand-card-value')).toContainText('R$ 20,00');
  await page.screenshot({path:'outputs/works-kanban-audit.png',fullPage:true,animations:'disabled'});
+ expect(b.errors).toEqual([]);
+});
+
+test('engineering meeting flag persists, prioritizes the SIC and responds to KPI and filter',async({page})=>{
+ const base=structuredClone(payload.state.demands[0]);
+ const normal={
+  ...structuredClone(base),
+  id:'sic-meeting-normal',
+  tipo:'SIC',
+  coluna:'fazendo',
+  createdAt:'2026-09-20T10:00:00.000Z',
+  dataPrevistaEntrega:'2099-09-01',
+  sicEngineeringMeeting:false,
+  sicMetadata:{...structuredClone(base.sicMetadata),lecomNumber:'MEETING-NORMAL',tituloSic:'SIC normal'},
+ };
+ const candidate={
+  ...structuredClone(base),
+  id:'sic-meeting-candidate',
+  tipo:'SIC',
+  coluna:'fazendo',
+  createdAt:'2026-09-21T10:00:00.000Z',
+  dataPrevistaEntrega:'2099-09-01',
+  sicEngineeringMeeting:false,
+  sicMetadata:{...structuredClone(base.sicMetadata),lecomNumber:'MEETING-FLAG',tituloSic:'SIC para reunião'},
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[normal,candidate]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+
+ const column=page.locator('.kanban-column[data-column="fazendo"]');
+ await expect(column.locator('article').first()).toHaveAttribute('data-id','sic-meeting-normal');
+ await column.locator('article[data-id="sic-meeting-candidate"]').click();
+ const meetingToggle=page.locator('#demandDetailForm [name="sicEngineeringMeeting"]');
+ await expect(meetingToggle).toBeVisible();
+ await expect(meetingToggle).not.toBeChecked();
+ await meetingToggle.check();
+ await page.locator('.modal-actions').getByRole('button',{name:'Salvar',exact:true}).click();
+
+ const prioritized=column.locator('article[data-id="sic-meeting-candidate"]');
+ await expect(column.locator('article').first()).toHaveAttribute('data-id','sic-meeting-candidate');
+ await expect(prioritized).toHaveClass(/is-engineering-meeting/);
+ await expect(prioritized.locator('.sic-engineering-meeting-flag')).toHaveText('Cobrar na reunião de Engenharia');
+ const meetingKpi=page.locator('.kpi-card').filter({has:page.getByText('Reunião Engenharia',{exact:true})});
+ await expect(meetingKpi.locator('strong')).toHaveText('1');
+
+ const meetingFilter=page.locator('[data-operational-filter-group="engineeringMeeting"]');
+ await meetingFilter.locator('summary').click();
+ await meetingFilter.locator('[data-operational-filter="engineeringMeeting"][value="flagged"]').check();
+ await expect(page.locator('.operational-board-panel article[data-id="sic-meeting-candidate"]')).toBeVisible();
+ await expect(page.locator('.operational-board-panel article[data-id="sic-meeting-normal"]')).toHaveCount(0);
+ await expect(page.locator('.active-filter-banner')).toContainText('SICs para cobrar na reunião de Engenharia');
+
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes)
+  .find(change=>change.entity==='budget_demands'&&change.key==='sic-meeting-candidate')?.document?.sicEngineeringMeeting).toBe(true);
  expect(b.errors).toEqual([]);
 });
 

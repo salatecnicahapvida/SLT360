@@ -606,6 +606,7 @@ let operationalFilters = {
   type: [],
   status: [],
   validationGroup: false,
+  engineeringMeeting: [],
   punctuality: [],
   dateFrom: "",
   dateTo: "",
@@ -2465,13 +2466,14 @@ function exportWorksOperationalReport() {
       isDemandLate(demand) ? "Atrasado" : "Em dia",
       sicInfo.lecomNumber || "",
       sicInfo.tituloSic || "",
+      isEngineeringMeetingSic(demand) ? "Sim" : "Não",
       demandHasRecordedValue(demand) ? money(demandRecordedValue(demand)) : "",
       demand.observacao || "",
     ];
   });
   downloadCsv(
     `SLT360-relatorio-operacional-${todayISO()}.csv`,
-    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analistas", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Valor da demanda", "Observação"],
+    ["Código", "Tipo", "Obra", "Código obra", "Tipo intervenção", "Unidade base", "Tipo unidade base", "Cidade/UF base", "CNPJ base", "Centro base", "Analistas", "Sprint", "Status", "Prioridade", "Início previsto", "Entrega prevista", "Entrega real", "Prazo", "Nº LECOM", "Título SIC", "Cobrar na reunião de Engenharia", "Valor da demanda", "Observação"],
     rows
   );
   showToast(`Relatório de Obras exportado com ${rows.length} card(s).`);
@@ -5698,6 +5700,7 @@ function renderWorksOperational() {
   const concluded = filtered.filter((demand) => demand.coluna === "concluido").length;
   const canceled = filtered.filter((demand) => demand.coluna === "cancelado").length;
   const late = filtered.filter(isDemandLate).length;
+  const engineeringMeeting = filtered.filter(isEngineeringMeetingSic).length;
 
   return `
     ${renderWorksToolbar("worksOperational", "Visão Operacional", "Planejamento, fluxo de trabalho e controle dos marcos de entrega por sprint", `
@@ -5720,6 +5723,7 @@ function renderWorksOperational() {
       ${kpi("Concluído", String(concluded), "Entregas registradas", "green", "", "opConcluido")}
       ${kpi("Cancelado", String(canceled), "Itens encerrados sem entrega", "red", "", "opCancelado")}
       ${kpi("Atrasadas", String(late), "Prazo previsto vencido", late ? "red" : "green", "", "opAtrasadas")}
+      ${kpi("Reunião Engenharia", String(engineeringMeeting), "SICs sinalizadas para cobrança", engineeringMeeting ? "orange" : "green", "", "opEngineeringMeeting")}
     </section>
 
     <section class="panel operational-board-panel">
@@ -5755,6 +5759,7 @@ function filteredDemands() {
     const selectedAnalysts = operationalFilterValues("analyst");
     const selectedTypes = operationalFilterValues("type");
     const selectedStatuses = operationalFilterValues("status");
+    const selectedEngineeringMeeting = operationalFilterValues("engineeringMeeting");
     const selectedPunctualities = operationalFilterValues("punctuality");
     const plannedDelivery = dateOnly(demand.dataPrevistaEntrega);
     if (operationalFilters.dateFrom && (!plannedDelivery || plannedDelivery < operationalFilters.dateFrom)) return false;
@@ -5773,6 +5778,7 @@ function filteredDemands() {
     if (selectedTypes.length && !selectedTypes.includes(demandTypeKey(demand.tipo))) return false;
     if (operationalFilters.validationGroup && !demandValidationColumnIds.includes(demand.coluna)) return false;
     if (selectedStatuses.length && !selectedStatuses.includes(demand.coluna)) return false;
+    if (selectedEngineeringMeeting.length && !isEngineeringMeetingSic(demand)) return false;
     if (selectedPunctualities.length) {
       const punctuality =
         demand.coluna === "pausado" || !plannedDelivery
@@ -5787,6 +5793,8 @@ function filteredDemands() {
 }
 
 function compareOperationalDemandsByDelivery(first, second) {
+  const engineeringMeetingComparison = Number(isEngineeringMeetingSic(second)) - Number(isEngineeringMeetingSic(first));
+  if (engineeringMeetingComparison) return engineeringMeetingComparison;
   const firstDate = dateOnly(first?.dataPrevistaEntrega) || "9999-12-31";
   const secondDate = dateOnly(second?.dataPrevistaEntrega) || "9999-12-31";
   const dateComparison = firstDate.localeCompare(secondDate);
@@ -5801,6 +5809,10 @@ function operationalDemandCreationTimestamp(demand) {
 }
 
 function compareKanbanColumnDemands(first, second, columnId) {
+  if (!["concluido", "cancelado"].includes(columnId)) {
+    const engineeringMeetingComparison = Number(isEngineeringMeetingSic(second)) - Number(isEngineeringMeetingSic(first));
+    if (engineeringMeetingComparison) return engineeringMeetingComparison;
+  }
   if (columnId === "pullPlanning") {
     const firstStart = dateOnly(first?.dataPrevistaInicio) || "9999-12-31";
     const secondStart = dateOnly(second?.dataPrevistaInicio) || "9999-12-31";
@@ -5881,6 +5893,9 @@ function renderOperationalFilters() {
         ], "Todos")}
         ${renderOperationalMultiFilter("type", "Tipo de atividade", workDemandTypeDefinitions.map((type) => ({ value: type.id, label: type.label })), "Todas")}
         ${renderOperationalMultiFilter("status", "Status", columns.map((column) => ({ value: column.id, label: column.label })), "Todos")}
+        ${renderOperationalMultiFilter("engineeringMeeting", "Reunião Engenharia", [
+          { value: "flagged", label: "Cobrar na reunião" },
+        ], "Todas as SICs")}
         ${renderOperationalMultiFilter("punctuality", "Prazo", [
           { value: "late", label: "Atrasadas" },
           { value: "onTime", label: "No prazo" },
@@ -5960,6 +5975,7 @@ function renderOperationalList(filtered) {
             <th>Sprint</th>
             <th>Status</th>
             <th>Prioridade</th>
+            <th>Reunião Eng.</th>
             <th class="numeric">Valor da demanda</th>
             <th>Prazo</th>
           </tr>
@@ -5996,6 +6012,7 @@ function renderOperationalListRow(demand) {
       <td>${demandSprintIds(demand).length ? escapeAttribute(demandSprintNames(demand, " | ")) : "—"}</td>
       <td><span class="status-dot" data-status="${demand.coluna}"></span>${demandStatusLabel(demand)}</td>
       <td><span class="tag">${demand.prioridade}</span></td>
+      <td>${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrar</span>' : "—"}</td>
       <td class="numeric">${demandHasRecordedValue(demand) ? money(value) : "—"}</td>
       <td>${demand.coluna === "pausado" ? dateText(demand.dataPrevistaEntrega) : isDemandLate(demand) ? `<span class="status-pill" data-status="Atrasada">Atrasada</span>` : dateText(demand.dataPrevistaEntrega)}</td>
     </tr>
@@ -6028,7 +6045,7 @@ function renderDemandCard(demand) {
     ? ""
     : '<div class="demand-card-alert" data-tone="' + escapeAttribute(timing.tone) + '"><i></i><strong>' + escapeAttribute(timing.label) + '</strong></div>';
   return `
-    <article class="demand-card ${isSic ? "is-sic" : ""}" data-status="${demand.coluna}" data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
+    <article class="demand-card ${isSic ? "is-sic" : ""} ${isEngineeringMeetingSic(demand) ? "is-engineering-meeting" : ""}" data-status="${demand.coluna}" data-action="open-demand-detail" data-id="${demand.id}" role="button" tabindex="0">
       <div class="demand-card-top">
         <div class="demand-card-id">
           <span class="demand-type-badge" data-type="${escapeAttribute(demandTypeKey(demand.tipo))}" title="${escapeAttribute(demandTypeLabel(demand.tipo))}">${escapeAttribute(demandTypeCardLabel(demand.tipo))}</span>
@@ -6043,6 +6060,7 @@ function renderDemandCard(demand) {
       ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
       ${isSic && sicTitle && sicTitle !== "—" ? `<p class="sic-card-title" title="${escapeAttribute(sicTitle)}">${escapeAttribute(sicTitle)}</p>` : ""}
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
+      ${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrar na reunião de Engenharia</span>' : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
         !isPullPlanning && approval && approval.status !== "Pendente"
@@ -6490,6 +6508,10 @@ function demandStatusLabel(demand) {
   return columnById(demand.coluna)?.label || demand.coluna || "Sem status";
 }
 
+function isEngineeringMeetingSic(demand) {
+  return demandTypeKey(demand?.tipo) === "SIC" && demand?.sicEngineeringMeeting === true;
+}
+
 function isDemandLate(demand) {
   return (
     !["concluido", "cancelado", "pausado"].includes(demand.coluna) &&
@@ -6506,6 +6528,7 @@ function resetOperationalFilters() {
     type: [],
     status: [],
     validationGroup: false,
+    engineeringMeeting: [],
     punctuality: [],
     dateFrom: "",
     dateTo: "",
@@ -6540,12 +6563,14 @@ function operationalActiveFilterText() {
   const analysts = operationalFilterValues("analyst");
   const types = operationalFilterValues("type");
   const statuses = operationalFilterValues("status");
+  const engineeringMeeting = operationalFilterValues("engineeringMeeting");
   const punctualities = operationalFilterValues("punctuality");
   if (sprints.length) active.push(sprints.map((id) => sprintById(id)?.nome || "sprint selecionada").join(", "));
   if (analysts.length) active.push(`analistas ${analysts.map((analyst) => analyst === unassignedAnalystFilterValue ? "Sem analista" : analyst).join(", ")}`);
   if (types.length) active.push(types.map(demandTypeLabel).join(", "));
   if (operationalFilters.validationGroup) active.push("validação Obras e Diretoria");
   if (statuses.length) active.push(statuses.map((status) => columnById(status)?.label || status).join(", "));
+  if (engineeringMeeting.length) active.push("SICs para cobrar na reunião de Engenharia");
   if (punctualities.length) active.push(punctualities.map((value) => value === "late" ? "atrasadas" : value === "noDeadline" ? "sem prazo" : "no prazo").join(", "));
   if (operationalFilters.dateFrom || operationalFilters.dateTo) {
     const from = operationalFilters.dateFrom ? dateText(operationalFilters.dateFrom) : "início";
@@ -6569,11 +6594,13 @@ function applyOperationalKpiFilter(key) {
     opCancelado: { status: "cancelado" },
     overdueDemands: { punctuality: "late" },
     opAtrasadas: { punctuality: "late" },
+    opEngineeringMeeting: { engineeringMeeting: true },
   };
   const filter = map[key];
   if (!filter) return;
   operationalFilters.status = filter.status ? [filter.status] : [];
   operationalFilters.validationGroup = Boolean(filter.validationGroup);
+  operationalFilters.engineeringMeeting = filter.engineeringMeeting ? ["flagged"] : [];
   operationalFilters.punctuality = filter.punctuality ? [filter.punctuality] : [];
   operationalViewMode = "list";
   closeModal();
@@ -15965,6 +15992,10 @@ function renderDemandSicMetadata(demand) {
         <span>Descrição da SIC</span>
         <textarea name="sicDescricao">${fieldValue(info.descricaoSic)}</textarea>
       </label>
+      <label class="sic-engineering-meeting-toggle">
+        <input name="sicEngineeringMeeting" type="checkbox" ${demand.sicEngineeringMeeting === true ? "checked" : ""} />
+        <span><strong>Cobrar na reunião de Engenharia</strong><small>Destaque e priorize esta SIC no Kanban até a marcação ser retirada.</small></span>
+      </label>
     </section>
   `;
 }
@@ -17479,6 +17510,10 @@ function openSicDemandModal(workId = "") {
                 <textarea name="descricao" required placeholder="Descreva a solicitação, contexto, impacto esperado e encaminhamento necessário..."></textarea>
               </label>
             </div>
+            <label class="sic-engineering-meeting-toggle">
+              <input name="sicEngineeringMeeting" type="checkbox" />
+              <span><strong>Cobrar na reunião de Engenharia</strong><small>Destaque e priorize esta SIC no Kanban até a marcação ser retirada.</small></span>
+            </label>
           </section>
 
           <div class="form-grid">
@@ -18564,6 +18599,7 @@ async function handleDemandSubmit(form) {
   const sicIds = [];
   let sicMetadata = null;
   let sicDraftDisciplines = [];
+  const sicEngineeringMeeting = tipo === "SIC" && formData.get("sicEngineeringMeeting") === "on";
 
   if (!obraId) {
     showFormError("Selecione uma obra cadastrada do ano de 2025 em diante antes de salvar a demanda.", form);
@@ -18669,6 +18705,7 @@ async function handleDemandSubmit(form) {
     projetosEnvolvidos: projectSelection.selected,
     projetosEnvolvidosDetalhes: projectSelection.details,
     sicMetadata,
+    sicEngineeringMeeting,
     sicDraftDisciplines,
     sicApprovalStatus: "",
     sicApprovalRequestedAt: "",
@@ -18688,6 +18725,15 @@ async function handleDemandSubmit(form) {
     valorAnterior: "Não existia",
     valorNovo: `${demandTypeLabel(tipo)} criada`,
   });
+  if (sicEngineeringMeeting) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demandId,
+      campo: "reuniaoEngenharia",
+      valorAnterior: "Não sinalizada",
+      valorNovo: "Cobrar na reunião de Engenharia",
+    });
+  }
 
   const submitButton = form.querySelector('[data-action="submit-demand-form"]');
   if (submitButton) submitButton.disabled = true;
@@ -18921,6 +18967,7 @@ async function handleDemandDetailSubmit(form) {
   const previousSprintLabel = demandSprintNames(demand, " → ");
   const previousPriority = demand.prioridade || "";
   const previousLabels = normalizeDemandLabels(demand.etiquetas);
+  const previousEngineeringMeeting = demand.sicEngineeringMeeting === true;
 
   Object.assign(demand, analystAssignment);
   demand.obraId = selectedWork.id;
@@ -18938,6 +18985,7 @@ async function handleDemandDetailSubmit(form) {
   demand.prioridade = formData.get("prioridade") || demand.prioridade;
   demand.etiquetas = normalizeDemandLabels(formData.get("etiquetas"));
   if (isSicDemand) {
+    demand.sicEngineeringMeeting = formData.get("sicEngineeringMeeting") === "on";
     demand.sicMetadata = demand.sicMetadata || {};
     demand.sicMetadata.analistaSalaTecnica = demand.analistaResponsavel || "";
     demand.sicMetadata.lecomNumber = String(formData.get("lecomNumber") || "").trim();
@@ -19071,6 +19119,15 @@ async function handleDemandDetailSubmit(form) {
       campo: "etiquetas",
       valorAnterior: previousLabels.join(", ") || "Nenhuma",
       valorNovo: demand.etiquetas.join(", ") || "Nenhuma",
+    });
+  }
+  if (previousEngineeringMeeting !== (demand.sicEngineeringMeeting === true)) {
+    addHistory({
+      entidade: "demanda",
+      entidadeId: demand.id,
+      campo: "reuniaoEngenharia",
+      valorAnterior: previousEngineeringMeeting ? "Cobrar na reunião de Engenharia" : "Não sinalizada",
+      valorNovo: demand.sicEngineeringMeeting ? "Cobrar na reunião de Engenharia" : "Não sinalizada",
     });
   }
   if (previousWorkId !== demand.obraId) {
