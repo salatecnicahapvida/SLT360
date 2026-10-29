@@ -3064,11 +3064,16 @@ test('Admin can approve a SIC directly from Validado Obras with the audited two-
   sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-ADMIN',tituloSic:'SIC aprovação direta'},
  };
- const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana'],moduleLoadDelay:1200});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
- await page.locator('article[data-id="sic-direct-admin"]').click();
+ const directCard=page.locator('article[data-id="sic-direct-admin"]');
+ await expect(directCard).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWritePermission('works'))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(false);
+ await directCard.click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
 
