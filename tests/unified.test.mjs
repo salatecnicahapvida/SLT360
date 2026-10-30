@@ -65,14 +65,24 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   await db.query("update slt_budget_demands set phase='validacaoObras' where record_key='d'");
   await assert.rejects(
     db.query("update slt_budget_demands set phase='validadoObras' where record_key='d'"),
-    (error)=>error?.code==='23514' && /serviço já foi executado/i.test(error.message),
+    (error)=>error?.code==='23514' && /situação de execução/i.test(error.message),
     'a validação de Obras exige a situação de execução do serviço',
+  );
+  await assert.rejects(
+    db.query(`update slt_budget_demands
+      set phase='validadoObras',
+          extra=extra||$1::jsonb
+      where record_key='d'`,[JSON.stringify({
+        sicWorksValidation:{version:3,amount:12.34,serviceExecuted:null,serviceExecutionStatus:'partially_executed',serviceExecutionDetails:''},
+      })]),
+    (error)=>error?.code==='23514' && /quais atividades/i.test(error.message),
+    'a execução parcial exige o detalhamento das atividades executadas e pendentes',
   );
   await db.query(`update slt_budget_demands
     set phase='validadoObras',
         extra=extra||$1::jsonb
     where record_key='d'`,[JSON.stringify({
-      sicWorksValidation:{version:2,amount:12.34,serviceExecuted:true,validatedAt:'2026-10-30T12:00:00.000Z',validatedBy:'Obras'},
+      sicWorksValidation:{version:3,amount:12.34,serviceExecuted:null,serviceExecutionStatus:'partially_executed',serviceExecutionDetails:'Pintura executada; climatização ainda não executada.',validatedAt:'2026-10-30T12:00:00.000Z',validatedBy:'Obras'},
     })]);
   await db.query(`update slt_budget_demands
     set phase='aprovacaoDiretoria',
@@ -99,7 +109,9 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(queued.obras[0].ev.total,100,'preserva o EV histórico correto do card');
   assert.equal(queued.obras[0].sics.length,1);
   assert.equal(queued.obras[0].sics[0].demandId,'d');
-  assert.equal(queued.obras[0].sics[0].serviceExecuted,true,'sincroniza a execução do serviço com a Aprovação de SICs');
+  assert.equal(queued.obras[0].sics[0].serviceExecuted,null,'preserva o booleano legado como nulo na execução parcial');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionStatus,'partially_executed','sincroniza a execução parcial com a Aprovação de SICs');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionDetails,'Pintura executada; climatização ainda não executada.','sincroniza o detalhamento da execução parcial');
   assert.equal(queued.snapshots[0].sap.saldoAtual,50);
 
   // Corrigir o valor no Kanban deve sincronizar a SIC já existente sem perder
@@ -112,8 +124,10 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
     set payload=$1, revision=revision+1 where id=1`,[JSON.stringify(queued)]);
   await db.query(`update slt_budget_demands
     set phase='validadoObras',
-        extra=jsonb_set(extra,'{sicWorksValidation,serviceExecuted}','false'::jsonb,true)
-    where record_key='d'`);
+        extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicWorksValidation:{version:3,amount:12.34,serviceExecuted:false,serviceExecutionStatus:'not_executed',serviceExecutionDetails:'',validatedAt:'2026-10-30T13:00:00.000Z',validatedBy:'Obras'},
+    })]);
   await db.query(`update slt_budget_demands
     set phase='aprovacaoDiretoria',
         extra=extra||$1::jsonb
@@ -125,6 +139,8 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(queued.obras[0].sics[0].id,originalSicId,'preserva a identidade da SIC no quadro');
   assert.equal(queued.obras[0].sics[0].valor,19.99,'sincroniza o valor revisado do Kanban');
   assert.equal(queued.obras[0].sics[0].serviceExecuted,false,'sincroniza a revisão da situação de execução');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionStatus,'not_executed');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionDetails,'');
   assert.deepEqual(queued.obras[0].sics[0].quadroResumo,[{id:'q-1',descricao:'Item do quadro-resumo',valor:12.34}],'preserva o quadro-resumo existente');
   assert.equal(queued.obras[0].sics[0].quadroResumoAtivo,true);
   assert.equal(queued.obras[0].sics[0].quadroResumoAberto,true);

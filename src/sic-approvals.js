@@ -16,20 +16,31 @@ const CHANNEL = 'slt360-sic-approvals-v1';
 
 function decoratePayloadWithDemandExecution(payload, demands) {
   const executionByDemand = new Map((Array.isArray(demands) ? demands : [])
-    .map(demand => [String(demand?.id || ''), demand?.sicWorksValidation])
-    .filter(([demandId, validation]) => demandId && typeof validation?.serviceExecuted === 'boolean'));
+    .map(demand => {
+      const validation = demand?.sicWorksValidation;
+      let status = String(validation?.serviceExecutionStatus || '');
+      if (!status && typeof validation?.serviceExecuted === 'boolean') status = validation.serviceExecuted ? 'executed' : 'not_executed';
+      return [String(demand?.id || ''), {
+        status,
+        details: status === 'partially_executed' ? String(validation?.serviceExecutionDetails || '').trim() : '',
+        validatedAt: validation?.validatedAt || '',
+      }];
+    })
+    .filter(([demandId, execution]) => demandId && ['executed', 'not_executed', 'partially_executed'].includes(execution.status)));
   if (!executionByDemand.size) return payload;
   return {
     ...payload,
     obras: (payload.obras || []).map(card => ({
       ...card,
       sics: (card.sics || []).map(sic => {
-        const validation = executionByDemand.get(String(sic?.demandId || ''));
-        if (!validation) return sic;
+        const execution = executionByDemand.get(String(sic?.demandId || ''));
+        if (!execution) return sic;
         return {
           ...sic,
-          serviceExecuted: validation.serviceExecuted,
-          serviceExecutionConfirmedAt: validation.validatedAt || sic.serviceExecutionConfirmedAt || '',
+          serviceExecuted: execution.status === 'executed' ? true : execution.status === 'not_executed' ? false : null,
+          serviceExecutionStatus: execution.status,
+          serviceExecutionDetails: execution.details,
+          serviceExecutionConfirmedAt: execution.validatedAt || sic.serviceExecutionConfirmedAt || '',
         };
       }),
     })),
