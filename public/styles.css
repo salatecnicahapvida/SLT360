@@ -7767,6 +7767,26 @@ button.alert-item {
   overflow-wrap: anywhere;
 }
 
+.sic-service-execution-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  border-radius: 999px;
+  background: #e8f6f3;
+  color: #0f766e;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.sic-service-execution-badge[data-executed="false"] {
+  border-color: rgba(194, 65, 12, 0.26);
+  background: #fff2e8;
+  color: #9a3412;
+}
+
 .sic-approval-badge {
   width: fit-content;
   max-width: 100%;
@@ -9640,6 +9660,36 @@ button.analyst-chip {
   color: #6b5a86;
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.sic-service-execution-readout {
+  display: grid;
+  gap: 3px;
+  margin-top: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  border-radius: 8px;
+  background: #eefaf7;
+  padding: 11px 12px;
+}
+
+.sic-service-execution-readout[data-executed="false"] {
+  border-color: rgba(194, 65, 12, 0.26);
+  background: #fff7ed;
+}
+
+.sic-service-execution-readout span,
+.sic-service-execution-readout small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sic-service-execution-readout strong {
+  color: #0f766e;
+  font-size: 0.86rem;
+}
+
+.sic-service-execution-readout[data-executed="false"] strong {
+  color: #9a3412;
 }
 
 .demand-detail-form .modal-section > textarea {

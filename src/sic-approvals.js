@@ -14,7 +14,29 @@ const FIELDS = {
 };
 const CHANNEL = 'slt360-sic-approvals-v1';
 
-export function mountSicApprovals(target, cloud, portfolioWorks = []) {
+function decoratePayloadWithDemandExecution(payload, demands) {
+  const executionByDemand = new Map((Array.isArray(demands) ? demands : [])
+    .map(demand => [String(demand?.id || ''), demand?.sicWorksValidation])
+    .filter(([demandId, validation]) => demandId && typeof validation?.serviceExecuted === 'boolean'));
+  if (!executionByDemand.size) return payload;
+  return {
+    ...payload,
+    obras: (payload.obras || []).map(card => ({
+      ...card,
+      sics: (card.sics || []).map(sic => {
+        const validation = executionByDemand.get(String(sic?.demandId || ''));
+        if (!validation) return sic;
+        return {
+          ...sic,
+          serviceExecuted: validation.serviceExecuted,
+          serviceExecutionConfirmedAt: validation.validatedAt || sic.serviceExecutionConfirmedAt || '',
+        };
+      }),
+    })),
+  };
+}
+
+export function mountSicApprovals(target, cloud, portfolioWorks = [], demands = []) {
   if (!target || !cloud?.canRead('works')) return () => {};
   let active = true;
   const frame = document.createElement('iframe');
@@ -37,7 +59,10 @@ export function mountSicApprovals(target, cloud, portfolioWorks = []) {
         ...row,
         payload: stripLivePortfolioAlerts({ ...row.payload, weeks: calendar.weeks }),
       };
-      displayPayload = decoratePayloadWithPortfolioAlerts(snapshot.payload, portfolioWorks);
+      displayPayload = decoratePayloadWithDemandExecution(
+        decoratePayloadWithPortfolioAlerts(snapshot.payload, portfolioWorks),
+        demands,
+      );
       return snapshot;
     }).finally(() => { fetching = null; });
     return fetching;
@@ -52,7 +77,10 @@ export function mountSicApprovals(target, cloud, portfolioWorks = []) {
     const saved = await cloud.saveSicApprovalSnapshot(payload, snapshot.revision);
     if (!saved) throw new Error('CONFLITO_SIC: Outro usuário alterou estes dados. Recarregue para ver a versão atual antes de editar novamente.');
     snapshot = { payload, revision: saved.revision };
-    displayPayload = decoratePayloadWithPortfolioAlerts(payload, portfolioWorks);
+    displayPayload = decoratePayloadWithDemandExecution(
+      decoratePayloadWithPortfolioAlerts(payload, portfolioWorks),
+      demands,
+    );
     return true;
   }
   async function onMessage(event) {

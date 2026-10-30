@@ -142,6 +142,9 @@
   .card-postpone-btn:focus-visible { outline:3px solid rgba(46,107,191,.18); outline-offset:2px; }
   .obra-card-meta { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .obra-card-meta .mini-tag { font-size: 9.5px; line-height:1; color:var(--texto-suave); background:#fff; border:1px solid var(--cinza-borda); border-radius:10px; padding:4px 7px; font-weight:700; }
+  .obra-card-meta .mini-tag.service-executed { color:#17633b; background:#edf9f2; border-color:#b9e0c8; }
+  .obra-card-meta .mini-tag.service-pending { color:#9a3412; background:#fff4e8; border-color:#f0c9a7; }
+  .obra-card-meta .mini-tag.service-unknown { color:#667085; background:#f5f6f8; border-color:#d9dde4; }
   .obra-card-primary { display:grid; grid-template-columns: 1.25fr .75fr; gap:10px; padding:14px 16px 10px; }
   .obra-card-evbase { margin:0 16px 10px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .evbase-item { background:#f7f9fc; border:1px solid var(--cinza-borda); border-radius:9px; padding:9px 10px; min-width:0; }
@@ -325,6 +328,9 @@
   .sic-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
   .sic-lecom { font-size: 10.5px; font-weight: 700; color: var(--azul-medio); background: var(--azul-suave); padding: 3px 8px; border-radius: 6px; }
   .sic-week-tag { font-size: 9.5px; color: var(--texto-suave); margin-left: 6px; }
+  .sic-service-status { display:inline-flex; align-items:center; width:fit-content; margin-top:8px; border:1px solid #b9e0c8; border-radius:999px; background:#edf9f2; color:#17633b; padding:4px 9px; font-size:10.5px; font-weight:800; }
+  .sic-service-status.pending { border-color:#f0c9a7; background:#fff4e8; color:#9a3412; }
+  .sic-service-status.unknown { border-color:#d9dde4; background:#f5f6f8; color:#667085; }
   .sic-valor { font-size: 13.5px; font-weight: 800; color: var(--azul); white-space: nowrap; }
   .sic-value-wrap { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
   .sic-edit-btn { border:1px solid var(--cinza-borda); background:#fff; color:var(--azul-medio); border-radius:7px; padding:4px 8px; font-size:10.5px; font-weight:700; cursor:pointer; }
@@ -1324,6 +1330,23 @@ function situacaoBadge(o, sics){
   return `<span class="badge-atencao">Aguard. Aprovação</span>`;
 }
 
+function serviceExecutionBadges(sics){
+  const executed=sics.filter(s=>s.serviceExecuted===true).length;
+  const pending=sics.filter(s=>s.serviceExecuted===false).length;
+  const unknown=sics.length-executed-pending;
+  const tags=[];
+  if(executed) tags.push(`<span class="mini-tag service-executed">${executed===1&&sics.length===1?'Serviço executado':`${executed} executado(s)`}</span>`);
+  if(pending) tags.push(`<span class="mini-tag service-pending">${pending===1&&sics.length===1?'Serviço não executado':`${pending} não executado(s)`}</span>`);
+  if(unknown) tags.push(`<span class="mini-tag service-unknown">${unknown===1&&sics.length===1?'Execução não informada':`${unknown} sem informação`}</span>`);
+  return tags.join('');
+}
+
+function serviceExecutionStatus(sic){
+  if(sic.serviceExecuted===true) return '<span class="sic-service-status">Serviço executado</span>';
+  if(sic.serviceExecuted===false) return '<span class="sic-service-status pending">Serviço não executado</span>';
+  return '<span class="sic-service-status unknown">Execução não informada</span>';
+}
+
 function recursosTotaisDaObra(sap){
   if(!sap) return null;
   return round2((sap.faturasAnosAnteriores||0) + (sap.atribuidoAtual||0));
@@ -1374,6 +1397,7 @@ function renderObraTable(){
         <div class="obra-card-meta">
           <span class="mini-tag">OI: ${esc(oiText)}</span>
           <span class="mini-tag">${esc(classificacao)}</span>
+          ${serviceExecutionBadges(sics)}
         </div>
       </div>
 
@@ -2180,6 +2204,7 @@ function renderSicItem(o, s){
       <div><span class="sic-lecom">${esc(s.lecom||'—')}</span><span class="sic-week-tag">${wm? esc(wm.label):''}</span></div>
       ${valueHtml}
     </div>
+    ${serviceExecutionStatus(s)}
     ${s.quadroResumoAtivo ? `
       <div class="sic-desc-with-summary">
         <div class="sic-desc-caption">Descrição da SIC / Revisão</div>
@@ -2836,9 +2861,9 @@ function buildFullBackupWorkbook(data,exportedAt=new Date().toISOString()){
   fullBackupTab(wb,'OBRAS',['ID','OBRA','OI','CLASSIFICAÇÃO','SEMANA MAIS RECENTE','SEMANA(S) EXCLUÍDA(S)','EV INICIAL','ADITIVOS APROVADOS','EV ATUAL','ÁREA','R$/m²','CONSUMIDO ANOS ANT.','CAPEX ATUAL','COMPROMETIDO','SALDO ATUAL','DIFF EV','ADITIVOS BASE'],
     data.obras.map(o=>[o.id,fullBackupSafeText(o.descricao),fullBackupSafeText(o.oiRaw),fullBackupSafeText(o.classificacao),o.lastWeekId||'',(o.excludedWeekIds||[]).join('; '),o.ev?.semAditivos??'',o.ev?.aditivosAprovados??'',o.ev?.total??'',o.ev?.areaM2??'',o.ev?.valorM2??'',o.sap?.faturasAnosAnteriores??'',o.sap?.atribuidoAtual??'',o.sap?.comprometidoAtual??'',o.sap?.saldoAtual??'',o.sap?.diffEV??'',o.baseAditivosAprovados??'']),
     [34,65,28,36,26,36,20,20,20,12,16,22,20,20,18,18,19]);
-  fullBackupTab(wb,'SICS',['ID DA OBRA','ID SIC','LECOM','SEMANA','DESCRIÇÃO INTEGRAL (SE COUBER)','VALOR','SITUAÇÃO','APLICADA AO EV','VALOR INCORPORADO','DATA DA DECISÃO','QUADRO ATIVO','QUADRO ABERTO','Nº LINHAS'],
-    data.obras.flatMap(o=>(o.sics||[]).map(s=>[o.id,s.id,fullBackupSafeText(s.lecom),s.weekId,fullBackupSafeText(s.descricao),s.valor??'',s.status||'',!!s.appliedToEV,s.evAppliedAmount??0,s.statusUpdatedAt||'',!!s.quadroResumoAtivo,!!s.quadroResumoAberto,(s.quadroResumo||[]).length])),
-    [32,42,19,25,86,20,20,18,21,27,15,15,14]);
+  fullBackupTab(wb,'SICS',['ID DA OBRA','ID SIC','LECOM','SEMANA','DESCRIÇÃO INTEGRAL (SE COUBER)','VALOR','SERVIÇO EXECUTADO','SITUAÇÃO','APLICADA AO EV','VALOR INCORPORADO','DATA DA DECISÃO','QUADRO ATIVO','QUADRO ABERTO','Nº LINHAS'],
+    data.obras.flatMap(o=>(o.sics||[]).map(s=>[o.id,s.id,fullBackupSafeText(s.lecom),s.weekId,fullBackupSafeText(s.descricao),s.valor??'',s.serviceExecuted===true?'Sim':s.serviceExecuted===false?'Não':'Não informado',s.status||'',!!s.appliedToEV,s.evAppliedAmount??0,s.statusUpdatedAt||'',!!s.quadroResumoAtivo,!!s.quadroResumoAberto,(s.quadroResumo||[]).length])),
+    [32,42,19,25,86,20,20,20,18,21,27,15,15,14]);
   fullBackupTab(wb,'QUADROS_RESUMO',['ID DA OBRA','ID SIC','LECOM','POSIÇÃO','ID DA LINHA','DISCIPLINA','VALOR','OBSERVAÇÕES'],
     data.obras.flatMap(o=>(o.sics||[]).flatMap(s=>(s.quadroResumo||[]).map((r,i)=>[o.id,s.id,s.lecom,i+1,r.id,fullBackupSafeText(r.disciplina),r.valor??'',fullBackupSafeText(r.observacoes)]))),
     [32,42,19,12,35,48,20,90]);

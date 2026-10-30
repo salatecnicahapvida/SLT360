@@ -124,6 +124,7 @@ async function login(page){await page.goto('./');await page.locator('#cloudLogin
 test('Aprovação de SICs keeps the supplied dashboard and round-trips its full Excel backup',async({page})=>{
  const approval={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  approval.payload.obras[0].descricao='0000. Pronto atendimento e clínica Botafogo com descrição extensa';
+ approval.payload.obras[0].sics[0].serviceExecuted=false;
  const b=await backend(page,'Admin',false,{sicApprovalStore:approval});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
@@ -138,11 +139,15 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Semana teste');
  const approvalCard=frame.locator('.obra-card').first();
+ await expect(approvalCard.locator('.mini-tag.service-pending')).toHaveText('Serviço não executado');
  const deleteButton=approvalCard.locator('[data-card-delete]');
  await expect(deleteButton).toBeVisible();
  const [cardBox,deleteBox]=await Promise.all([approvalCard.boundingBox(),deleteButton.boundingBox()]);
  expect(deleteBox.x).toBeGreaterThanOrEqual(cardBox.x);
  expect(deleteBox.x+deleteBox.width).toBeLessThanOrEqual(cardBox.x+cardBox.width+1);
+ await approvalCard.click();
+ await expect(frame.locator('.sic-service-status.pending')).toHaveText('Serviço não executado');
+ await frame.getByRole('button',{name:'Voltar'}).click();
  await frame.locator('#weekSelect').selectOption('all');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Todas as semanas');
  expect(await page.evaluate(userId=>localStorage.getItem('slt360:sic-approvals:'+userId+':initialized'),id)).toBeNull();
@@ -2712,7 +2717,9 @@ test('operational cards drag between columns and SICs pass through Validado Obra
    descricaoSic:'Descrição exclusiva da SIC que não deve aparecer no card.',
   },
  };
- const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])]});await login(page);
+ const sharedApproval={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
+ sharedApproval.payload.obras[0].sics[0].demandId='test-demand';
+ const b=await backend(page,'Admin',false,{demandRecords:[legacySic,structuredClone(payload.state.demands[1])],sicApprovalStore:sharedApproval});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  const kanbanColumns=page.locator('.operational-board-panel .kanban-column');
@@ -2784,9 +2791,14 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  const worksValue=page.locator('#sicWorksValidationForm');
  await expect(worksValue).toBeVisible();
  await worksValue.locator('[name="sicWorksAmount"]').fill('20,00');
+ await worksValue.locator('[name="sicServiceExecuted"][value="true"]').check();
  await worksValue.getByRole('button',{name:'Confirmar validação'}).click();
  await expect(validatedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await expect(validatedColumn.locator('article[data-id="test-demand"] .demand-card-value')).toContainText('R$ 20,00');
+ await expect(validatedColumn.locator('article[data-id="test-demand"] .sic-service-execution-badge')).toHaveText('Serviço executado');
+ await expect.poll(()=>b.requests.flatMap(request=>request.changes)
+  .find(change=>change.entity==='budget_demands'&&change.key==='test-demand'&&change.document?.coluna==='validadoObras')?.document?.sicWorksValidation)
+  .toMatchObject({version:2,amount:20,serviceExecuted:true});
 
  await validatedColumn.locator('article[data-id="test-demand"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -2808,6 +2820,13 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  await queue.locator('[name="approvalCommitted"]').fill('80,00');
  await queue.getByRole('button',{name:'Confirmar e mover'}).click();
  await expect(directorColumn.locator('article[data-id="test-demand"]')).toBeVisible();
+
+ await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
+ const approvalFrame=page.frameLocator('iframe.sic-approvals-frame');
+ await expect(approvalFrame.locator('.obra-card[data-obra="approval-test"] .mini-tag.service-executed')).toHaveText('Serviço executado');
+ await approvalFrame.locator('.obra-card[data-obra="approval-test"]').click();
+ await expect(approvalFrame.locator('.sic-service-status')).toHaveText('Serviço executado');
+ await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
 
  await directorColumn.locator('article[data-id="test-demand"]').click();
  const approvedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -3041,12 +3060,14 @@ test('Analista can validate a negative SIC in Obras but cannot send it to Direto
  await expect(validationValue).toBeVisible();
  await expect(validationValue).toContainText('redução de escopo');
  await validationValue.locator('[name="sicWorksAmount"]').fill('-37,50');
+ await validationValue.locator('[name="sicServiceExecuted"][value="false"]').check();
  await validationValue.getByRole('button',{name:'Confirmar validação'}).click();
  const validatedCard=page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]');
  await expect(validatedCard).toBeVisible();
  await expect(validatedCard.locator('.demand-card-value')).toContainText(/-R\$\s*37,50/);
+ await expect(validatedCard.locator('.sic-service-execution-badge')).toHaveText('Serviço não executado');
  const validatedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-analyst'&&change.document?.coluna==='validadoObras');
- expect(validatedChange.document).toMatchObject({valorGerado:-37.5,sicWorksValidation:{amount:-37.5}});
+ expect(validatedChange.document).toMatchObject({valorGerado:-37.5,sicWorksValidation:{version:2,amount:-37.5,serviceExecuted:false}});
 
  await page.locator('article[data-id="sic-validation-analyst"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -3073,7 +3094,7 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-validation-manager"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
- await expect(status.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovacaoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const queue=page.locator('#sicDirectorQueueForm');
@@ -3152,7 +3173,7 @@ test('Gestor can approve a SIC directly from Validado Obras',async({page})=>{
   sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-MANAGER',tituloSic:'SIC aprovação direta'},
  };
- const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const directCard=page.locator('article[data-id="sic-direct-manager"]');
  await expect(directCard).toBeVisible();

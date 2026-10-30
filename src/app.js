@@ -2728,7 +2728,7 @@ function render() {
   unmountSicApprovals();
   app.innerHTML = globalThis.SLT_CLOUD.cleanHTML((views[currentView] || renderDashboard)());
   if (currentView === 'worksStrategicFinance') bindCapex2026Import(render);
-  if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD, state.works);
+  if (currentView === 'sicApprovals') unmountSicApprovals = mountSicApprovals(app.querySelector('#sicApprovalsMount'), globalThis.SLT_CLOUD, state.works, state.demands);
   refreshHaptecAssistant();
   applyRolePermissions();
   enhanceSortableTables();
@@ -6039,6 +6039,7 @@ function renderDemandCard(demand) {
   const sicInfo = isSic ? demandSicInfo(demand) : null;
   const sicTitle = String(sicInfo?.tituloSic || "").trim();
   const lecomNumber = sicInfo?.lecomNumber || "";
+  const serviceExecuted = isSic ? sicWorksServiceExecuted(demand) : null;
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandRecordedValue(demand);
   const timingAlert = isPullPlanning || demand.coluna === "pausado"
@@ -6060,6 +6061,7 @@ function renderDemandCard(demand) {
       ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
       ${isSic && sicTitle && sicTitle !== "—" ? `<p class="sic-card-title" title="${escapeAttribute(sicTitle)}">${escapeAttribute(sicTitle)}</p>` : ""}
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
+      ${serviceExecuted === null ? "" : `<span class="sic-service-execution-badge" data-executed="${serviceExecuted}">${serviceExecuted ? "Serviço executado" : "Serviço não executado"}</span>`}
       ${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrado em reunião</span>' : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
@@ -15963,6 +15965,7 @@ function renderDemandSicMetadata(demand) {
   const info = demandSicInfo(demand);
   if (!info) return "";
   const fieldValue = (value) => (value === "—" ? "" : escapeAttribute(value));
+  const serviceExecuted = sicWorksServiceExecuted(demand);
   return `
     <section class="modal-section sic-detail-section">
       <div class="section-title">
@@ -15996,6 +15999,7 @@ function renderDemandSicMetadata(demand) {
         <input name="sicEngineeringMeeting" type="checkbox" ${demand.sicEngineeringMeeting === true ? "checked" : ""} />
         <span><strong>Cobrado em reunião</strong><small>Marque quando a Sala Técnica estiver sendo cobrada por esta SIC em reunião.</small></span>
       </label>
+      ${serviceExecuted === null ? "" : `<div class="sic-service-execution-readout" data-executed="${serviceExecuted}"><span>Execução do serviço</span><strong>${serviceExecuted ? "Executado" : "Não executado"}</strong><small>Informação confirmada na validação de Obras.</small></div>`}
     </section>
   `;
 }
@@ -19669,6 +19673,11 @@ function sicWorksValidatedAmount(demand) {
   return demandHasRecordedValue(demand) ? demandRecordedValue(demand) : null;
 }
 
+function sicWorksServiceExecuted(demand) {
+  const value = demand?.sicWorksValidation?.serviceExecuted;
+  return typeof value === "boolean" ? value : null;
+}
+
 function sicDirectorReferenceAmount(demand) {
   const queued = Number(demand?.sicDirectorApproval?.sicValue);
   if (Number.isFinite(queued)) return queued;
@@ -19683,6 +19692,7 @@ function openSicWorksValidationModal(id) {
     return;
   }
   const currentAmount = sicWorksValidatedAmount(demand);
+  const currentServiceExecuted = sicWorksServiceExecuted(demand);
   const info = demandSicInfo(demand) || {};
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop">
@@ -19690,8 +19700,8 @@ function openSicWorksValidationModal(id) {
         <header>
           <div>
             <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
-            <h2 id="sicWorksValidationTitle">Validar valor da SIC em Obras</h2>
-            <p class="muted">${escapeAttribute(work.nome)} · o valor ficará visível no card e seguirá automaticamente para a apresentação da Diretoria.</p>
+            <h2 id="sicWorksValidationTitle">Validar SIC em Obras</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · confirme o valor e informe se o serviço da SIC já foi executado.</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
@@ -19702,9 +19712,20 @@ function openSicWorksValidationModal(id) {
             <input name="sicWorksAmount" inputmode="decimal" required autocomplete="off" value="${currentAmount === null ? "" : escapeAttribute(currencyInputValue(currentAmount))}" placeholder="0,00" autofocus>
             <small>Use um valor negativo quando a SIC representar redução de escopo e 0,00 somente quando não houver impacto financeiro.</small>
           </label>
+          <fieldset class="sic-value-decision-options sic-service-execution-options">
+            <legend>O serviço desta SIC já foi executado? *</legend>
+            <label class="sic-value-decision-option">
+              <input type="radio" name="sicServiceExecuted" value="true" required ${currentServiceExecuted === true ? "checked" : ""}>
+              <span><strong>Sim, serviço executado</strong><small>O serviço correspondente à SIC já foi realizado.</small></span>
+            </label>
+            <label class="sic-value-decision-option">
+              <input type="radio" name="sicServiceExecuted" value="false" required ${currentServiceExecuted === false ? "checked" : ""}>
+              <span><strong>Não executado</strong><small>O serviço ainda não foi realizado.</small></span>
+            </label>
+          </fieldset>
           <div class="info-box">
             <strong>Rastreabilidade</strong>
-            <span>O valor, o usuário e a data desta validação serão registrados no histórico da demanda.</span>
+            <span>O valor, a situação de execução, o usuário e a data desta validação serão registrados no histórico da demanda.</span>
           </div>
         </div>
         <footer class="modal-actions">
@@ -19719,16 +19740,24 @@ function openSicWorksValidationModal(id) {
 async function handleSicWorksValidationSubmit(form) {
   const demand = state.demands.find((item) => item.id === form.dataset.id);
   if (!demand) return;
-  const rawValue = String(new FormData(form).get("sicWorksAmount") || "").trim();
+  const data = new FormData(form);
+  const rawValue = String(data.get("sicWorksAmount") || "").trim();
   if (!rawValue) {
     showFormError("Informe o valor validado por Obras.", form);
     return;
   }
+  const serviceExecutedValue = String(data.get("sicServiceExecuted") || "");
+  if (!["true", "false"].includes(serviceExecutedValue)) {
+    showFormError("Informe se o serviço desta SIC já foi executado.", form);
+    return;
+  }
   const amount = parseCurrency(rawValue);
+  const serviceExecuted = serviceExecutedValue === "true";
   const updated = await updateDemandColumn(demand.id, "validadoObras", {
     worksValidationData: {
-      version: 1,
+      version: 2,
       amount,
+      serviceExecuted,
       validatedAt: new Date().toISOString(),
       validatedBy: currentUser()?.nome || "Usuário SLT360",
     },
@@ -19736,7 +19765,7 @@ async function handleSicWorksValidationSubmit(form) {
   if (!updated) return;
   closeModal();
   render();
-  showToast(`SIC validada por Obras com valor de ${money(amount)}.`);
+  showToast(`SIC validada por Obras com valor de ${money(amount)} · serviço ${serviceExecuted ? "executado" : "não executado"}.`);
 }
 
 function openSicDirectorDecisionModal(id, { directFlow = false } = {}) {
@@ -20528,6 +20557,7 @@ async function updateDemandColumn(id, nextColumnId, {
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
   if (worksValidationData) {
     const previousAmount = sicWorksValidatedAmount(demand);
+    const previousServiceExecuted = sicWorksServiceExecuted(demand);
     demand.sicWorksValidation = clone(worksValidationData);
     demand.valorGerado = Number(worksValidationData.amount) || 0;
     addHistory({
@@ -20537,6 +20567,15 @@ async function updateDemandColumn(id, nextColumnId, {
       valorAnterior: previousAmount === null ? "Não informado" : money(previousAmount),
       valorNovo: money(demand.valorGerado),
     });
+    if (previousServiceExecuted !== worksValidationData.serviceExecuted) {
+      addHistory({
+        entidade: "demanda",
+        entidadeId: demand.id,
+        campo: "execução do serviço da SIC",
+        valorAnterior: previousServiceExecuted === null ? "Não informada" : previousServiceExecuted ? "Executado" : "Não executado",
+        valorNovo: worksValidationData.serviceExecuted ? "Executado" : "Não executado",
+      });
+    }
   }
   if (directorApprovalData) demand.sicDirectorApproval = clone(directorApprovalData);
   if (directorDecisionData) {
