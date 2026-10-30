@@ -124,7 +124,9 @@ async function login(page){await page.goto('./');await page.locator('#cloudLogin
 test('Aprovação de SICs keeps the supplied dashboard and round-trips its full Excel backup',async({page})=>{
  const approval={payload:{obras:structuredClone(payload.state.sicApprovalWorks),weeks:structuredClone(payload.state.sicApprovalWeeks),snapshots:[],notificationReads:{}},revision:1};
  approval.payload.obras[0].descricao='0000. Pronto atendimento e clínica Botafogo com descrição extensa';
- approval.payload.obras[0].sics[0].serviceExecuted=false;
+ approval.payload.obras[0].sics[0].serviceExecuted=null;
+ approval.payload.obras[0].sics[0].serviceExecutionStatus='partially_executed';
+ approval.payload.obras[0].sics[0].serviceExecutionDetails='Estrutura executada; instalações elétricas ainda não executadas.';
  const b=await backend(page,'Admin',false,{sicApprovalStore:approval});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
@@ -139,14 +141,15 @@ test('Aprovação de SICs keeps the supplied dashboard and round-trips its full 
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-value')).toHaveText('1');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Semana teste');
  const approvalCard=frame.locator('.obra-card').first();
- await expect(approvalCard.locator('.mini-tag.service-pending')).toHaveText('Serviço não executado');
+ await expect(approvalCard.locator('.mini-tag.service-partial')).toHaveText('Serviço parcialmente executado');
  const deleteButton=approvalCard.locator('[data-card-delete]');
  await expect(deleteButton).toBeVisible();
  const [cardBox,deleteBox]=await Promise.all([approvalCard.boundingBox(),deleteButton.boundingBox()]);
  expect(deleteBox.x).toBeGreaterThanOrEqual(cardBox.x);
  expect(deleteBox.x+deleteBox.width).toBeLessThanOrEqual(cardBox.x+cardBox.width+1);
  await approvalCard.click();
- await expect(frame.locator('.sic-service-status.pending')).toHaveText('Serviço não executado');
+ await expect(frame.locator('.sic-service-status.partial')).toHaveText('Serviço parcialmente executado');
+ await expect(frame.locator('.sic-service-details')).toContainText('Estrutura executada; instalações elétricas ainda não executadas.');
  await frame.getByRole('button',{name:'Voltar'}).click();
  await frame.locator('#weekSelect').selectOption('all');
  await expect(frame.locator('[data-kpi="sic-count"] .kpi-sub')).toContainText('Todas as semanas');
@@ -2791,14 +2794,18 @@ test('operational cards drag between columns and SICs pass through Validado Obra
  const worksValue=page.locator('#sicWorksValidationForm');
  await expect(worksValue).toBeVisible();
  await worksValue.locator('[name="sicWorksAmount"]').fill('20,00');
- await worksValue.locator('[name="sicServiceExecuted"][value="true"]').check();
+ await worksValue.locator('[name="sicServiceExecutionStatus"][value="partially_executed"]').check();
+ const partialDetails=worksValue.locator('[name="sicServiceExecutionDetails"]');
+ await expect(partialDetails).toBeVisible();
+ await expect(partialDetails).toHaveAttribute('required','');
+ await partialDetails.fill('Pintura executada; instalação dos equipamentos ainda não executada.');
  await worksValue.getByRole('button',{name:'Confirmar validação'}).click();
  await expect(validatedColumn.locator('article[data-id="test-demand"]')).toBeVisible();
  await expect(validatedColumn.locator('article[data-id="test-demand"] .demand-card-value')).toContainText('R$ 20,00');
- await expect(validatedColumn.locator('article[data-id="test-demand"] .sic-service-execution-badge')).toHaveText('Serviço executado');
+ await expect(validatedColumn.locator('article[data-id="test-demand"] .sic-service-execution-badge')).toHaveText('Serviço parcialmente executado');
  await expect.poll(()=>b.requests.flatMap(request=>request.changes)
   .find(change=>change.entity==='budget_demands'&&change.key==='test-demand'&&change.document?.coluna==='validadoObras')?.document?.sicWorksValidation)
-  .toMatchObject({version:2,amount:20,serviceExecuted:true});
+  .toMatchObject({version:3,amount:20,serviceExecuted:null,serviceExecutionStatus:'partially_executed',serviceExecutionDetails:'Pintura executada; instalação dos equipamentos ainda não executada.'});
 
  await validatedColumn.locator('article[data-id="test-demand"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');
@@ -2823,9 +2830,10 @@ test('operational cards drag between columns and SICs pass through Validado Obra
 
  await page.locator('[data-view="sicApprovals"]').filter({visible:true}).first().click();
  const approvalFrame=page.frameLocator('iframe.sic-approvals-frame');
- await expect(approvalFrame.locator('.obra-card[data-obra="approval-test"] .mini-tag.service-executed')).toHaveText('Serviço executado');
+ await expect(approvalFrame.locator('.obra-card[data-obra="approval-test"] .mini-tag.service-partial')).toHaveText('Serviço parcialmente executado');
  await approvalFrame.locator('.obra-card[data-obra="approval-test"]').click();
- await expect(approvalFrame.locator('.sic-service-status')).toHaveText('Serviço executado');
+ await expect(approvalFrame.locator('.sic-service-status.partial')).toHaveText('Serviço parcialmente executado');
+ await expect(approvalFrame.locator('.sic-service-details')).toContainText('Pintura executada; instalação dos equipamentos ainda não executada.');
  await page.locator('[data-view="worksOperational"]').filter({visible:true}).first().click();
 
  await directorColumn.locator('article[data-id="test-demand"]').click();
@@ -3060,14 +3068,14 @@ test('Analista can validate a negative SIC in Obras but cannot send it to Direto
  await expect(validationValue).toBeVisible();
  await expect(validationValue).toContainText('redução de escopo');
  await validationValue.locator('[name="sicWorksAmount"]').fill('-37,50');
- await validationValue.locator('[name="sicServiceExecuted"][value="false"]').check();
+ await validationValue.locator('[name="sicServiceExecutionStatus"][value="not_executed"]').check();
  await validationValue.getByRole('button',{name:'Confirmar validação'}).click();
  const validatedCard=page.locator('.kanban-column[data-column="validadoObras"] article[data-id="sic-validation-analyst"]');
  await expect(validatedCard).toBeVisible();
  await expect(validatedCard.locator('.demand-card-value')).toContainText(/-R\$\s*37,50/);
  await expect(validatedCard.locator('.sic-service-execution-badge')).toHaveText('Serviço não executado');
  const validatedChange=b.requests.flatMap(request=>request.changes).find(change=>change.entity==='budget_demands'&&change.key==='sic-validation-analyst'&&change.document?.coluna==='validadoObras');
- expect(validatedChange.document).toMatchObject({valorGerado:-37.5,sicWorksValidation:{version:2,amount:-37.5,serviceExecuted:false}});
+ expect(validatedChange.document).toMatchObject({valorGerado:-37.5,sicWorksValidation:{version:3,amount:-37.5,serviceExecuted:false,serviceExecutionStatus:'not_executed',serviceExecutionDetails:''}});
 
  await page.locator('article[data-id="sic-validation-analyst"]').click();
  const validatedStatus=page.locator('#demandDetailForm [name="coluna"]');

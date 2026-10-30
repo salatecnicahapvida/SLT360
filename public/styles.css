@@ -7781,10 +7781,16 @@ button.alert-item {
   line-height: 1.2;
 }
 
-.sic-service-execution-badge[data-executed="false"] {
+.sic-service-execution-badge[data-status="not_executed"] {
   border-color: rgba(194, 65, 12, 0.26);
   background: #fff2e8;
   color: #9a3412;
+}
+
+.sic-service-execution-badge[data-status="partially_executed"] {
+  border-color: rgba(180, 83, 9, 0.3);
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .sic-approval-badge {
@@ -9672,9 +9678,14 @@ button.analyst-chip {
   padding: 11px 12px;
 }
 
-.sic-service-execution-readout[data-executed="false"] {
+.sic-service-execution-readout[data-status="not_executed"] {
   border-color: rgba(194, 65, 12, 0.26);
   background: #fff7ed;
+}
+
+.sic-service-execution-readout[data-status="partially_executed"] {
+  border-color: rgba(180, 83, 9, 0.3);
+  background: #fffbeb;
 }
 
 .sic-service-execution-readout span,
@@ -9688,8 +9699,20 @@ button.analyst-chip {
   font-size: 0.86rem;
 }
 
-.sic-service-execution-readout[data-executed="false"] strong {
+.sic-service-execution-readout p {
+  margin: 5px 0 2px;
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.sic-service-execution-readout[data-status="not_executed"] strong {
   color: #9a3412;
+}
+
+.sic-service-execution-readout[data-status="partially_executed"] strong {
+  color: #92400e;
 }
 
 .demand-detail-form .modal-section > textarea {

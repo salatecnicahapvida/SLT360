@@ -6039,7 +6039,7 @@ function renderDemandCard(demand) {
   const sicInfo = isSic ? demandSicInfo(demand) : null;
   const sicTitle = String(sicInfo?.tituloSic || "").trim();
   const lecomNumber = sicInfo?.lecomNumber || "";
-  const serviceExecuted = isSic ? sicWorksServiceExecuted(demand) : null;
+  const serviceExecution = isSic ? sicWorksServiceExecution(demand) : null;
   const approval = isSic ? sicApprovalReading(demand) : null;
   const value = demandRecordedValue(demand);
   const timingAlert = isPullPlanning || demand.coluna === "pausado"
@@ -6061,7 +6061,7 @@ function renderDemandCard(demand) {
       ${description && !isSic ? `<p class="demand-card-description" title="${escapeAttribute(description)}">${escapeAttribute(description)}</p>` : ""}
       ${isSic && sicTitle && sicTitle !== "—" ? `<p class="sic-card-title" title="${escapeAttribute(sicTitle)}">${escapeAttribute(sicTitle)}</p>` : ""}
       ${isSic ? `<div class="sic-card-lecom"><span>Lecon</span><strong>${escapeAttribute(lecomNumber && lecomNumber !== "—" ? lecomNumber : "Não informado")}</strong></div>` : ""}
-      ${serviceExecuted === null ? "" : `<span class="sic-service-execution-badge" data-executed="${serviceExecuted}">${serviceExecuted ? "Serviço executado" : "Serviço não executado"}</span>`}
+      ${serviceExecution === null ? "" : `<span class="sic-service-execution-badge" data-status="${serviceExecution.status}" title="${escapeAttribute(serviceExecution.details || serviceExecution.label)}">${escapeAttribute(serviceExecution.cardLabel)}</span>`}
       ${isEngineeringMeetingSic(demand) ? '<span class="sic-engineering-meeting-flag">Cobrado em reunião</span>' : ""}
       ${renderDemandCardLabels(demand.etiquetas)}
       ${
@@ -15965,7 +15965,7 @@ function renderDemandSicMetadata(demand) {
   const info = demandSicInfo(demand);
   if (!info) return "";
   const fieldValue = (value) => (value === "—" ? "" : escapeAttribute(value));
-  const serviceExecuted = sicWorksServiceExecuted(demand);
+  const serviceExecution = sicWorksServiceExecution(demand);
   return `
     <section class="modal-section sic-detail-section">
       <div class="section-title">
@@ -15999,7 +15999,7 @@ function renderDemandSicMetadata(demand) {
         <input name="sicEngineeringMeeting" type="checkbox" ${demand.sicEngineeringMeeting === true ? "checked" : ""} />
         <span><strong>Cobrado em reunião</strong><small>Marque quando a Sala Técnica estiver sendo cobrada por esta SIC em reunião.</small></span>
       </label>
-      ${serviceExecuted === null ? "" : `<div class="sic-service-execution-readout" data-executed="${serviceExecuted}"><span>Execução do serviço</span><strong>${serviceExecuted ? "Executado" : "Não executado"}</strong><small>Informação confirmada na validação de Obras.</small></div>`}
+      ${serviceExecution === null ? "" : `<div class="sic-service-execution-readout" data-status="${serviceExecution.status}"><span>Execução do serviço</span><strong>${escapeAttribute(serviceExecution.label)}</strong>${serviceExecution.details ? `<p>${escapeAttribute(serviceExecution.details)}</p>` : ""}<small>Informação confirmada na validação de Obras.</small></div>`}
     </section>
   `;
 }
@@ -19673,9 +19673,29 @@ function sicWorksValidatedAmount(demand) {
   return demandHasRecordedValue(demand) ? demandRecordedValue(demand) : null;
 }
 
-function sicWorksServiceExecuted(demand) {
-  const value = demand?.sicWorksValidation?.serviceExecuted;
-  return typeof value === "boolean" ? value : null;
+function sicServiceExecutionLabel(status) {
+  return ({
+    executed: "Executado",
+    not_executed: "Não executado",
+    partially_executed: "Parcialmente executado",
+  })[status] || "Não informado";
+}
+
+function sicWorksServiceExecution(demand) {
+  const validation = demand?.sicWorksValidation;
+  if (!validation || typeof validation !== "object") return null;
+  let status = String(validation.serviceExecutionStatus || "");
+  if (!status && typeof validation.serviceExecuted === "boolean") {
+    status = validation.serviceExecuted ? "executed" : "not_executed";
+  }
+  if (!["executed", "not_executed", "partially_executed"].includes(status)) return null;
+  const details = status === "partially_executed" ? String(validation.serviceExecutionDetails || "").trim() : "";
+  return {
+    status,
+    details,
+    label: sicServiceExecutionLabel(status),
+    cardLabel: status === "executed" ? "Serviço executado" : status === "not_executed" ? "Serviço não executado" : "Serviço parcialmente executado",
+  };
 }
 
 function sicDirectorReferenceAmount(demand) {
@@ -19692,7 +19712,7 @@ function openSicWorksValidationModal(id) {
     return;
   }
   const currentAmount = sicWorksValidatedAmount(demand);
-  const currentServiceExecuted = sicWorksServiceExecuted(demand);
+  const currentServiceExecution = sicWorksServiceExecution(demand);
   const info = demandSicInfo(demand) || {};
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop">
@@ -19701,7 +19721,7 @@ function openSicWorksValidationModal(id) {
           <div>
             <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
             <h2 id="sicWorksValidationTitle">Validar SIC em Obras</h2>
-            <p class="muted">${escapeAttribute(work.nome)} · confirme o valor e informe se o serviço da SIC já foi executado.</p>
+            <p class="muted">${escapeAttribute(work.nome)} · confirme o valor e informe a situação de execução dos serviços da SIC.</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
@@ -19715,14 +19735,23 @@ function openSicWorksValidationModal(id) {
           <fieldset class="sic-value-decision-options sic-service-execution-options">
             <legend>O serviço desta SIC já foi executado? *</legend>
             <label class="sic-value-decision-option">
-              <input type="radio" name="sicServiceExecuted" value="true" required ${currentServiceExecuted === true ? "checked" : ""}>
+              <input type="radio" name="sicServiceExecutionStatus" value="executed" required ${currentServiceExecution?.status === "executed" ? "checked" : ""}>
               <span><strong>Sim, serviço executado</strong><small>O serviço correspondente à SIC já foi realizado.</small></span>
             </label>
             <label class="sic-value-decision-option">
-              <input type="radio" name="sicServiceExecuted" value="false" required ${currentServiceExecuted === false ? "checked" : ""}>
+              <input type="radio" name="sicServiceExecutionStatus" value="not_executed" required ${currentServiceExecution?.status === "not_executed" ? "checked" : ""}>
               <span><strong>Não executado</strong><small>O serviço ainda não foi realizado.</small></span>
             </label>
+            <label class="sic-value-decision-option">
+              <input type="radio" name="sicServiceExecutionStatus" value="partially_executed" required ${currentServiceExecution?.status === "partially_executed" ? "checked" : ""}>
+              <span><strong>Parcialmente executado</strong><small>Uma parte dos serviços foi realizada e outra permanece pendente.</small></span>
+            </label>
           </fieldset>
+          <label class="field sic-partial-execution-field" data-sic-partial-execution-field ${currentServiceExecution?.status === "partially_executed" ? "" : "hidden"}>
+            <span>Atividades executadas e não executadas *</span>
+            <textarea name="sicServiceExecutionDetails" rows="4" minlength="10" ${currentServiceExecution?.status === "partially_executed" ? "required" : ""} placeholder="Descreva claramente o que já foi executado e o que ainda não foi executado.">${escapeAttribute(currentServiceExecution?.details || "")}</textarea>
+            <small>Informe separadamente as atividades concluídas e as que permanecem pendentes.</small>
+          </label>
           <div class="info-box">
             <strong>Rastreabilidade</strong>
             <span>O valor, a situação de execução, o usuário e a data desta validação serão registrados no histórico da demanda.</span>
@@ -19746,18 +19775,26 @@ async function handleSicWorksValidationSubmit(form) {
     showFormError("Informe o valor validado por Obras.", form);
     return;
   }
-  const serviceExecutedValue = String(data.get("sicServiceExecuted") || "");
-  if (!["true", "false"].includes(serviceExecutedValue)) {
-    showFormError("Informe se o serviço desta SIC já foi executado.", form);
+  const serviceExecutionStatus = String(data.get("sicServiceExecutionStatus") || "");
+  if (!["executed", "not_executed", "partially_executed"].includes(serviceExecutionStatus)) {
+    showFormError("Informe a situação de execução dos serviços desta SIC.", form);
+    return;
+  }
+  const serviceExecutionDetails = String(data.get("sicServiceExecutionDetails") || "").trim();
+  if (serviceExecutionStatus === "partially_executed" && serviceExecutionDetails.length < 10) {
+    showFormError("Descreva quais atividades foram executadas e quais ainda não foram executadas.", form);
+    form.querySelector('[name="sicServiceExecutionDetails"]')?.focus();
     return;
   }
   const amount = parseCurrency(rawValue);
-  const serviceExecuted = serviceExecutedValue === "true";
+  const serviceExecuted = serviceExecutionStatus === "executed" ? true : serviceExecutionStatus === "not_executed" ? false : null;
   const updated = await updateDemandColumn(demand.id, "validadoObras", {
     worksValidationData: {
-      version: 2,
+      version: 3,
       amount,
       serviceExecuted,
+      serviceExecutionStatus,
+      serviceExecutionDetails: serviceExecutionStatus === "partially_executed" ? serviceExecutionDetails : "",
       validatedAt: new Date().toISOString(),
       validatedBy: currentUser()?.nome || "Usuário SLT360",
     },
@@ -19765,7 +19802,7 @@ async function handleSicWorksValidationSubmit(form) {
   if (!updated) return;
   closeModal();
   render();
-  showToast(`SIC validada por Obras com valor de ${money(amount)} · serviço ${serviceExecuted ? "executado" : "não executado"}.`);
+  showToast(`SIC validada por Obras com valor de ${money(amount)} · serviço ${sicServiceExecutionLabel(serviceExecutionStatus).toLowerCase()}.`);
 }
 
 function openSicDirectorDecisionModal(id, { directFlow = false } = {}) {
@@ -20557,7 +20594,7 @@ async function updateDemandColumn(id, nextColumnId, {
   const previous = columns[currentIndex]?.label || demand.coluna || "Sem status";
   if (worksValidationData) {
     const previousAmount = sicWorksValidatedAmount(demand);
-    const previousServiceExecuted = sicWorksServiceExecuted(demand);
+    const previousServiceExecution = sicWorksServiceExecution(demand);
     demand.sicWorksValidation = clone(worksValidationData);
     demand.valorGerado = Number(worksValidationData.amount) || 0;
     addHistory({
@@ -20567,13 +20604,23 @@ async function updateDemandColumn(id, nextColumnId, {
       valorAnterior: previousAmount === null ? "Não informado" : money(previousAmount),
       valorNovo: money(demand.valorGerado),
     });
-    if (previousServiceExecuted !== worksValidationData.serviceExecuted) {
+    const nextServiceExecutionStatus = String(worksValidationData.serviceExecutionStatus || (worksValidationData.serviceExecuted === true ? "executed" : worksValidationData.serviceExecuted === false ? "not_executed" : ""));
+    if (previousServiceExecution?.status !== nextServiceExecutionStatus) {
       addHistory({
         entidade: "demanda",
         entidadeId: demand.id,
         campo: "execução do serviço da SIC",
-        valorAnterior: previousServiceExecuted === null ? "Não informada" : previousServiceExecuted ? "Executado" : "Não executado",
-        valorNovo: worksValidationData.serviceExecuted ? "Executado" : "Não executado",
+        valorAnterior: previousServiceExecution?.label || "Não informada",
+        valorNovo: sicServiceExecutionLabel(nextServiceExecutionStatus),
+      });
+    }
+    if ((previousServiceExecution?.details || "") !== String(worksValidationData.serviceExecutionDetails || "")) {
+      addHistory({
+        entidade: "demanda",
+        entidadeId: demand.id,
+        campo: "detalhamento da execução parcial da SIC",
+        valorAnterior: previousServiceExecution?.details || "Não informado",
+        valorNovo: String(worksValidationData.serviceExecutionDetails || "") || "Não se aplica",
       });
     }
   }
@@ -21898,6 +21945,19 @@ document.addEventListener("change", async (event) => {
     if (revisedField) revisedField.hidden = !revised;
     if (revisedInput) revisedInput.required = revised;
     if (revised) revisedInput?.focus();
+    return;
+  }
+  if (event.target.matches('#sicWorksValidationForm [name="sicServiceExecutionStatus"]')) {
+    const form = event.target.closest("#sicWorksValidationForm");
+    const field = form?.querySelector("[data-sic-partial-execution-field]");
+    const textarea = field?.querySelector('[name="sicServiceExecutionDetails"]');
+    const partial = event.target.value === "partially_executed";
+    if (field) field.hidden = !partial;
+    if (textarea) {
+      textarea.required = partial;
+      if (partial) textarea.focus();
+      else textarea.value = "";
+    }
     return;
   }
   if (event.target.matches('#sicDirectorQueueForm [name="approvalWeekId"], #sicDirectorQueueForm [name="approvalCardId"]')) {
