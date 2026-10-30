@@ -20477,8 +20477,8 @@ async function updateDemandColumn(id, nextColumnId, {
       showToast("Somente usuários Gestor ou Admin com permissão de escrita em Obras podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
       return false;
     }
-    if (demand.coluna !== "aprovacaoDiretoria") {
-      showToast("A etapa Aprovado Diretoria só pode ser acessada a partir de Aguardando Aprovação Diretoria.");
+    if (demand.coluna !== "aprovacaoDiretoria" && demand.coluna !== "validadoObras") {
+      showToast("A etapa Aprovado Diretoria só pode ser acessada a partir de Validado Obras ou Aguardando Aprovação Diretoria.");
       return false;
     }
     if (!directorDecisionData) {
