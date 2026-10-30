@@ -3104,7 +3104,7 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  expect(b.errors).toEqual([]);
 });
 
-test('Admin can approve a SIC directly from Validado Obras with the audited two-step flow',async({page})=>{
+test('Admin can approve a SIC directly from Validado Obras with confirmed final value',async({page})=>{
  const demand={
   ...structuredClone(payload.state.demands[0]),
   id:'sic-direct-admin',
@@ -3117,43 +3117,55 @@ test('Admin can approve a SIC directly from Validado Obras with the audited two-
   sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-ADMIN',tituloSic:'SIC aprovação direta'},
  };
- const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana'],moduleLoadDelay:1200});await login(page);
+ const b=await backend(page,'Admin',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const directCard=page.locator('article[data-id="sic-direct-admin"]');
  await expect(directCard).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWritePermission('works'))).toBe(true);
- await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(false);
  await directCard.click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
  await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
- await expect.poll(()=>page.evaluate(()=>window.SLT_CLOUD.canWrite('works'))).toBe(true);
  await status.selectOption('aprovadoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
-
- const queue=page.locator('#sicDirectorQueueForm');
- await expect(queue.getByRole('heading',{name:'Aprovar diretamente pela Diretoria'})).toBeVisible();
- await expect(queue).toContainText('Etapa 1 de 2');
- await queue.locator('[name="approvalWeekId"]').selectOption('w-test');
- await queue.locator('[data-sic-card-search]').fill('obra sic');
- await queue.locator('[data-sic-card-results] [data-card-id="approval-test"]').click();
- await expect(queue.locator('[name="approvalSicValue"]')).toHaveValue('20,00');
- await expect(queue.locator('[name="approvalSicValue"]')).toHaveAttribute('readonly','');
- await queue.locator('[name="approvalAssigned"]').fill('120,00');
- await queue.locator('[name="approvalCommitted"]').fill('80,00');
- await queue.getByRole('button',{name:'Registrar pauta e continuar'}).click();
-
  const decision=page.locator('#sicDirectorDecisionForm');
- await expect(decision.getByRole('heading',{name:'Concluir aprovação direta pela Diretoria'})).toBeVisible();
- await expect(decision).toContainText(/etapa 2 de 2/i);
+ await expect(decision.getByRole('heading',{name:'Confirmar valor aprovado pela Diretoria'})).toBeVisible();
  await decision.locator('[name="directorValueDecision"][value="keep"]').check();
- await decision.getByRole('button',{name:'Concluir aprovação direta'}).click();
-
+ await decision.getByRole('button',{name:'Confirmar e aprovar'}).click();
  const approvedCard=page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-direct-admin"]');
  await expect(approvedCard).toBeVisible();
  await expect(approvedCard.locator('.demand-card-value')).toContainText('R$ 20,00');
  const demandChanges=b.requests.flatMap(request=>request.changes).filter(change=>change.entity==='budget_demands'&&change.key==='sic-direct-admin');
- expect(demandChanges.some(change=>change.document?.coluna==='aprovacaoDiretoria'&&change.document?.sicDirectorApproval?.sicValue===20)).toBe(true);
  expect(demandChanges.some(change=>change.document?.coluna==='aprovadoDiretoria'&&change.document?.sicDirectorDecision?.finalAmount===20)).toBe(true);
+ expect(b.errors).toEqual([]);
+});
+
+test('Gestor can approve a SIC directly from Validado Obras',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-direct-manager',
+  obraId:'test-work',
+  tipo:'SIC',
+  coluna:'validadoObras',
+  analistaResponsavel:'Ana',
+  dataValidacaoObras:'2026-09-23',
+  valorGerado:20,
+  sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
+  sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-MANAGER',tituloSic:'SIC aprovação direta'},
+ };
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const directCard=page.locator('article[data-id="sic-direct-manager"]');
+ await expect(directCard).toBeVisible();
+ await directCard.click();
+ const status=page.locator('#demandDetailForm [name="coluna"]');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
+ await status.selectOption('aprovadoDiretoria');
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
+ const decision=page.locator('#sicDirectorDecisionForm');
+ await expect(decision.getByRole('heading',{name:'Confirmar valor aprovado pela Diretoria'})).toBeVisible();
+ await decision.locator('[name="directorValueDecision"][value="keep"]').check();
+ await decision.getByRole('button',{name:'Confirmar e aprovar'}).click();
+ await expect(page.locator('.kanban-column[data-column="aprovadoDiretoria"] article[data-id="sic-direct-manager"]')).toBeVisible();
  expect(b.errors).toEqual([]);
 });
 
