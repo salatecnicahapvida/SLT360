@@ -3094,7 +3094,7 @@ test('Gestor chooses the week and queues a negative validated SIC for Diretoria'
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  await page.locator('article[data-id="sic-validation-manager"]').click();
  const status=page.locator('#demandDetailForm [name="coluna"]');
- await expect(status.locator('option[value="aprovadoDiretoria"]')).toHaveAttribute('disabled','');
+ await expect(status.locator('option[value="aprovadoDiretoria"]')).not.toHaveAttribute('disabled','');
  await status.selectOption('aprovacaoDiretoria');
  await page.locator('#demandDetailForm').getByRole('button',{name:'Salvar',exact:true}).click();
  const queue=page.locator('#sicDirectorQueueForm');
@@ -3173,7 +3173,7 @@ test('Gestor can approve a SIC directly from Validado Obras',async({page})=>{
   sicWorksValidation:{version:1,amount:20,validatedAt:'2026-09-23T12:00:00.000Z',validatedBy:'Obras'},
   sicMetadata:{...structuredClone(payload.state.demands[0].sicMetadata),lecomNumber:'DIRECT-MANAGER',tituloSic:'SIC aprovação direta'},
  };
- const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana']});await login(page);
+ const b=await backend(page,'Gestor',false,{demandRecords:[demand],analystNames:['Ana'],analystCanWrite:true});await login(page);
  await page.getByRole('button',{name:'Abrir Obras'}).click();
  const directCard=page.locator('article[data-id="sic-direct-manager"]');
  await expect(directCard).toBeVisible();
