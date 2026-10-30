@@ -16512,7 +16512,7 @@ function canAdvanceSicToDirectorApproval() {
 function canDirectlyApproveSicFromValidated() {
   const hasWorksWritePermission = globalThis.SLT_CLOUD.canWritePermission?.("works")
     ?? globalThis.SLT_CLOUD.canWrite("works");
-  return activeRole() === "Admin" && hasWorksWritePermission;
+  return ["Admin", "Gestor"].includes(activeRole()) && hasWorksWritePermission;
 }
 
 function sicDirectorWaiverData(demand) {
@@ -20467,10 +20467,10 @@ async function updateDemandColumn(id, nextColumnId, {
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
     if (demand.coluna === "validadoObras") {
       if (!canDirectlyApproveSicFromValidated()) {
-        showToast("Somente administradores podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
+        showToast("Somente usuários Gestor ou Admin com permissão de escrita em Obras podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
         return false;
       }
-      await openSicDirectorQueueModal(demand.id, { approveAfterQueue: true });
+      openSicDirectorDecisionModal(demand.id);
       return false;
     }
     if (demand.coluna !== "aprovacaoDiretoria") {
