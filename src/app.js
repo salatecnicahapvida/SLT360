@@ -20465,12 +20465,16 @@ async function updateDemandColumn(id, nextColumnId, {
     }
   }
   if (isSicDemand && nextColumnId === "aprovadoDiretoria" && demand.coluna !== "aprovadoDiretoria") {
-    if (demand.coluna === "validadoObras") {
+    if (demand.coluna === "validadoObras" && !directorDecisionData) {
       if (!canDirectlyApproveSicFromValidated()) {
         showToast("Somente usuários Gestor ou Admin com permissão de escrita em Obras podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
         return false;
       }
       openSicDirectorDecisionModal(demand.id);
+      return false;
+    }
+    if (demand.coluna === "validadoObras" && !canDirectlyApproveSicFromValidated()) {
+      showToast("Somente usuários Gestor ou Admin com permissão de escrita em Obras podem mover uma SIC diretamente de Validado Obras para Aprovado Diretoria.");
       return false;
     }
     if (demand.coluna !== "aprovacaoDiretoria") {
