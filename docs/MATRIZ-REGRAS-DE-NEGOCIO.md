@@ -86,7 +86,7 @@ Esta matriz consolida as regras operacionais ativas do SLT360 após a revisão d
 | 73 | Aguardando Aprovação Diretoria só pode ser acessado a partir de Validado Obras no fluxo padrão. | Gestor/Admin | Obras/SIC | Enviar à Diretoria | Sim | Mantém ordem da esteira. |
 | 74 | **Aguardando Aprovação Diretoria → Aprovado Diretoria é exclusiva de Gestor/Admin.** | Gestor/Admin com escrita | Obras/SIC | Aprovar Diretoria | Sim | Regra revisada em 28/09/2026. |
 | 75 | A aprovação da Diretoria exige decisão com valor final informado e coerente com o valor vigente da demanda. | Gestor/Admin | Obras/SIC | Aprovar Diretoria | Sim | `sicDirectorDecision.finalAmount`. |
-| 76 | Aprovado Diretoria só pode ser acessado a partir de Aguardando Aprovação Diretoria. | Gestor/Admin | Obras/SIC | Aprovar Diretoria | Sim | Mantém ordem da esteira. |
+| 76 | Aprovado Diretoria pode ser acessado a partir de Aguardando Aprovação Diretoria ou diretamente de Validado Obras. | Gestor/Admin com escrita | Obras/SIC | Aprovar Diretoria | Sim | A aprovação direta exige confirmação do valor final; demais perfis são rejeitados. |
 | 77 | Dispensa da aprovação da Diretoria só pode ser registrada por Gestor/Admin. | Gestor/Admin | Obras/SIC | Registrar dispensa | Sim | Exceção auditada. |
 | 78 | A dispensa exige justificativa com pelo menos 10 caracteres. | Gestor/Admin | Obras/SIC | Registrar dispensa | Sim | Campo obrigatório. |
 | 79 | A dispensa exige data, nome e identificador do responsável. | Gestor/Admin | Obras/SIC | Registrar dispensa | Sim | Metadados auditáveis. |
