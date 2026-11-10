@@ -611,6 +611,13 @@ let operationalFilters = {
   dateFrom: "",
   dateTo: "",
 };
+const kanbanColumnSorts = Object.create(null);
+const kanbanSortOptions = [
+  { id: "smart", label: "Prioridade do fluxo", description: "Prazo e ordem operacional" },
+  { id: "work", label: "Obra", description: "Nome da obra, de A a Z" },
+  { id: "analyst", label: "Analista", description: "Responsável, de A a Z" },
+  { id: "type", label: "Tipo de atividade", description: "Atividade, de A a Z" },
+];
 let managementStatusFilter = "all";
 let strategicHistoricalQuery = "";
 let strategicHistoricalFilters = { year: "", region: "", status: "" };
@@ -5838,8 +5845,54 @@ function compareKanbanColumnDemands(first, second, columnId) {
   return String(first?.id || "").localeCompare(String(second?.id || ""), "pt-BR", { numeric: true });
 }
 
+function kanbanSortText(value) {
+  return String(value || "").trim();
+}
+
+function compareKanbanSortText(first, second) {
+  const firstText = kanbanSortText(first);
+  const secondText = kanbanSortText(second);
+  if (!firstText && secondText) return 1;
+  if (firstText && !secondText) return -1;
+  return firstText.localeCompare(secondText, "pt-BR", { sensitivity: "base", numeric: true });
+}
+
+function kanbanDemandSortValue(demand, sortKey) {
+  if (sortKey === "work") {
+    const work = workById(demand?.obraId);
+    return portfolioWorkDisplayName(work || { nome: demandSicInfo(demand)?.obraNome || "" });
+  }
+  if (sortKey === "analyst") {
+    return demandAnalystNames(demand)
+      .sort((first, second) => compareKanbanSortText(first, second))
+      .join(", ");
+  }
+  if (sortKey === "type") return demandTypeLabel(demand?.tipo) || "";
+  return "";
+}
+
+function kanbanColumnSortKey(columnId) {
+  const sortKey = kanbanColumnSorts[columnId];
+  return kanbanSortOptions.some((option) => option.id === sortKey) ? sortKey : "smart";
+}
+
+function compareKanbanClassifiedDemands(first, second, columnId, sortKey) {
+  if (sortKey === "smart") return compareKanbanColumnDemands(first, second, columnId);
+  if (!["concluido", "cancelado"].includes(columnId)) {
+    const engineeringMeetingComparison = Number(isEngineeringMeetingSic(second)) - Number(isEngineeringMeetingSic(first));
+    if (engineeringMeetingComparison) return engineeringMeetingComparison;
+  }
+  const valueComparison = compareKanbanSortText(
+    kanbanDemandSortValue(first, sortKey),
+    kanbanDemandSortValue(second, sortKey),
+  );
+  if (valueComparison) return valueComparison;
+  return compareKanbanColumnDemands(first, second, columnId);
+}
+
 function sortKanbanColumnDemands(demands, columnId) {
-  return [...demands].sort((first, second) => compareKanbanColumnDemands(first, second, columnId));
+  const sortKey = kanbanColumnSortKey(columnId);
+  return [...demands].sort((first, second) => compareKanbanClassifiedDemands(first, second, columnId, sortKey));
 }
 
 function operationalFilterValues(key) {
@@ -5936,18 +5989,34 @@ function renderKanbanBoard(filtered) {
       ${columns
         .map((column) => {
           const demands = sortKanbanColumnDemands(filtered.filter((demand) => demand.coluna === column.id), column.id);
-          const sortTitle = column.id === "pullPlanning"
-            ? "Reordenar pela previsão de início, da mais próxima para a mais distante; sem previsão ao final"
-            : column.id === "concluido"
-              ? "Reordenar por conclusão real, da mais recente para a mais antiga"
-              : "Reordenar pelo marco exibido no card; em empate, priorizar o card criado primeiro";
+          const sortKey = kanbanColumnSortKey(column.id);
+          const selectedSort = kanbanSortOptions.find((option) => option.id === sortKey) || kanbanSortOptions[0];
           return `
             <section class="kanban-column" data-column="${column.id}">
               <header>
                 <h2>${column.label}</h2>
                 <div class="kanban-column-header-meta">
                   <span class="kanban-count" aria-label="${demands.length} demandas">${demands.length}</span>
-                  <button class="kanban-sort-button" type="button" data-action="reorder-kanban-column" data-column="${column.id}" aria-label="Reordenar cards" title="${escapeAttribute(sortTitle)}">⇅</button>
+                  <details class="kanban-sort-menu">
+                    <summary class="kanban-sort-button" aria-label="Classificar cards de ${escapeAttribute(column.label)}. Classificação atual: ${escapeAttribute(selectedSort.label)}" title="Classificar por: ${escapeAttribute(selectedSort.label)}">⇅</summary>
+                    <div class="kanban-sort-options" role="menu" aria-label="Classificar cards de ${escapeAttribute(column.label)}">
+                      <strong>Classificar por</strong>
+                      ${kanbanSortOptions.map((option) => `
+                        <button
+                          class="kanban-sort-option ${option.id === sortKey ? "is-active" : ""}"
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked="${option.id === sortKey}"
+                          data-action="sort-kanban-column"
+                          data-column="${column.id}"
+                          data-sort-key="${option.id}"
+                        >
+                          <span>${escapeAttribute(option.label)}</span>
+                          <small>${escapeAttribute(option.description)}</small>
+                        </button>
+                      `).join("")}
+                    </div>
+                  </details>
                 </div>
               </header>
               <div class="demand-list">
@@ -21239,15 +21308,16 @@ document.addEventListener("click", async (event) => {
   if (action === "open-kpi-detail") openKpiDetail(actionButton.dataset.kpi);
   if (action === "open-management-detail") openKpiDetail("", managementDetailData(actionButton.dataset.metric, actionButton.dataset.group, actionButton.dataset.value, actionButton.dataset.column));
   if (action === "apply-operational-filter") applyOperationalKpiFilter(actionButton.dataset.kpi);
-  if (action === "reorder-kanban-column") {
+  if (action === "sort-kanban-column") {
     const column = columns.find((item) => item.id === actionButton.dataset.column);
     if (!column) return;
+    const sortKey = kanbanSortOptions.some((option) => option.id === actionButton.dataset.sortKey)
+      ? actionButton.dataset.sortKey
+      : "smart";
+    kanbanColumnSorts[column.id] = sortKey;
+    const selectedSort = kanbanSortOptions.find((option) => option.id === sortKey) || kanbanSortOptions[0];
     render();
-    showToast(column.id === "pullPlanning"
-      ? `${column.label}: ordenado pela previsão de início, da mais próxima para a mais distante.`
-      : column.id === "concluido"
-        ? `${column.label}: ordenado pela conclusão real, do mais recente para o mais antigo.`
-        : `${column.label}: ordenado pelo marco exibido no card e, em empate, pela criação.`);
+    showToast(`${column.label}: cards classificados por ${selectedSort.label.toLocaleLowerCase("pt-BR")}.`);
   }
   if (action === "set-operational-view") {
     operationalViewMode = actionButton.dataset.mode || "kanban";

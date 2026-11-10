@@ -14109,6 +14109,23 @@ button.analyst-chip {
   box-shadow: 0 1px 2px rgba(18, 38, 63, 0.05);
 }
 
+.kanban-sort-menu {
+  position: relative;
+  z-index: 4;
+}
+
+.kanban-sort-menu[open] {
+  z-index: 20;
+}
+
+.kanban-sort-menu > summary {
+  list-style: none;
+}
+
+.kanban-sort-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
 .kanban-sort-button:hover {
   background: #f3f7fc;
   border-color: #b8c8da;
@@ -14118,6 +14135,77 @@ button.analyst-chip {
 .kanban-sort-button:focus-visible {
   outline: 2px solid #2f72c4;
   outline-offset: 2px;
+}
+
+.kanban-sort-options {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 224px;
+  overflow: hidden;
+  border: 1px solid #d6e0ec;
+  border-radius: 10px;
+  background: #fff;
+  padding: 7px;
+  box-shadow: 0 14px 32px rgba(18, 38, 63, 0.2);
+}
+
+.kanban-sort-options > strong {
+  display: block;
+  padding: 5px 8px 7px;
+  color: #6c7d91;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.kanban-sort-option {
+  position: relative;
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 8px 30px 8px 9px;
+  color: var(--navy);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kanban-sort-option:hover,
+.kanban-sort-option:focus-visible {
+  outline: none;
+  background: #eef6ff;
+}
+
+.kanban-sort-option.is-active {
+  background: #e5f1ff;
+  color: #084f9e;
+}
+
+.kanban-sort-option.is-active::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--blue);
+  font-size: 0.8rem;
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+
+.kanban-sort-option span {
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.kanban-sort-option small {
+  color: #6f8093;
+  font-size: 0.66rem;
+  line-height: 1.25;
 }
 
 
