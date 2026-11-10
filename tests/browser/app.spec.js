@@ -666,7 +666,7 @@ test('validation KPI removes Sala Técnica stage, preserves legacy cards and exc
  expect(b.errors).toEqual([]);
 });
 
-test('kanban reorders by displayed milestone, creation date and real completion',async({page})=>{
+test('kanban defaults to flow priority by displayed milestone, creation date and real completion',async({page})=>{
  const base={...structuredClone(payload.state.demands[1]),obraId:'test-work',coluna:'fazer',dataEnvioRealValidacaoObras:'',dataValidacaoObras:''};
  const demands=[
   {...base,id:'sort-no-date',dataPrevEnvioValidacaoObras:'',dataPrevistaEntrega:'',createdAt:'2026-09-01T09:00:00Z'},
@@ -691,10 +691,55 @@ test('kanban reorders by displayed milestone, creation date and real completion'
   cards.reverse().forEach(card=>list.append(card));
  });
  expect(await fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual([...expectedOpen].reverse());
- await page.locator('[data-action="reorder-kanban-column"][data-column="fazer"]').click();
+ await fazer.locator('.kanban-sort-button').click();
+ await fazer.locator('[data-action="sort-kanban-column"][data-sort-key="smart"]').click();
  expect(await page.locator('.kanban-column[data-column="fazer"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedOpen);
- await page.locator('[data-action="reorder-kanban-column"][data-column="concluido"]').click();
+ await concluded.locator('.kanban-sort-button').click();
+ await concluded.locator('[data-action="sort-kanban-column"][data-sort-key="smart"]').click();
  expect(await page.locator('.kanban-column[data-column="concluido"] article').evaluateAll(cards=>cards.map(card=>card.dataset.id))).toEqual(expectedCompleted);
+ expect(b.errors).toEqual([]);
+});
+
+test('each kanban bucket classifies filtered cards by work, analyst and activity type',async({page})=>{
+ const works=[
+  {...structuredClone(payload.state.works[0]),id:'sort-work-alpha',codigoOriginal:'1001',nome:'1001. Obra Alfa'},
+  {...structuredClone(payload.state.works[0]),id:'sort-work-beta',codigoOriginal:'1002',nome:'1002. Obra Beta'},
+  {...structuredClone(payload.state.works[0]),id:'sort-work-zebra',codigoOriginal:'1003',nome:'1003. Obra Zebra'},
+ ];
+ const base={...structuredClone(payload.state.demands[1]),coluna:'fazer',dataPrevEnvioValidacaoObras:'2099-01-10',createdAt:'2026-09-01T09:00:00Z'};
+ const demands=[
+  {...base,id:'sort-zebra-ana',obraId:'sort-work-zebra',tipo:'SIC',analistaResponsavel:'Ana'},
+  {...base,id:'sort-alpha-zuleica',obraId:'sort-work-alpha',tipo:'SIC',analistaResponsavel:'Zuleica'},
+  {...base,id:'sort-beta-bruno',obraId:'sort-work-beta',tipo:'EmissaoInicial',analistaResponsavel:'Bruno'},
+  {...base,id:'sort-alpha-ana',obraId:'sort-work-alpha',tipo:'DemandaExtra',analistaResponsavel:'Ana'},
+  {...base,id:'sort-beta-unassigned',obraId:'sort-work-beta',tipo:'ReemissaoCompleta',analistaResponsavel:'',analistasComplementares:[]},
+ ];
+ const b=await backend(page,'Admin',false,{workRecords:works,demandRecords:demands});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const fazer=page.locator('.kanban-column[data-column="fazer"]');
+ const cardIds=()=>fazer.locator('article').evaluateAll(cards=>cards.map(card=>card.dataset.id));
+ const chooseSort=async(sortKey)=>{
+  await fazer.locator('.kanban-sort-button').click();
+  await fazer.locator(`[data-action="sort-kanban-column"][data-sort-key="${sortKey}"]`).click();
+ };
+
+ await chooseSort('work');
+ expect(await cardIds()).toEqual(['sort-alpha-ana','sort-alpha-zuleica','sort-beta-bruno','sort-beta-unassigned','sort-zebra-ana']);
+
+ const typeFilter=page.locator('[data-operational-filter-group="type"]');
+ await typeFilter.locator('summary').click();
+ await typeFilter.locator('[data-operational-filter="type"][value="SIC"]').check();
+ expect(await cardIds()).toEqual(['sort-alpha-zuleica','sort-zebra-ana']);
+ await fazer.locator('.kanban-sort-button').click();
+ await expect(fazer.locator('[data-action="sort-kanban-column"][data-sort-key="work"]')).toHaveAttribute('aria-checked','true');
+ await fazer.locator('.kanban-sort-button').click();
+
+ await page.locator('.filter-panel').getByRole('button',{name:'Limpar filtros',exact:true}).click();
+ await chooseSort('analyst');
+ expect(await cardIds()).toEqual(['sort-alpha-ana','sort-zebra-ana','sort-beta-bruno','sort-alpha-zuleica','sort-beta-unassigned']);
+
+ await chooseSort('type');
+ expect(await cardIds()).toEqual(['sort-alpha-ana','sort-beta-bruno','sort-beta-unassigned','sort-alpha-zuleica','sort-zebra-ana']);
  expect(b.errors).toEqual([]);
 });
 
