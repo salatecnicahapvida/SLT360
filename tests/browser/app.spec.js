@@ -792,7 +792,8 @@ test('service execution can be corrected without moving the SIC or changing its 
  await expect(page.locator('#demandDetailForm .sic-service-execution-readout')).toContainText('Última correção por Usuário teste');
  await expect(page.locator('#demandDetailForm .sic-service-execution-readout p')).toHaveCount(0);
  await page.locator('#demandDetailForm').getByRole('button',{name:'Ver histórico'}).click();
- await expect(page.locator('#demandDetailForm .demand-history-panel')).toContainText('Parcialmente executado → Executado');
+ await expect(page.locator('#demandDetailForm .demand-history-panel')).toContainText('Parcialmente executado');
+ await expect(page.locator('#demandDetailForm .demand-history-panel')).toContainText('Pintura executada; climatização ainda não executada. → Executado');
  await expect(directorColumn.locator('article[data-id="sic-service-correction"]')).toBeVisible();
  const savedDemand=()=>b.requests.flatMap(request=>request.changes)
   .find(change=>change.entity==='budget_demands'&&change.key==='sic-service-correction'&&change.document?.sicWorksValidation?.serviceExecutionStatus==='executed');
