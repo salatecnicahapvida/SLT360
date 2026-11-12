@@ -16068,7 +16068,17 @@ function renderDemandSicMetadata(demand) {
         <input name="sicEngineeringMeeting" type="checkbox" ${demand.sicEngineeringMeeting === true ? "checked" : ""} />
         <span><strong>Cobrado em reunião</strong><small>Marque quando a Sala Técnica estiver sendo cobrada por esta SIC em reunião.</small></span>
       </label>
-      ${serviceExecution === null ? "" : `<div class="sic-service-execution-readout" data-status="${serviceExecution.status}"><span>Execução do serviço</span><strong>${escapeAttribute(serviceExecution.label)}</strong>${serviceExecution.details ? `<p>${escapeAttribute(serviceExecution.details)}</p>` : ""}<small>Informação confirmada na validação de Obras.</small></div>`}
+      ${serviceExecution === null ? "" : `
+        <div class="sic-service-execution-readout" data-status="${serviceExecution.status}">
+          <div class="sic-service-execution-heading">
+            <span>Execução do serviço</span>
+            ${globalThis.SLT_CLOUD.canWrite(dataUIModuleForView(currentView)) ? `<button class="secondary-action compact-action" type="button" data-action="edit-sic-service-execution" data-id="${escapeAttribute(demand.id)}">Editar situação</button>` : ""}
+          </div>
+          <strong>${escapeAttribute(serviceExecution.label)}</strong>
+          ${serviceExecution.details ? `<p>${escapeAttribute(serviceExecution.details)}</p>` : ""}
+          <small>${serviceExecution.updatedAt ? `Última correção por ${escapeAttribute(serviceExecution.updatedBy || "Usuário SLT360")} em ${escapeAttribute(new Date(serviceExecution.updatedAt).toLocaleString("pt-BR"))}.` : "Informação confirmada na validação de Obras."}</small>
+        </div>
+      `}
     </section>
   `;
 }
@@ -16155,7 +16165,10 @@ function openDemandDetailModal(id) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand) return;
   const work = workById(demand.obraId);
-  const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
+  const histories = [
+    ...sicServiceExecutionCorrectionHistories(demand),
+    ...state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId)),
+  ].sort((first, second) => new Date(second.timestamp || 0).getTime() - new Date(first.timestamp || 0).getTime());
   const stageTime = demandStageTimeInfo(demand);
   const directorWaiver = sicDirectorWaiverData(demand);
   const directorWaiverDate = directorWaiver ? new Date(directorWaiver.waivedAt) : null;
@@ -19764,7 +19777,24 @@ function sicWorksServiceExecution(demand) {
     details,
     label: sicServiceExecutionLabel(status),
     cardLabel: status === "executed" ? "Serviço executado" : status === "not_executed" ? "Serviço não executado" : "Serviço parcialmente executado",
+    updatedAt: String(validation.serviceExecutionUpdatedAt || ""),
+    updatedBy: String(validation.serviceExecutionUpdatedBy || ""),
   };
+}
+
+function sicServiceExecutionCorrectionHistories(demand) {
+  return arrayOrFallback(demand?.sicWorksValidation?.serviceExecutionCorrections)
+    .map((correction, index) => ({
+      id: correction.id || `${demand?.id || "SIC"}-service-execution-${index}`,
+      entidade: "demanda",
+      entidadeId: demand?.id || "",
+      campo: "correção da execução do serviço da SIC",
+      valorAnterior: [correction.previousLabel || sicServiceExecutionLabel(correction.previousStatus), correction.previousDetails].filter(Boolean).join(" · "),
+      valorNovo: [correction.nextLabel || sicServiceExecutionLabel(correction.nextStatus), correction.nextDetails].filter(Boolean).join(" · "),
+      usuario: correction.correctedBy || "Usuário SLT360",
+      timestamp: correction.correctedAt || "",
+    }))
+    .filter((item) => item.timestamp);
 }
 
 function sicDirectorReferenceAmount(demand) {
@@ -19773,7 +19803,7 @@ function sicDirectorReferenceAmount(demand) {
   return sicWorksValidatedAmount(demand);
 }
 
-function openSicWorksValidationModal(id) {
+function openSicWorksValidationModal(id, { editServiceExecution = false } = {}) {
   const demand = state.demands.find((item) => item.id === id);
   const work = demand && workById(demand.obraId);
   if (!demand || !work) {
@@ -19785,22 +19815,30 @@ function openSicWorksValidationModal(id) {
   const info = demandSicInfo(demand) || {};
   modalRoot.innerHTML = globalThis.SLT_CLOUD.cleanHTML(`
     <div class="modal-backdrop">
-      <form class="modal-card sic-value-modal" id="sicWorksValidationForm" data-id="${escapeAttribute(id)}" aria-labelledby="sicWorksValidationTitle">
+      <form class="modal-card sic-value-modal" id="sicWorksValidationForm" data-id="${escapeAttribute(id)}" data-mode="${editServiceExecution ? "edit-service-execution" : "validate-works"}" aria-labelledby="sicWorksValidationTitle">
         <header>
           <div>
             <span class="eyebrow">${escapeAttribute(demand.id)} · ${escapeAttribute(info.lecomNumber || "SIC")}</span>
-            <h2 id="sicWorksValidationTitle">Validar SIC em Obras</h2>
-            <p class="muted">${escapeAttribute(work.nome)} · confirme o valor e informe a situação de execução dos serviços da SIC.</p>
+            <h2 id="sicWorksValidationTitle">${editServiceExecution ? "Corrigir execução do serviço" : "Validar SIC em Obras"}</h2>
+            <p class="muted">${escapeAttribute(work.nome)} · ${editServiceExecution ? "corrija a situação informada sem alterar o valor ou a etapa da SIC." : "confirme o valor e informe a situação de execução dos serviços da SIC."}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" data-action="close-modal">×</button>
         </header>
         <div class="modal-body">
           <div class="error-box" id="formError"></div>
-          <label class="field sic-primary-value-field">
-            <span>Valor validado por Obras (R$) *</span>
-            <input name="sicWorksAmount" inputmode="decimal" required autocomplete="off" value="${currentAmount === null ? "" : escapeAttribute(currencyInputValue(currentAmount))}" placeholder="0,00" autofocus>
-            <small>Use um valor negativo quando a SIC representar redução de escopo e 0,00 somente quando não houver impacto financeiro.</small>
-          </label>
+          ${editServiceExecution ? `
+            <div class="sic-service-edit-context">
+              <span>Valor validado por Obras</span>
+              <strong>${currentAmount === null ? "Não informado" : money(currentAmount)}</strong>
+              <small>Este ajuste altera somente a execução do serviço. O valor e a etapa atual serão preservados.</small>
+            </div>
+          ` : `
+            <label class="field sic-primary-value-field">
+              <span>Valor validado por Obras (R$) *</span>
+              <input name="sicWorksAmount" inputmode="decimal" required autocomplete="off" value="${currentAmount === null ? "" : escapeAttribute(currencyInputValue(currentAmount))}" placeholder="0,00" autofocus>
+              <small>Use um valor negativo quando a SIC representar redução de escopo e 0,00 somente quando não houver impacto financeiro.</small>
+            </label>
+          `}
           <fieldset class="sic-value-decision-options sic-service-execution-options">
             <legend>O serviço desta SIC já foi executado? *</legend>
             <label class="sic-value-decision-option">
@@ -19823,12 +19861,12 @@ function openSicWorksValidationModal(id) {
           </label>
           <div class="info-box">
             <strong>Rastreabilidade</strong>
-            <span>O valor, a situação de execução, o usuário e a data desta validação serão registrados no histórico da demanda.</span>
+            <span>${editServiceExecution ? "A situação anterior, a correção, o usuário e a data serão registrados no histórico da demanda e sincronizados com a Aprovação de SIC’s." : "O valor, a situação de execução, o usuário e a data desta validação serão registrados no histórico da demanda."}</span>
           </div>
         </div>
         <footer class="modal-actions">
           <button class="ghost-button" type="button" data-action="close-modal">Cancelar</button>
-          <button class="primary-action" type="submit">Confirmar validação</button>
+          <button class="primary-action" type="submit">${editServiceExecution ? "Salvar correção" : "Confirmar validação"}</button>
         </footer>
       </form>
     </div>
@@ -19839,8 +19877,9 @@ async function handleSicWorksValidationSubmit(form) {
   const demand = state.demands.find((item) => item.id === form.dataset.id);
   if (!demand) return;
   const data = new FormData(form);
-  const rawValue = String(data.get("sicWorksAmount") || "").trim();
-  if (!rawValue) {
+  const editServiceExecution = form.dataset.mode === "edit-service-execution";
+  const rawValue = editServiceExecution ? "" : String(data.get("sicWorksAmount") || "").trim();
+  if (!editServiceExecution && !rawValue) {
     showFormError("Informe o valor validado por Obras.", form);
     return;
   }
@@ -19855,15 +19894,66 @@ async function handleSicWorksValidationSubmit(form) {
     form.querySelector('[name="sicServiceExecutionDetails"]')?.focus();
     return;
   }
-  const amount = parseCurrency(rawValue);
   const serviceExecuted = serviceExecutionStatus === "executed" ? true : serviceExecutionStatus === "not_executed" ? false : null;
+  const normalizedDetails = serviceExecutionStatus === "partially_executed" ? serviceExecutionDetails : "";
+  if (editServiceExecution) {
+    const demandIndex = state.demands.findIndex((item) => item.id === demand.id);
+    const demandSnapshot = clone(demand);
+    const historySnapshot = clone(state.history || []);
+    const previousExecution = sicWorksServiceExecution(demand);
+    if (previousExecution?.status === serviceExecutionStatus && previousExecution.details === normalizedDetails) {
+      closeModal();
+      openDemandDetailModal(demand.id);
+      showToast("A situação de execução já estava registrada dessa forma.");
+      return;
+    }
+    const correctedAt = new Date().toISOString();
+    const correctedBy = currentUser()?.nome || "Usuário SLT360";
+    demand.sicWorksValidation = {
+      ...(demand.sicWorksValidation || {}),
+      version: 3,
+      serviceExecuted,
+      serviceExecutionStatus,
+      serviceExecutionDetails: normalizedDetails,
+      serviceExecutionUpdatedAt: correctedAt,
+      serviceExecutionUpdatedBy: correctedBy,
+      serviceExecutionCorrections: [
+        ...arrayOrFallback(demand.sicWorksValidation?.serviceExecutionCorrections),
+        {
+          id: `service-execution-${Date.now()}`,
+          previousStatus: previousExecution?.status || "",
+          previousLabel: previousExecution?.label || "Não informada",
+          previousDetails: previousExecution?.details || "",
+          nextStatus: serviceExecutionStatus,
+          nextLabel: sicServiceExecutionLabel(serviceExecutionStatus),
+          nextDetails: normalizedDetails,
+          correctedAt,
+          correctedBy,
+        },
+      ].slice(-20),
+    };
+    try {
+      await saveStateAndWait();
+    } catch (error) {
+      if (demandIndex >= 0) state.demands[demandIndex] = demandSnapshot;
+      state.history = historySnapshot;
+      showFormError(error?.message || "A correção não foi confirmada pelo banco. Recarregue os dados antes de tentar novamente.", form);
+      return;
+    }
+    closeModal();
+    render();
+    openDemandDetailModal(demand.id);
+    showToast(`Situação corrigida para ${sicServiceExecutionLabel(serviceExecutionStatus).toLowerCase()} e sincronizada.`);
+    return;
+  }
+  const amount = parseCurrency(rawValue);
   const updated = await updateDemandColumn(demand.id, "validadoObras", {
     worksValidationData: {
       version: 3,
       amount,
       serviceExecuted,
       serviceExecutionStatus,
-      serviceExecutionDetails: serviceExecutionStatus === "partially_executed" ? serviceExecutionDetails : "",
+      serviceExecutionDetails: normalizedDetails,
       validatedAt: new Date().toISOString(),
       validatedBy: currentUser()?.nome || "Usuário SLT360",
     },
@@ -21209,6 +21299,10 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "open-demand-detail") openDemandDetailModal(actionButton.dataset.id);
+  if (action === "edit-sic-service-execution") {
+    openSicWorksValidationModal(actionButton.dataset.id, { editServiceExecution: true });
+    return;
+  }
   if (action === "post-sic-to-ev") {
     await postDemandSicToEV(actionButton.dataset.id);
     return;

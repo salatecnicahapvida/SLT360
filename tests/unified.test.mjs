@@ -114,6 +114,22 @@ test('all migrations: private SIC/settings, atomic saves, explicit archive, back
   assert.equal(queued.obras[0].sics[0].serviceExecutionDetails,'Pintura executada; climatização ainda não executada.','sincroniza o detalhamento da execução parcial');
   assert.equal(queued.snapshots[0].sap.saldoAtual,50);
 
+  // A situação de execução pode ser corrigida sem mover novamente a demanda.
+  // Quando o item já existe na pauta, a correção atualiza a mesma SIC.
+  await db.query(`update slt_budget_demands
+    set extra=extra||$1::jsonb
+    where record_key='d'`,[JSON.stringify({
+      sicWorksValidation:{version:3,amount:12.34,serviceExecuted:true,serviceExecutionStatus:'executed',serviceExecutionDetails:'',validatedAt:'2026-10-30T12:00:00.000Z',validatedBy:'Obras',serviceExecutionUpdatedAt:'2026-11-12T16:00:00.000Z',serviceExecutionUpdatedBy:'Usuário teste'},
+    })]);
+  queued=(await db.query(`select payload from slt_budget_sic_approval_initial_state where id=1`)).rows[0].payload;
+  assert.equal((await db.query("select phase from slt_budget_demands where record_key='d'")).rows[0].phase,'aprovacaoDiretoria','a correção não move o card');
+  assert.equal(queued.obras[0].sics.length,1,'a correção não duplica a SIC na pauta');
+  assert.equal(queued.obras[0].sics[0].serviceExecuted,true);
+  assert.equal(queued.obras[0].sics[0].serviceExecutionStatus,'executed','sincroniza o status corrigido');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionDetails,'','remove o detalhamento que deixou de ser aplicável');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionUpdatedBy,'Usuário teste');
+  assert.equal(queued.obras[0].sics[0].serviceExecutionConfirmedAt,'2026-11-12T16:00:00.000Z');
+
   // Corrigir o valor no Kanban deve sincronizar a SIC já existente sem perder
   // o quadro-resumo montado na apresentação da Diretoria.
   const originalSicId=queued.obras[0].sics[0].id;
