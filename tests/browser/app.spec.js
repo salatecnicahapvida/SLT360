@@ -789,7 +789,10 @@ test('service execution can be corrected without moving the SIC or changing its 
 
  await expect(page.locator('#demandDetailForm [name="coluna"]')).toHaveValue('aprovacaoDiretoria');
  await expect(page.locator('#demandDetailForm .sic-service-execution-readout')).toContainText('Executado');
+ await expect(page.locator('#demandDetailForm .sic-service-execution-readout')).toContainText('Última correção por Usuário teste');
  await expect(page.locator('#demandDetailForm .sic-service-execution-readout p')).toHaveCount(0);
+ await page.locator('#demandDetailForm').getByRole('button',{name:'Ver histórico'}).click();
+ await expect(page.locator('#demandDetailForm .demand-history-panel')).toContainText('Parcialmente executado → Executado');
  await expect(directorColumn.locator('article[data-id="sic-service-correction"]')).toBeVisible();
  const savedDemand=()=>b.requests.flatMap(request=>request.changes)
   .find(change=>change.entity==='budget_demands'&&change.key==='sic-service-correction'&&change.document?.sicWorksValidation?.serviceExecutionStatus==='executed');
@@ -802,11 +805,15 @@ test('service execution can be corrected without moving the SIC or changing its 
    serviceExecutionStatus:'executed',
    serviceExecutionDetails:'',
    serviceExecutionUpdatedBy:'Usuário teste',
+   serviceExecutionCorrections:[expect.objectContaining({
+    previousStatus:'partially_executed',
+    previousLabel:'Parcialmente executado',
+    nextStatus:'executed',
+    nextLabel:'Executado',
+    correctedBy:'Usuário teste',
+   })],
   },
  }});
- expect(b.requests.flatMap(request=>request.changes)).toEqual(expect.arrayContaining([
-  expect.objectContaining({entity:'core_history',document:expect.objectContaining({campo:'correção da execução do serviço da SIC',valorAnterior:'Parcialmente executado'})}),
- ]));
  expect(b.errors).toEqual([]);
 });
 

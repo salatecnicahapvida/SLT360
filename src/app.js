@@ -16076,7 +16076,7 @@ function renderDemandSicMetadata(demand) {
           </div>
           <strong>${escapeAttribute(serviceExecution.label)}</strong>
           ${serviceExecution.details ? `<p>${escapeAttribute(serviceExecution.details)}</p>` : ""}
-          <small>Informação confirmada na validação de Obras.</small>
+          <small>${serviceExecution.updatedAt ? `Última correção por ${escapeAttribute(serviceExecution.updatedBy || "Usuário SLT360")} em ${escapeAttribute(new Date(serviceExecution.updatedAt).toLocaleString("pt-BR"))}.` : "Informação confirmada na validação de Obras."}</small>
         </div>
       `}
     </section>
@@ -16165,7 +16165,10 @@ function openDemandDetailModal(id) {
   const demand = state.demands.find((item) => item.id === id);
   if (!demand) return;
   const work = workById(demand.obraId);
-  const histories = state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId));
+  const histories = [
+    ...sicServiceExecutionCorrectionHistories(demand),
+    ...state.history.filter((item) => item.entidadeId === demand.id || (demand.sicIds || []).includes(item.entidadeId)),
+  ].sort((first, second) => new Date(second.timestamp || 0).getTime() - new Date(first.timestamp || 0).getTime());
   const stageTime = demandStageTimeInfo(demand);
   const directorWaiver = sicDirectorWaiverData(demand);
   const directorWaiverDate = directorWaiver ? new Date(directorWaiver.waivedAt) : null;
@@ -19774,7 +19777,24 @@ function sicWorksServiceExecution(demand) {
     details,
     label: sicServiceExecutionLabel(status),
     cardLabel: status === "executed" ? "Serviço executado" : status === "not_executed" ? "Serviço não executado" : "Serviço parcialmente executado",
+    updatedAt: String(validation.serviceExecutionUpdatedAt || ""),
+    updatedBy: String(validation.serviceExecutionUpdatedBy || ""),
   };
+}
+
+function sicServiceExecutionCorrectionHistories(demand) {
+  return arrayOrFallback(demand?.sicWorksValidation?.serviceExecutionCorrections)
+    .map((correction, index) => ({
+      id: correction.id || `${demand?.id || "SIC"}-service-execution-${index}`,
+      entidade: "demanda",
+      entidadeId: demand?.id || "",
+      campo: "correção da execução do serviço da SIC",
+      valorAnterior: [correction.previousLabel || sicServiceExecutionLabel(correction.previousStatus), correction.previousDetails].filter(Boolean).join(" · "),
+      valorNovo: [correction.nextLabel || sicServiceExecutionLabel(correction.nextStatus), correction.nextDetails].filter(Boolean).join(" · "),
+      usuario: correction.correctedBy || "Usuário SLT360",
+      timestamp: correction.correctedAt || "",
+    }))
+    .filter((item) => item.timestamp);
 }
 
 function sicDirectorReferenceAmount(demand) {
@@ -19897,25 +19917,21 @@ async function handleSicWorksValidationSubmit(form) {
       serviceExecutionDetails: normalizedDetails,
       serviceExecutionUpdatedAt: correctedAt,
       serviceExecutionUpdatedBy: correctedBy,
+      serviceExecutionCorrections: [
+        ...arrayOrFallback(demand.sicWorksValidation?.serviceExecutionCorrections),
+        {
+          id: `service-execution-${Date.now()}`,
+          previousStatus: previousExecution?.status || "",
+          previousLabel: previousExecution?.label || "Não informada",
+          previousDetails: previousExecution?.details || "",
+          nextStatus: serviceExecutionStatus,
+          nextLabel: sicServiceExecutionLabel(serviceExecutionStatus),
+          nextDetails: normalizedDetails,
+          correctedAt,
+          correctedBy,
+        },
+      ].slice(-20),
     };
-    if (previousExecution?.status !== serviceExecutionStatus) {
-      addHistory({
-        entidade: "demanda",
-        entidadeId: demand.id,
-        campo: "correção da execução do serviço da SIC",
-        valorAnterior: previousExecution?.label || "Não informada",
-        valorNovo: `${sicServiceExecutionLabel(serviceExecutionStatus)} · corrigido por ${correctedBy}`,
-      });
-    }
-    if ((previousExecution?.details || "") !== normalizedDetails) {
-      addHistory({
-        entidade: "demanda",
-        entidadeId: demand.id,
-        campo: "correção do detalhamento da execução da SIC",
-        valorAnterior: previousExecution?.details || "Não informado",
-        valorNovo: normalizedDetails || "Não se aplica",
-      });
-    }
     try {
       await saveStateAndWait();
     } catch (error) {
