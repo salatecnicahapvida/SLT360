@@ -9678,6 +9678,20 @@ button.analyst-chip {
   padding: 11px 12px;
 }
 
+.sic-service-execution-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sic-service-execution-heading .compact-action {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 0.7rem;
+}
+
 .sic-service-execution-readout[data-status="not_executed"] {
   border-color: rgba(194, 65, 12, 0.26);
   background: #fff7ed;
@@ -9713,6 +9727,26 @@ button.analyst-chip {
 
 .sic-service-execution-readout[data-status="partially_executed"] strong {
   color: #92400e;
+}
+
+.sic-service-edit-context {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #cbd8e6;
+  border-radius: 9px;
+  background: #f6f9fc;
+  padding: 12px 13px;
+}
+
+.sic-service-edit-context span,
+.sic-service-edit-context small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sic-service-edit-context strong {
+  color: var(--navy);
+  font-size: 1rem;
 }
 
 .demand-detail-form .modal-section > textarea {

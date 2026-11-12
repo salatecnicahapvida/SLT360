@@ -756,6 +756,60 @@ test('operational demand cards and list standardize work names',async({page})=>{
  expect(b.errors).toEqual([]);
 });
 
+test('service execution can be corrected without moving the SIC or changing its validated amount',async({page})=>{
+ const demand={
+  ...structuredClone(payload.state.demands[0]),
+  id:'sic-service-correction',
+  coluna:'aprovacaoDiretoria',
+  valorGerado:125.5,
+  sicWorksValidation:{
+   version:3,
+   amount:125.5,
+   serviceExecuted:null,
+   serviceExecutionStatus:'partially_executed',
+   serviceExecutionDetails:'Pintura executada; climatização ainda não executada.',
+   validatedAt:'2026-11-10T12:00:00.000Z',
+   validatedBy:'Obras',
+  },
+ };
+ const b=await backend(page,'Admin',false,{demandRecords:[demand]});await login(page);
+ await page.getByRole('button',{name:'Abrir Obras'}).click();
+ const directorColumn=page.locator('.kanban-column[data-column="aprovacaoDiretoria"]');
+ await directorColumn.locator('article[data-id="sic-service-correction"]').click();
+ const detail=page.locator('#demandDetailForm');
+ await expect(detail.locator('.sic-service-execution-readout')).toContainText('Parcialmente executado');
+ await detail.getByRole('button',{name:'Editar situação'}).click();
+
+ const correction=page.locator('#sicWorksValidationForm[data-mode="edit-service-execution"]');
+ await expect(correction.getByRole('heading',{name:'Corrigir execução do serviço'})).toBeVisible();
+ await expect(correction.locator('[name="sicWorksAmount"]')).toHaveCount(0);
+ await expect(correction.locator('.sic-service-edit-context')).toContainText('R$ 125,50');
+ await correction.locator('[name="sicServiceExecutionStatus"][value="executed"]').check();
+ await correction.getByRole('button',{name:'Salvar correção'}).click();
+
+ await expect(page.locator('#demandDetailForm [name="coluna"]')).toHaveValue('aprovacaoDiretoria');
+ await expect(page.locator('#demandDetailForm .sic-service-execution-readout')).toContainText('Executado');
+ await expect(page.locator('#demandDetailForm .sic-service-execution-readout p')).toHaveCount(0);
+ await expect(directorColumn.locator('article[data-id="sic-service-correction"]')).toBeVisible();
+ const savedDemand=()=>b.requests.flatMap(request=>request.changes)
+  .find(change=>change.entity==='budget_demands'&&change.key==='sic-service-correction'&&change.document?.sicWorksValidation?.serviceExecutionStatus==='executed');
+ await expect.poll(savedDemand).toMatchObject({document:{
+  coluna:'aprovacaoDiretoria',
+  valorGerado:125.5,
+  sicWorksValidation:{
+   amount:125.5,
+   serviceExecuted:true,
+   serviceExecutionStatus:'executed',
+   serviceExecutionDetails:'',
+   serviceExecutionUpdatedBy:'Usuário teste',
+  },
+ }});
+ expect(b.requests.flatMap(request=>request.changes)).toEqual(expect.arrayContaining([
+  expect.objectContaining({entity:'core_history',document:expect.objectContaining({campo:'correção da execução do serviço da SIC',valorAnterior:'Parcialmente executado'})}),
+ ]));
+ expect(b.errors).toEqual([]);
+});
+
 test('SIC without a title does not put its description on the card',async({page})=>{
  const sic={...structuredClone(payload.state.demands[0]),id:'sic-without-title',titulo:'',observacao:'Descrição legada da SIC',sicMetadata:{lecomNumber:'TEST-2',descricaoSic:'Descrição legada da SIC'}};
  const b=await backend(page,'Admin',false,{demandRecords:[sic]});await login(page);

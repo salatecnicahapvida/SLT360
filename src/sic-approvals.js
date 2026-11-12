@@ -23,7 +23,8 @@ function decoratePayloadWithDemandExecution(payload, demands) {
       return [String(demand?.id || ''), {
         status,
         details: status === 'partially_executed' ? String(validation?.serviceExecutionDetails || '').trim() : '',
-        validatedAt: validation?.validatedAt || '',
+        validatedAt: validation?.serviceExecutionUpdatedAt || validation?.validatedAt || '',
+        updatedBy: validation?.serviceExecutionUpdatedBy || validation?.validatedBy || '',
       }];
     })
     .filter(([demandId, execution]) => demandId && ['executed', 'not_executed', 'partially_executed'].includes(execution.status)));
@@ -41,6 +42,7 @@ function decoratePayloadWithDemandExecution(payload, demands) {
           serviceExecutionStatus: execution.status,
           serviceExecutionDetails: execution.details,
           serviceExecutionConfirmedAt: execution.validatedAt || sic.serviceExecutionConfirmedAt || '',
+          serviceExecutionUpdatedBy: execution.updatedBy || sic.serviceExecutionUpdatedBy || '',
         };
       }),
     })),
